@@ -14,11 +14,13 @@ if current_dir not in sys.path:
 # --- IMPORT THE BRAIN (SUPERPOINT/LIGHTGLUE) ---
 try:
     from turtles.image_processing import brain
-except ImportError:
+except ImportError as e1:
     try:
         from image_processing import brain
-    except ImportError:
-        print("❌ CRITICAL: Could not import 'brain'. Check file structure.")
+    except ImportError as e2:
+        print(f"❌ CRITICAL: Could not import 'brain'.")
+        print(f"Detailed Error 1: {e1}")
+        print(f"Detailed Error 2: {e2}")
         sys.exit(1)
 
 # --- CONFIGURATION ---
@@ -216,8 +218,7 @@ class TurtleManager:
         t_start = time.time()
 
         # Clean location filter if needed
-        loc = None if not location_filter or location_filter == "All Locations" else location_filter.split("/")[
-            0].strip()
+        loc = None if not location_filter or location_filter == "All Locations" else location_filter.strip()
 
         print(f"🔍 Deep Searching {filename} (VRAM Cached Mode)...")
 

@@ -4,6 +4,7 @@
 .cursor/debug.log
 *.swp
 *.swo
+*.env
 *~
 
 # OS files
