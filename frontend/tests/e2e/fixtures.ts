@@ -99,12 +99,18 @@ export async function clickUploadPhotoButton(page: Page): Promise<void> {
  * Selects an option from an open Mantine Select/Combobox by keyboard.
  * Call after clicking the select input. Index 0 = first option.
  * Works when the dropdown is portaled or not visible to Playwright (e.g. mobile).
+ * In WebKit the first ArrowDown moves focus from input into the list (onto first option),
+ * so we need one extra ArrowDown before stepping to the desired index.
  */
 export async function selectComboboxOptionByIndex(
   page: Page,
   optionIndex: number,
 ): Promise<void> {
-  for (let i = 0; i < optionIndex; i++) {
+  await page.waitForTimeout(150);
+  const browserName = page.context().browser()?.browserType().name() ?? '';
+  // WebKit: first ArrowDown moves focus into list (to first option); then we need optionIndex steps.
+  const steps = browserName === 'webkit' ? optionIndex + 1 : optionIndex;
+  for (let i = 0; i < steps; i++) {
     await page.keyboard.press('ArrowDown');
   }
   await page.keyboard.press('Enter');
@@ -143,10 +149,13 @@ export async function selectSheetInCreateTurtleDialog(
 
 const SEX_SELECT_LABEL = 'Sex';
 const SEX_DROPDOWN_TIMEOUT = 10_000;
+/** Option order in UI (turtleSheetsDataFormFieldsConfig: F, M, J, U). */
+const SEX_OPTION_INDEX: Record<string, number> = { F: 0, M: 1, J: 2, U: 3 };
 
 /**
  * In the Create New Turtle dialog, select Sex (e.g. "F", "M").
  * On mobile we use NativeSelect (native <select>); on desktop, Mantine Select (listbox).
+ * Uses keyboard selection for Mantine so options that render outside the viewport (portaled dropdown) still work.
  */
 export async function selectSexInCreateTurtleDialog(
   page: Page,
@@ -163,8 +172,12 @@ export async function selectSexInCreateTurtleDialog(
   }
 
   await sexSelect.click();
-  await page
-    .getByRole('listbox', { name: SEX_SELECT_LABEL })
-    .waitFor({ state: 'visible', timeout: SEX_DROPDOWN_TIMEOUT });
-  await page.getByRole('option', { name: value }).click();
+  const listbox = page.getByRole('listbox', { name: SEX_SELECT_LABEL });
+  await listbox.waitFor({ state: 'visible', timeout: SEX_DROPDOWN_TIMEOUT });
+  // Keyboard selection avoids portaled options being outside viewport (no option.click).
+  const optionIndex = SEX_OPTION_INDEX[value];
+  if (optionIndex === undefined) {
+    throw new Error(`Unknown sex value: ${value}`);
+  }
+  await selectComboboxOptionByIndex(page, optionIndex);
 }
