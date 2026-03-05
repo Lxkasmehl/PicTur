@@ -69,13 +69,19 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
     await expect(page.getByRole('tab', { name: /Review Queue/ })).toBeVisible();
 
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
+    await tabPanel.waitFor({ state: 'visible', timeout: 5000 });
+    // Wait for queue content to load (either list items or empty state) to avoid flakiness on slow browsers
+    await Promise.race([
+      tabPanel.getByText('No pending reviews').waitFor({ state: 'visible', timeout: 10_000 }),
+      tabPanel.getByText(/\d+ matches/).first().waitFor({ state: 'visible', timeout: 10_000 }),
+    ]);
     const matchLink = tabPanel.getByText(/\d+ matches/).first();
     const hasItems = (await matchLink.count()) > 0;
     if (hasItems) {
       await matchLink.click();
       await expect(page.getByText('Microhabitat / Condition photos')).toBeVisible({ timeout: 5000 });
     } else {
-      await expect(page.getByText('No pending reviews')).toBeVisible();
+      await expect(page.getByText('No pending reviews')).toBeVisible({ timeout: 10_000 });
     }
   });
 

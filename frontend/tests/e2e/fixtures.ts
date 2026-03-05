@@ -163,8 +163,9 @@ export async function selectSexInCreateTurtleDialog(
   }
 
   await sexSelect.click();
-  await page
-    .getByRole('listbox', { name: SEX_SELECT_LABEL })
-    .waitFor({ state: 'visible', timeout: SEX_DROPDOWN_TIMEOUT });
-  await page.getByRole('option', { name: value }).click();
+  const listbox = page.getByRole('listbox', { name: SEX_SELECT_LABEL });
+  await listbox.waitFor({ state: 'visible', timeout: SEX_DROPDOWN_TIMEOUT });
+  const option = listbox.getByRole('option', { name: value });
+  await option.waitFor({ state: 'visible', timeout: SEX_DROPDOWN_TIMEOUT });
+  await option.click();
 }

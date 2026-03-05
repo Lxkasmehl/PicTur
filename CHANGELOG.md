@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Google Sheets**: Single RLock for all Sheets API use and reinit to avoid concurrent SSL/connection errors (e.g. DECRYPTION_FAILED_OR_BAD_RECORD_MAC, record layer failure) and process segfaults (exit 139). Route that reads sheet values for validation now holds the same lock.
+- **E2E**: Stabilize flaky tests: scope sex dropdown option to listbox and wait before click (fixes WebKit failure in admin-turtle-id-auto-generate); increase timeout for "From this upload" on turtle match page (Chromium/Mobile Chrome); wait for review queue content before branching and add timeouts for "No pending reviews" (Mobile Safari).
 
 ---
 
