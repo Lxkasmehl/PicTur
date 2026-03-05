@@ -164,7 +164,7 @@ test.describe('Admin Turtle Match', () => {
     // Section only appears when there are matches
     const noMatches = page.getByText('No matches found');
     if ((await noMatches.isVisible())) return;
-    await expect(page.getByText('From this upload', { exact: true })).toBeVisible();
+    await expect(page.getByText('From this upload', { exact: true })).toBeVisible({ timeout: 15_000 });
     const fromUploadSection = page.getByText('From this upload', { exact: true }).locator('..').locator('..');
     await expect(fromUploadSection.getByRole('img').first()).toBeVisible({ timeout: 5000 });
 

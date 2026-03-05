@@ -64,7 +64,7 @@ export interface TurtleSheetsDataFormFieldsProps {
   hintLocationFromCommunity?: string;
   hintCoordinates?: { latitude: number; longitude: number; source?: 'gps' | 'manual' };
   errors?: Record<string, string>;
-  /** In create mode the ID field is always disabled and filled by generate-id (sex + sequence per sheet). */
+  /** Affects ID field description only; ID is always read-only and never editable. */
   mode?: 'create' | 'edit';
 }
 
@@ -187,17 +187,32 @@ export function TurtleSheetsDataFormFields({
         const span = toSpan(config.span);
         const value = formData[config.key] ?? '';
 
+        // ID is always read-only (no unlock, not editable in Sheets browser or match page)
+        if (config.key === 'id') {
+          return (
+            <Grid.Col key="id" span={span}>
+              <TextInput
+                label={config.label}
+                value={value}
+                disabled
+                description={
+                  mode === 'create'
+                    ? 'Auto-generated from sex + sequence for this sheet (e.g. M1, F2)'
+                    : config.description
+                }
+                error={errors?.['id']}
+              />
+            </Grid.Col>
+          );
+        }
+
         return (
           <Grid.Col key={config.key} span={span}>
             <TurtleFormField
               field={config.key}
               label={config.label}
               placeholder={config.placeholder}
-              description={
-                config.key === 'id' && mode === 'create'
-                  ? 'Auto-generated from sex + sequence for this sheet (e.g. M1, F2)'
-                  : config.description
-              }
+              description={config.description}
               infoTooltip={config.infoTooltip}
               value={value}
               onChange={(v) => handleChange(config.key, v)}
@@ -206,7 +221,7 @@ export function TurtleSheetsDataFormFields({
               isFieldModeRestricted={isFieldModeRestricted}
               isFieldUnlocked={isFieldUnlocked}
               requestUnlock={requestUnlock}
-              disabled={config.key === 'id' && mode === 'create'}
+              disabled={false}
               error={errors?.[config.key]}
             />
           </Grid.Col>
