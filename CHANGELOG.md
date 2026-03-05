@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Intake survey**: "Health Status" field with free-text input and an optional "?" tooltip guiding community members on what to look for when assessing turtle health (e.g. mucous discharge, eye coloration, shell damage, dehydration, flesh flies, mites). Data is stored in Google Sheets when the "Health Status" column is present.
 - **Docker**: Configurable frontend host port via `FRONTEND_PORT` in `.env` (default 80). When port 80 is in use, set `FRONTEND_PORT=8080` and `FRONTEND_URL=http://localhost:8080` so auth redirects work correctly. See `.env.docker.example` and comments in `docker-compose.yml`.
+
+### Fixed
+
+- **Google Sheets**: Single RLock for all Sheets API use and reinit to avoid concurrent SSL/connection errors (e.g. DECRYPTION_FAILED_OR_BAD_RECORD_MAC, record layer failure) and process segfaults (exit 139). Route that reads sheet values for validation now holds the same lock.
 
 ---
 

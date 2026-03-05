@@ -22,6 +22,7 @@ const FORM_FIELD_ORDER: (keyof TurtleSheetsData | '__dates_refound__' | '__commu
   '__community_hint__',
   'general_location',
   'location',
+  'health_status',
   'pit',
   'pic_in_2024_archive',
   'adopted',
@@ -189,6 +190,7 @@ export function TurtleSheetsDataFormFields({
                   ? 'Auto-generated from sex + sequence for this sheet (e.g. M1, F2)'
                   : config.description
               }
+              infoTooltip={config.infoTooltip}
               value={value}
               onChange={(v) => handleChange(config.key, v)}
               type={config.type}

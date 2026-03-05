@@ -32,8 +32,7 @@ class GoogleSheetsService:
     # Reverse mapping: internal field names to Google Sheets column headers
     FIELD_TO_COLUMN = FIELD_TO_COLUMN
 
-    # Lock for list_sheets to avoid concurrent Google API calls (reduces SSL errors)
-    _list_sheets_lock = threading.Lock()
+    # Single lock for all Sheets API use and reinit to avoid SSL races and segfaults (exit 139)
     LIST_SHEETS_CACHE_TTL_SEC = 30
 
     def __init__(self, spreadsheet_id: Optional[str] = None, credentials_path: Optional[str] = None):
@@ -62,6 +61,8 @@ class GoogleSheetsService:
         # Cache for column indices (header row) to avoid duplicate reads in same create flow
         self._column_indices_cache = {}  # sheet_name -> (indices_dict, timestamp)
         self.COLUMN_INDICES_CACHE_TTL_SEC = 15
+        # RLock so the same thread can re-acquire (e.g. reinit from within a locked block)
+        self._api_lock = threading.RLock()
 
         # Authenticate
         try:
@@ -129,62 +130,69 @@ class GoogleSheetsService:
     
     def _reinitialize_service(self):
         """Reinitialize the Google Sheets service (useful for SSL connection issues)."""
-        try:
-            credentials_file = os.environ.get('GOOGLE_SHEETS_CREDENTIALS_PATH')
-            if not credentials_file:
-                raise ValueError("Google Sheets credentials path not found")
-            
-            credentials = service_account.Credentials.from_service_account_file(
-                credentials_file,
-                scopes=['https://www.googleapis.com/auth/spreadsheets']
-            )
-            self.service = build('sheets', 'v4', credentials=credentials)
-            self._invalidate_list_sheets_cache()
-            print("✅ Google Sheets service reinitialized")
-        except Exception as e:
-            print(f"⚠️ Failed to reinitialize Google Sheets service: {e}")
-            raise
+        with self._api_lock:
+            try:
+                credentials_file = os.environ.get('GOOGLE_SHEETS_CREDENTIALS_PATH')
+                if not credentials_file:
+                    raise ValueError("Google Sheets credentials path not found")
+                
+                credentials = service_account.Credentials.from_service_account_file(
+                    credentials_file,
+                    scopes=['https://www.googleapis.com/auth/spreadsheets']
+                )
+                self.service = build('sheets', 'v4', credentials=credentials)
+                self._invalidate_list_sheets_cache()
+                print("✅ Google Sheets service reinitialized")
+            except Exception as e:
+                print(f"⚠️ Failed to reinitialize Google Sheets service: {e}")
+                raise
 
     # Public CRUD methods
     def get_turtle_data(self, primary_id: str, sheet_name: str, state: Optional[str] = None, location: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Get turtle data from Google Sheets by primary ID."""
-        return crud.get_turtle_data(
-            self.service, self.spreadsheet_id, primary_id, sheet_name, state, location,
-            self._ensure_primary_id_column, self._find_row_by_primary_id, self._get_all_column_indices
-        )
+        with self._api_lock:
+            return crud.get_turtle_data(
+                self.service, self.spreadsheet_id, primary_id, sheet_name, state, location,
+                self._ensure_primary_id_column, self._find_row_by_primary_id, self._get_all_column_indices
+            )
     
     def create_turtle_data(self, turtle_data: Dict[str, Any], sheet_name: str, state: Optional[str] = None, location: Optional[str] = None) -> Optional[str]:
         """Create a new turtle entry in Google Sheets."""
-        return crud.create_turtle_data(
-            self.service, self.spreadsheet_id, turtle_data, sheet_name, state, location,
-            self._ensure_primary_id_column, self._get_all_column_indices
-        )
+        with self._api_lock:
+            return crud.create_turtle_data(
+                self.service, self.spreadsheet_id, turtle_data, sheet_name, state, location,
+                self._ensure_primary_id_column, self._get_all_column_indices
+            )
     
     def update_turtle_data(self, primary_id: str, turtle_data: Dict[str, Any], sheet_name: str, state: Optional[str] = None, location: Optional[str] = None) -> bool:
         """Update existing turtle data in Google Sheets."""
-        return crud.update_turtle_data(
-            self.service, self.spreadsheet_id, primary_id, turtle_data, sheet_name, state, location,
-            self._ensure_primary_id_column, self._find_row_by_primary_id, self._get_all_column_indices
-        )
+        with self._api_lock:
+            return crud.update_turtle_data(
+                self.service, self.spreadsheet_id, primary_id, turtle_data, sheet_name, state, location,
+                self._ensure_primary_id_column, self._find_row_by_primary_id, self._get_all_column_indices
+            )
     
     def delete_turtle_data(self, primary_id: str, sheet_name: str) -> bool:
         """Delete turtle data from Google Sheets by removing the entire row."""
-        return crud.delete_turtle_data(
-            self.service, self.spreadsheet_id, primary_id, sheet_name, self._find_row_by_primary_id
-        )
+        with self._api_lock:
+            return crud.delete_turtle_data(
+                self.service, self.spreadsheet_id, primary_id, sheet_name, self._find_row_by_primary_id
+            )
     
     def find_turtle_sheet(self, primary_id: str) -> Optional[str]:
         """Find which sheet contains a turtle with the given primary ID."""
-        return crud.find_turtle_sheet(
-            self.service, self.spreadsheet_id, primary_id, self.list_sheets, self._find_row_by_primary_id
-        )
+        with self._api_lock:
+            return crud.find_turtle_sheet(
+                self.service, self.spreadsheet_id, primary_id, self.list_sheets, self._find_row_by_primary_id
+            )
 
     # Migration methods
     def generate_primary_id(self, state: Optional[str] = None, location: Optional[str] = None) -> str:
         """Generate a new unique primary ID for a turtle."""
-        return migration.generate_primary_id(
-            self.service, self.spreadsheet_id, self.list_sheets, self._find_row_by_primary_id, state, location
-        )
+        with self._api_lock:
+            return migration.generate_primary_id(
+                self.service, self.spreadsheet_id, self.list_sheets, self._find_row_by_primary_id, state, location
+            )
 
     def generate_biology_id(self, gender: str = 'U', sheet_name: Optional[str] = None) -> str:
         """
@@ -194,21 +202,24 @@ class GoogleSheetsService:
         """
         if not sheet_name or not sheet_name.strip():
             raise ValueError("sheet_name is required for biology ID generation")
-        return migration.generate_biology_id(
-            self.service, self.spreadsheet_id, sheet_name.strip(), self._get_all_column_indices, gender
-        )
+        with self._api_lock:
+            return migration.generate_biology_id(
+                self.service, self.spreadsheet_id, sheet_name.strip(), self._get_all_column_indices, gender
+            )
     
     def needs_migration(self) -> bool:
         """Check if migration is needed (i.e., there are turtles with ID but no Primary ID)."""
-        return migration.needs_migration(
-            self.service, self.spreadsheet_id, self.list_sheets, self._ensure_primary_id_column
-        )
+        with self._api_lock:
+            return migration.needs_migration(
+                self.service, self.spreadsheet_id, self.list_sheets, self._ensure_primary_id_column
+            )
     
     def migrate_ids_to_primary_ids(self) -> Dict[str, int]:
         """Migrate all turtles from using "ID" column to "Primary ID" column."""
-        return migration.migrate_ids_to_primary_ids(
-            self.service, self.spreadsheet_id, self.list_sheets, self._ensure_primary_id_column, self.generate_primary_id
-        )
+        with self._api_lock:
+            return migration.migrate_ids_to_primary_ids(
+                self.service, self.spreadsheet_id, self.list_sheets, self._ensure_primary_id_column, self.generate_primary_id
+            )
 
     # Sheet management methods
     def _invalidate_list_sheets_cache(self):
@@ -220,7 +231,7 @@ class GoogleSheetsService:
         Uses a lock and short-lived cache to avoid concurrent Google API calls
         that can trigger SSL errors (DECRYPTION_FAILED_OR_BAD_RECORD_MAC, WRONG_VERSION_NUMBER).
         """
-        with self._list_sheets_lock:
+        with self._api_lock:
             now = time.time()
             if (
                 self._list_sheets_cache is not None
@@ -236,9 +247,10 @@ class GoogleSheetsService:
 
     def create_sheet_with_headers(self, sheet_name: str) -> bool:
         """Create a new sheet (tab) with all required headers."""
-        result = sheet_management.create_sheet_with_headers(
-            self.service, self.spreadsheet_id, sheet_name, self.COLUMN_MAPPING, self.list_sheets
-        )
+        with self._api_lock:
+            result = sheet_management.create_sheet_with_headers(
+                self.service, self.spreadsheet_id, sheet_name, self.COLUMN_MAPPING, self.list_sheets
+            )
         if result:
             self._invalidate_list_sheets_cache()
         return result
