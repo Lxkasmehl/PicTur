@@ -23,7 +23,7 @@ export interface TurtleFormFieldConfig {
 }
 
 export const TURTLE_SHEETS_FORM_FIELDS: TurtleFormFieldConfig[] = [
-  { key: 'id', label: 'ID', placeholder: 'Original ID', description: 'Original turtle ID (may not be unique across sheets)', type: 'text', span: { base: 12, md: 6 } },
+  { key: 'id', label: 'ID', placeholder: 'Original ID', description: 'Original turtle ID (read-only; may not be unique across sheets)', type: 'text', span: { base: 12, md: 6 } },
   { key: 'id2', label: 'ID2 (random sequence)', placeholder: 'Secondary ID', type: 'text', span: { base: 12, md: 6 } },
   { key: 'transmitter_id', label: 'Transmitter ID', placeholder: 'Transmitter ID', type: 'text', span: { base: 12, md: 6 } },
   { key: 'transmitter_type', label: 'Transmitter Type', placeholder: 'Transmitter type', type: 'text', span: { base: 12, md: 6 } },

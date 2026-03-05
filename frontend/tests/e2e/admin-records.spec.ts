@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin, loginAsCommunity, navClick, openMobileMenu, getTestImageBuffer } from './fixtures';
+import {
+  loginAsAdmin,
+  loginAsCommunity,
+  navClick,
+  openMobileMenu,
+  getTestImageBuffer,
+} from './fixtures';
 
 test.describe('Admin Turtle Records (Review Queue)', () => {
   test('Admin sees Turtle Records in nav', async ({ page }) => {
@@ -147,5 +153,62 @@ test.describe('Admin Turtle Records (Sheets Browser)', () => {
     const removeBtn = photosSection.getByRole('button', { name: 'Remove' }).first();
     await removeBtn.click();
     await expect(page.getByText('Removed', { exact: true })).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('Edit mode: ID field is read-only and shows read-only description', async ({ page }) => {
+    test.setTimeout(60_000);
+
+    const mockTurtle = {
+      id: 'M1',
+      sheet_name: 'Kansas',
+      name: 'Test Turtle',
+      sex: 'M',
+      species: '',
+    };
+
+    await page.route('**/api/sheets/sheets**', (route) => {
+      if (route.request().method() === 'GET') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, sheets: ['Kansas'] }),
+        });
+      }
+      return route.continue();
+    });
+
+    await page.route('**/api/sheets/turtles**', (route) => {
+      if (route.request().method() === 'GET') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, turtles: [mockTurtle] }),
+        });
+      }
+      return route.continue();
+    });
+
+    await loginAsAdmin(page);
+    await navClick(page, 'Turtle Records');
+    await expect(page.getByRole('tab', { name: /Review Queue/ })).toBeVisible();
+    await page.getByRole('tab', { name: /Google Sheets Browser/ }).click();
+
+    const locationInput = page.getByRole('textbox', { name: /Location \(Spreadsheet\)/i });
+    await expect(locationInput).toBeVisible({ timeout: 5000 });
+    const tabPanel = page.locator('[role="tabpanel"]').filter({ has: locationInput });
+
+    // Tab load triggers loadAllTurtles(); mock returns one turtle. Click first card to open edit form.
+    const turtleCards = tabPanel.locator('[style*="cursor: pointer"]');
+    await expect(turtleCards.first()).toBeVisible({ timeout: 10_000 });
+    await turtleCards.first().click();
+
+    // Edit form: ID field must be disabled and show read-only description (branch: ID always read-only)
+    const idField = tabPanel.getByLabel('ID', { exact: true });
+    await expect(idField).toBeVisible({ timeout: 5000 });
+    await expect(idField).toHaveValue('M1');
+    await expect(idField).toBeDisabled();
+    await expect(
+      tabPanel.getByText('Original turtle ID (read-only; may not be unique across sheets)'),
+    ).toBeVisible();
   });
 });
