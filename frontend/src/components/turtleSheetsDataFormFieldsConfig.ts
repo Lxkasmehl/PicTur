@@ -4,6 +4,10 @@
 
 import type { TurtleSheetsData } from '../services/api';
 
+/** Guided indicators for assessing turtle health (shown in Health Status tooltip). */
+export const HEALTH_STATUS_INFO_TOOLTIP =
+  'When assessing turtle health, consider noting:\n• Mucous discharge from eyes or nose\n• Dull or fragmented iris / eye coloration\n• Burn damage on the shell\n• Structural bone damage (including exposed bone)\n• Missing appendages or tail\n• Signs of dehydration\n• Presence of flesh flies\n• Presence of mites';
+
 export type FieldSpan = number | { base: number; md: number };
 
 export interface TurtleFormFieldConfig {
@@ -11,7 +15,9 @@ export interface TurtleFormFieldConfig {
   label: string;
   placeholder?: string;
   description?: string;
-  type: 'text' | 'select';
+  /** Optional help tooltip shown as a "?" icon next to the label (e.g. guided indicators). */
+  infoTooltip?: string;
+  type: 'text' | 'select' | 'textarea';
   selectData?: string[];
   span: FieldSpan;
 }
@@ -28,6 +34,14 @@ export const TURTLE_SHEETS_FORM_FIELDS: TurtleFormFieldConfig[] = [
   // dates_refound rendered separately (append UI)
   { key: 'general_location', label: 'General Location', placeholder: 'General location', type: 'text', span: { base: 12, md: 6 } },
   { key: 'location', label: 'Location', placeholder: 'Specific location', type: 'text', span: { base: 12, md: 6 } },
+  {
+    key: 'health_status',
+    label: 'Health Status',
+    placeholder: 'Describe health observations (e.g. eye/nose discharge, shell damage, dehydration)',
+    type: 'textarea',
+    infoTooltip: HEALTH_STATUS_INFO_TOOLTIP,
+    span: { base: 12, md: 12 },
+  },
   { key: 'pit', label: 'Pit?', placeholder: 'Yes/No', type: 'select', selectData: ['Yes', 'No'], span: { base: 12, md: 3 } },
   { key: 'pic_in_2024_archive', label: 'Pic in 2024 Archive?', placeholder: 'Yes/No', type: 'select', selectData: ['Yes', 'No'], span: { base: 12, md: 3 } },
   { key: 'adopted', label: 'Adopted?', placeholder: 'Yes/No', type: 'select', selectData: ['Yes', 'No'], span: { base: 12, md: 3 } },

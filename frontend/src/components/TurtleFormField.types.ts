@@ -4,7 +4,7 @@
 
 import type { TurtleSheetsData } from '../services/api';
 
-export type TurtleFormFieldType = 'text' | 'select';
+export type TurtleFormFieldType = 'text' | 'select' | 'textarea';
 
 export interface TurtleFormFieldProps {
   field: keyof TurtleSheetsData;
@@ -13,6 +13,8 @@ export interface TurtleFormFieldProps {
   value: string;
   onChange: (value: string) => void;
   description?: string;
+  /** Optional help content shown in a "?" tooltip next to the label. */
+  infoTooltip?: string;
   type?: TurtleFormFieldType;
   selectData?: string[] | { value: string; label: string }[];
   isFieldModeRestricted: boolean;

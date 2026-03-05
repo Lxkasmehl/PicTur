@@ -64,6 +64,8 @@ class GoogleSheetsService:
         # Cache for column indices (header row) to avoid duplicate reads in same create flow
         self._column_indices_cache = {}  # sheet_name -> (indices_dict, timestamp)
         self.COLUMN_INDICES_CACHE_TTL_SEC = 15
+        # RLock so the same thread can re-acquire (e.g. reinit from within a locked block)
+        self._api_lock = threading.RLock()
 
         # Authenticate
         try:
@@ -150,21 +152,22 @@ class GoogleSheetsService:
     
     def _reinitialize_service(self):
         """Reinitialize the Google Sheets service (useful for SSL connection issues)."""
-        try:
-            credentials_file = os.environ.get('GOOGLE_SHEETS_CREDENTIALS_PATH')
-            if not credentials_file:
-                raise ValueError("Google Sheets credentials path not found")
-            
-            credentials = service_account.Credentials.from_service_account_file(
-                credentials_file,
-                scopes=['https://www.googleapis.com/auth/spreadsheets']
-            )
-            self.service = build('sheets', 'v4', credentials=credentials)
-            self._invalidate_list_sheets_cache()
-            print("✅ Google Sheets service reinitialized")
-        except Exception as e:
-            print(f"⚠️ Failed to reinitialize Google Sheets service: {e}")
-            raise
+        with self._api_lock:
+            try:
+                credentials_file = os.environ.get('GOOGLE_SHEETS_CREDENTIALS_PATH')
+                if not credentials_file:
+                    raise ValueError("Google Sheets credentials path not found")
+                
+                credentials = service_account.Credentials.from_service_account_file(
+                    credentials_file,
+                    scopes=['https://www.googleapis.com/auth/spreadsheets']
+                )
+                self.service = build('sheets', 'v4', credentials=credentials)
+                self._invalidate_list_sheets_cache()
+                print("✅ Google Sheets service reinitialized")
+            except Exception as e:
+                print(f"⚠️ Failed to reinitialize Google Sheets service: {e}")
+                raise
 
     # Public CRUD methods (all run under _api_lock to avoid concurrent API use and SSL errors)
     def get_turtle_data(self, primary_id: str, sheet_name: str, state: Optional[str] = None, location: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -293,9 +296,10 @@ class GoogleSheetsService:
     def create_sheet_with_headers(self, sheet_name: str) -> bool:
         """Create a new sheet (tab) with all required headers."""
         with self._api_lock:
+            with self._api_lock:
             result = sheet_management.create_sheet_with_headers(
-                self.service, self.spreadsheet_id, sheet_name, self.COLUMN_MAPPING, self.list_sheets
-            )
+                    self.service, self.spreadsheet_id, sheet_name, self.COLUMN_MAPPING, self.list_sheets
+                )
             if result:
                 self._invalidate_list_sheets_cache()
             return result

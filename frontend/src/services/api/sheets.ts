@@ -24,6 +24,7 @@ export interface TurtleSheetsData {
   dates_refound?: string;
   general_location?: string;
   location?: string;
+  health_status?: string;
   notes?: string;
   transmitter_put_on_by?: string;
   transmitter_on_date?: string;

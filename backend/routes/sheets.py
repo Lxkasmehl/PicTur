@@ -23,6 +23,7 @@ def _is_ssl_or_connection_error(e):
     msg = (str(e) or '').lower()
     return (
         'ssl' in msg
+        or 'record' in msg  # e.g. [SSL] record layer failure
         or 'decryption_failed' in msg
         or 'wrong_version' in msg
         or 'incompleteread' in msg
@@ -620,15 +621,16 @@ def register_sheets_routes(app):
                     sheet_ok = False
                     for name_attempt in range(2):
                         try:
-                            service._ensure_primary_id_column(sheet)
+                            with service._api_lock:
+                                service._ensure_primary_id_column(sheet)
                             escaped_sheet = sheet
-                            if any(char in sheet for char in [' ', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '+', '=']):
-                                escaped_sheet = f"'{sheet}'"
-                            range_name = f"{escaped_sheet}!A:Z"
-                            result = service.get_sheet_values(range_name)
-                            if not result:
-                                sheet_ok = True
-                                break
+                                if any(char in sheet for char in [' ', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '+', '=']):
+                                    escaped_sheet = f"'{sheet}'"
+                                range_name = f"{escaped_sheet}!A:Z"
+                                result = service.get_sheet_values(range_name)
+                                if not result:
+                                    sheet_ok = True
+                                    break
 
                             values = result.get('values', [])
                             if len(values) < 2:
