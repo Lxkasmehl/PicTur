@@ -5,7 +5,6 @@
 import { Grid, TextInput, Textarea } from '@mantine/core';
 import type { TurtleSheetsData } from '../services/api';
 import { TurtleFormField } from './TurtleFormField';
-import type { TurtleFormFieldProps } from './TurtleFormField.types';
 import { TURTLE_SHEETS_FORM_FIELDS } from './turtleSheetsDataFormFieldsConfig';
 import type { FieldSpan } from './turtleSheetsDataFormFieldsConfig';
 import { CommunityLocationHint } from './TurtleSheetsDataFormSections';
@@ -44,23 +43,7 @@ const configByKey = Object.fromEntries(
   TURTLE_SHEETS_FORM_FIELDS.map((c) => [c.key, c]),
 ) as Record<keyof TurtleSheetsData, (typeof TURTLE_SHEETS_FORM_FIELDS)[0]>;
 
-export interface TurtleSheetsDataFormFieldsProps {
-  formData: TurtleSheetsData;
-  handleChange: (field: keyof TurtleSheetsData, value: string) => void;
-  isFieldModeRestricted: boolean;
-  isFieldUnlocked: (field: keyof TurtleSheetsData) => boolean;
-  requestUnlock: (field: keyof TurtleSheetsData) => void;
-  additionalDatesRefound: string;
-  setAdditionalDatesRefound: (v: string) => void;
-  additionalNotes: string;
-  setAdditionalNotes: (v: string) => void;
-  primaryId?: string;
-  hintLocationFromCommunity?: string;
-  hintCoordinates?: { latitude: number; longitude: number; source?: 'gps' | 'manual' };
-  errors?: Record<string, string>;
-  /** In create mode the ID field is always disabled and filled by generate-id (sex + sequence per sheet). */
-  mode?: 'create' | 'edit';
-}
+export type { TurtleSheetsDataFormFieldsProps } from './TurtleSheetsDataForm.types';
 
 function toSpan(span: FieldSpan) {
   return typeof span === 'number' ? span : span;

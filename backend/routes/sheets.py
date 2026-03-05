@@ -623,7 +623,7 @@ def register_sheets_routes(app):
                         try:
                             with service._api_lock:
                                 service._ensure_primary_id_column(sheet)
-                            escaped_sheet = sheet
+                                escaped_sheet = sheet
                                 if any(char in sheet for char in [' ', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '+', '=']):
                                     escaped_sheet = f"'{sheet}'"
                                 range_name = f"{escaped_sheet}!A:Z"
@@ -632,7 +632,7 @@ def register_sheets_routes(app):
                                     sheet_ok = True
                                     break
 
-                            values = result.get('values', [])
+                            values = result.get('values', []) if result else []
                             if len(values) < 2:
                                 sheet_ok = True
                                 break

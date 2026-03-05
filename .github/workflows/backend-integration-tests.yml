@@ -18,7 +18,6 @@ jobs:
         run: |
           echo "JWT_SECRET=test-jwt-secret-key-for-integration-tests" >> .env
           echo "SESSION_SECRET=test-session-secret" >> .env
-          echo "GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID=literally_any_fake_string_123" >> .env
 
       - name: Build and start services (auth-backend + backend)
         run: docker compose -f docker-compose.integration.yml up -d --build

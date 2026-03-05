@@ -296,10 +296,9 @@ class GoogleSheetsService:
     def create_sheet_with_headers(self, sheet_name: str) -> bool:
         """Create a new sheet (tab) with all required headers."""
         with self._api_lock:
-            with self._api_lock:
             result = sheet_management.create_sheet_with_headers(
-                    self.service, self.spreadsheet_id, sheet_name, self.COLUMN_MAPPING, self.list_sheets
-                )
+                self.service, self.spreadsheet_id, sheet_name, self.COLUMN_MAPPING, self.list_sheets
+            )
             if result:
                 self._invalidate_list_sheets_cache()
             return result
