@@ -138,6 +138,7 @@ export async function selectSheetInCreateTurtleDialog(
     .waitFor({ state: 'visible', timeout: SHEET_DROPDOWN_TIMEOUT });
   const option = page.getByRole('option', { name: sheetName });
   await option.waitFor({ state: 'visible', timeout: SHEET_DROPDOWN_TIMEOUT });
+  await option.scrollIntoViewIfNeeded();
   await option.click();
 }
 
@@ -166,5 +167,8 @@ export async function selectSexInCreateTurtleDialog(
   await page
     .getByRole('listbox', { name: SEX_SELECT_LABEL })
     .waitFor({ state: 'visible', timeout: SEX_DROPDOWN_TIMEOUT });
-  await page.getByRole('option', { name: value }).click();
+  // Use keyboard to avoid viewport issues when dropdown is portaled (e.g. tall dialog with morphometrics).
+  const sexOptionIndex = ['F', 'M', 'J', 'U'].indexOf(value);
+  const index = sexOptionIndex >= 0 ? sexOptionIndex : 0;
+  await selectComboboxOptionByIndex(page, index);
 }
