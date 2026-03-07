@@ -95,6 +95,11 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
     const idField = dialog.getByLabel('ID', { exact: true });
     await expect(idField).toHaveValue(MOCK_BIOLOGY_ID, { timeout: 15_000 });
     await expect(idField).toBeDisabled();
+
+    // Create mode: ID description explains auto-generation (branch: ID always read-only)
+    await expect(
+      dialog.getByText('Auto-generated from sex + sequence for this sheet (e.g. M1, F2)'),
+    ).toBeVisible();
   });
 
   test('ID preview updates when sex changes (M -> F)', async ({ page }) => {
