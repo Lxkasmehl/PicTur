@@ -19,6 +19,8 @@ export {
   logout,
   getGoogleAuthUrl,
   getInvitationDetails,
+  verifyEmail,
+  resendVerificationEmail,
   promoteToAdmin,
 } from './api/auth';
 export type {

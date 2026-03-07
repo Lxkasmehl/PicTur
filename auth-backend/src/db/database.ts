@@ -26,6 +26,8 @@ interface User {
   role: 'community' | 'admin';
   created_at: string;
   updated_at: string;
+  email_verified: boolean;
+  email_verified_at: string | null;
 }
 
 interface AdminInvitation {
@@ -37,11 +39,20 @@ interface AdminInvitation {
   used: boolean;
 }
 
+interface EmailVerification {
+  id: number;
+  user_id: number;
+  token: string;
+  expires_at: string;
+}
+
 interface Database {
   users: User[];
   admin_invitations: AdminInvitation[];
+  email_verifications: EmailVerification[];
   nextId: number;
   nextInvitationId: number;
+  nextVerificationId: number;
 }
 
 // Load or create database
@@ -57,6 +68,24 @@ function loadDatabase(): Database {
       if (!db.nextInvitationId) {
         db.nextInvitationId = 1;
       }
+      if (!db.email_verifications) {
+        db.email_verifications = [];
+      }
+      if (!db.nextVerificationId) {
+        db.nextVerificationId = 1;
+      }
+      // Migrate existing users: add email_verified / email_verified_at (existing users count as verified)
+      if (db.users && Array.isArray(db.users)) {
+        db.users.forEach((u: any) => {
+          if (u.email_verified === undefined) {
+            u.email_verified = true;
+            u.email_verified_at = u.email_verified_at ?? u.created_at ?? new Date().toISOString();
+          }
+          if (u.email_verified_at === undefined) {
+            u.email_verified_at = u.email_verified ? (u.created_at ?? null) : null;
+          }
+        });
+      }
       return db;
     } catch (error) {
       console.error('Error loading database, creating new one:', error);
@@ -66,8 +95,10 @@ function loadDatabase(): Database {
   return {
     users: [],
     admin_invitations: [],
+    email_verifications: [],
     nextId: 1,
     nextInvitationId: 1,
+    nextVerificationId: 1,
   };
 }
 
@@ -106,6 +137,8 @@ class DatabaseWrapper {
       let tableName = 'users';
       if (sql.includes('FROM admin_invitations')) {
         tableName = 'admin_invitations';
+      } else if (sql.includes('FROM email_verifications')) {
+        tableName = 'email_verifications';
       } else if (sql.includes('FROM users')) {
         tableName = 'users';
       }
@@ -115,6 +148,8 @@ class DatabaseWrapper {
         results = [...database.users];
       } else if (tableName === 'admin_invitations') {
         results = [...(database.admin_invitations || [])];
+      } else if (tableName === 'email_verifications') {
+        results = [...(database.email_verifications || [])];
       }
 
       // WHERE clause parsing - supports multiple conditions with AND
@@ -253,6 +288,8 @@ class DatabaseWrapper {
             role: 'community',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            email_verified: false,
+            email_verified_at: null,
           };
 
           columns.forEach((col, index) => {
@@ -269,7 +306,14 @@ class DatabaseWrapper {
             else if (col === 'name') user.name = value;
             else if (col === 'google_id') user.google_id = value;
             else if (col === 'role') user.role = value;
+            else if (col === 'email_verified') user.email_verified = value === true || value === 1;
+            else if (col === 'email_verified_at') user.email_verified_at = value;
           });
+          // Google OAuth users are considered email-verified
+          if (user.google_id) {
+            user.email_verified = true;
+            user.email_verified_at = user.created_at;
+          }
 
           // Check for duplicate email (case-insensitive) before inserting
           if (user.email) {
@@ -337,6 +381,33 @@ class DatabaseWrapper {
           return {
             lastInsertRowid: invitation.id,
           };
+        } else if (table === 'email_verifications') {
+          if (!database.email_verifications) {
+            database.email_verifications = [];
+          }
+          if (!database.nextVerificationId) {
+            database.nextVerificationId = 1;
+          }
+          const ev: EmailVerification = {
+            id: database.nextVerificationId++,
+            user_id: 0,
+            token: '',
+            expires_at: '',
+          };
+          columns.forEach((col, index) => {
+            const value =
+              params[index] !== undefined
+                ? params[index]
+                : values[index] === '?'
+                ? null
+                : values[index];
+            if (col === 'user_id') ev.user_id = Number(value);
+            else if (col === 'token') ev.token = String(value ?? '');
+            else if (col === 'expires_at') ev.expires_at = String(value ?? '');
+          });
+          database.email_verifications.push(ev);
+          saveDatabase(database);
+          return { lastInsertRowid: ev.id, changes: 1 };
         }
       }
     }
@@ -399,6 +470,10 @@ class DatabaseWrapper {
                   user.name = params[idx];
                 } else if (col === 'google_id' && idx >= 0) {
                   user.google_id = params[idx];
+                } else if (col === 'email_verified' && idx >= 0) {
+                  (user as any).email_verified = params[idx] === true || params[idx] === 1;
+                } else if (col === 'email_verified_at' && idx >= 0) {
+                  (user as any).email_verified_at = params[idx];
                 } else if (col === 'updated_at') {
                   if (idx === -1) {
                     // CURRENT_TIMESTAMP
@@ -467,6 +542,27 @@ class DatabaseWrapper {
             saveDatabase(database);
             database = loadDatabase();
           }
+        }
+      }
+    }
+
+    // DELETE queries
+    if (upperSql.startsWith('DELETE')) {
+      const deleteMatch = sql.match(/DELETE FROM\s+(\w+)\s+WHERE\s+(\w+)\s*=\s*\?/i);
+      if (deleteMatch) {
+        const table = deleteMatch[1];
+        const whereCol = deleteMatch[2];
+        const paramValue = params[0];
+        if (table === 'email_verifications' && database.email_verifications) {
+          const before = database.email_verifications.length;
+          database.email_verifications = database.email_verifications.filter(
+            (row: any) => row[whereCol] !== paramValue
+          );
+          if (database.email_verifications.length !== before) {
+            saveDatabase(database);
+            database = loadDatabase();
+          }
+          return { changes: before - database.email_verifications.length };
         }
       }
     }

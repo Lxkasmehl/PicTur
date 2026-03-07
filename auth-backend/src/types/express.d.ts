@@ -9,6 +9,10 @@ declare global {
       id: number;
       email: string;
       role: 'community' | 'admin';
+      email_verified?: boolean;
+    }
+    interface Request {
+      user?: User;
     }
   }
 }

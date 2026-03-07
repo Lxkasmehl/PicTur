@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Email verification**: New users (email/password registration) must verify their email via a link sent on signup. Auth backend supports `email_verified` / `email_verified_at` on users, an `email_verifications` table for tokens, and endpoints `POST /auth/verify-email` and `POST /auth/resend-verification`. Google OAuth users are treated as verified. Admin-only routes (promote-to-admin, users list) require a verified email via `requireEmailVerified` middleware.
+- **Password policy**: Registration and change-password enforce a password policy via `validatePassword`. New endpoint `POST /auth/change-password` (authenticated) to update password with the same policy.
+- **Email service**: Verification emails via `sendVerificationEmail`; shared helpers `wrapEmailHtml` and `sendMailSafe`; admin promotion and invitation emails refactored to use them. No-reply sender configurable via `SMTP_FROM`.
+- **Docker**: Configurable frontend host port via `FRONTEND_PORT` in `.env` (default 80). When port 80 is in use, set `FRONTEND_PORT=8080` and `FRONTEND_URL=http://localhost:8080` so auth redirects work correctly. See `.env.docker.example` and comments in `docker-compose.yml`.
+
+### Changed
+
+- **Auth backend**: Database migration adds `email_verified` and `email_verified_at` to existing users (treated as verified). SQLite-style wrapper supports `email_verifications` table and DELETE on verification tokens. JWT and `/auth/me` include `email_verified`. Admin and auth middleware use Express `Request` with `AuthRequest` cast where needed.
+- **Test setup**: `seed-test-users` and `test-setup` scripts set test users to email-verified so E2E login flows land on the app as expected.
 - **Intake survey**: "Health Status" field with free-text input and an optional "?" tooltip guiding community members on what to look for when assessing turtle health (e.g. mucous discharge, eye coloration, shell damage, dehydration, flesh flies, mites). Data is stored in Google Sheets when the "Health Status" column is present.
 - **Google Sheets / Turtle data**: Optional mass and morphometrics fields: mass (g); curved/straight carapace length, carapace width; curved/straight plastron length, plastron width; dome height (mm). Stored in Sheets when columns exist; form and API support with backend integration and E2E tests.
 - **Docker**: Configurable frontend host port via `FRONTEND_PORT` in `.env` (default 80). When port 80 is in use, set `FRONTEND_PORT=8080` and `FRONTEND_URL=http://localhost:8080` so auth redirects work correctly. See `.env.docker.example` and comments in `docker-compose.yml`.

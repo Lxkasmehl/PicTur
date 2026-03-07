@@ -14,6 +14,7 @@ export interface User {
   email: string;
   name: string | null;
   role: 'community' | 'admin';
+  email_verified?: boolean;
 }
 
 export interface AuthResponse {
@@ -154,6 +155,42 @@ export const getInvitationDetails = async (
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to get invitation details');
+  }
+
+  return await response.json();
+};
+
+// Verify email with token (from link in email)
+export const verifyEmail = async (token: string): Promise<AuthResponse> => {
+  const response = await apiRequest('/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Verification failed');
+  }
+
+  const result = await response.json();
+  if (result.success && result.token) {
+    setToken(result.token);
+  }
+  return result;
+};
+
+// Resend verification email (authenticated)
+export const resendVerificationEmail = async (): Promise<{
+  success: boolean;
+  message: string;
+}> => {
+  const response = await apiRequest('/auth/resend-verification', {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to resend verification email');
   }
 
   return await response.json();

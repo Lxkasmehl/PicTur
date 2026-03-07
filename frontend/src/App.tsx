@@ -13,6 +13,8 @@ import AdminTurtleRecordsPage from './pages/AdminTurtleRecordsPage';
 import AdminTurtleMatchPage from './pages/AdminTurtleMatchPage';
 import AdminReleasePage from './pages/AdminReleasePage';
 import AdminUserManagementPage from './pages/AdminUserManagementPage';
+import VerifyEmailPage from './pages/VerifyEmailPage';
+import EmailVerificationGuard from './components/EmailVerificationGuard';
 import { store } from './store';
 import { useAppSelector } from './store/hooks';
 import { communityTheme, adminTheme } from './store/slices/themeSlice';
@@ -33,12 +35,14 @@ function App(): React.JSX.Element {
           <Notifications position='bottom-center' zIndex={1000} />
           <Router>
             <Navigation>
+              <EmailVerificationGuard>
               <Routes>
                 <Route path='/' element={<HomePage />} />
                 <Route path='/about' element={<AboutPage />} />
                 <Route path='/contact' element={<ContactPage />} />
                 <Route path='/login' element={<LoginPage />} />
                 <Route path='/register' element={<LoginPage initialMode='signup' />} />
+                <Route path='/verify-email' element={<VerifyEmailPage />} />
                 <Route
                   path='/admin/turtle-records'
                   element={<AdminTurtleRecordsPage />}
@@ -50,6 +54,7 @@ function App(): React.JSX.Element {
                 <Route path='/admin/release' element={<AdminReleasePage />} />
                 <Route path='/admin/users' element={<AdminUserManagementPage />} />
               </Routes>
+              </EmailVerificationGuard>
             </Navigation>
           </Router>
         </ThemeProvider>

@@ -1,19 +1,20 @@
-import express, { Response } from 'express';
+import express, { Request, Response } from 'express';
 import crypto from 'crypto';
 import db from '../db/database.js';
-import { authenticateToken, AuthRequest } from '../middleware/auth.js';
+import { authenticateToken, AuthRequest, requireEmailVerified } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
 import { sendAdminPromotionEmail } from '../services/email.js';
 import type { User } from '../types/user.js';
 
 const router = express.Router();
 
-// Promote user to admin (admin only)
+// Promote user to admin (admin only); requires verified email
 router.post(
   '/promote-to-admin',
   authenticateToken,
+  requireEmailVerified,
   requireAdmin,
-  async (req: AuthRequest, res: Response) => {
+  async (req: Request, res: Response) => {
     try {
       const { email } = req.body;
 
@@ -104,12 +105,13 @@ router.post(
   }
 );
 
-// Get all users (admin only) - for admin dashboard
+// Get all users (admin only) - for admin dashboard; requires verified email
 router.get(
   '/users',
   authenticateToken,
+  requireEmailVerified,
   requireAdmin,
-  (req: AuthRequest, res: Response) => {
+  (_req: Request, res: Response) => {
     try {
       const users = db
         .prepare(

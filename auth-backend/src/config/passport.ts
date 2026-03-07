@@ -183,6 +183,8 @@ if (
                 google_id: profile.id,
                 role: 'community',
                 created_at: new Date().toISOString(),
+                email_verified: true,
+                email_verified_at: new Date().toISOString(),
               };
               console.log(`   Using manually constructed user object:`, manualUser);
               return done(null, manualUser);

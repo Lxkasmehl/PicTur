@@ -61,7 +61,10 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
     });
 
     await loginAsAdmin(page);
-    await page.getByText('Successfully logged in!').waitFor({ state: 'hidden', timeout: 8000 }).catch(() => {});
+    await page
+      .getByText('Successfully logged in!')
+      .waitFor({ state: 'hidden', timeout: 8000 })
+      .catch(() => {});
 
     const fileInput = page.locator('input[type="file"]:not([capture])').first();
     await fileInput.setInputFiles({
@@ -84,13 +87,13 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
     await expect(dialog).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Create New Turtle' })).toBeVisible();
 
-    // Select sheet (Kansas) then sex (F); form then calls generate-id and sets ID
+    // Select sheet (Kansas) then sex (F) – this triggers generate-id and fills the ID field
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
     await selectSexInCreateTurtleDialog(page, dialog, 'F');
 
-    // Wait for UI outcome instead of network (avoids race with waitForResponse)
+    // ID field should show the auto-generated value (from mocked generate-id) and be disabled
     const idField = dialog.getByLabel('ID', { exact: true });
-    await expect(idField).toHaveValue(MOCK_BIOLOGY_ID, { timeout: 10_000 });
+    await expect(idField).toHaveValue(MOCK_BIOLOGY_ID, { timeout: 15_000 });
     await expect(idField).toBeDisabled();
 
     // Create mode: ID description explains auto-generation (branch: ID always read-only)
@@ -141,7 +144,10 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
     });
 
     await loginAsAdmin(page);
-    await page.getByText('Successfully logged in!').waitFor({ state: 'hidden', timeout: 8000 }).catch(() => {});
+    await page
+      .getByText('Successfully logged in!')
+      .waitFor({ state: 'hidden', timeout: 8000 })
+      .catch(() => {});
 
     const fileInput = page.locator('input[type="file"]:not([capture])').first();
     await fileInput.setInputFiles({

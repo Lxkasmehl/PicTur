@@ -6,6 +6,7 @@ export interface UserInfo {
   email: string;
   name: string | null;
   role: UserRole;
+  email_verified?: boolean;
 }
 
 interface UserState {

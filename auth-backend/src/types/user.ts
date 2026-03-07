@@ -5,6 +5,8 @@ export interface User {
   role: 'community' | 'admin';
   google_id: string | null;
   created_at: string;
+  email_verified: boolean;
+  email_verified_at: string | null;
 }
 
 export interface UserWithoutPassword extends Omit<User, 'password_hash'> {}
