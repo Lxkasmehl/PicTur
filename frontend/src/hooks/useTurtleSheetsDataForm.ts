@@ -6,13 +6,22 @@ import React, { useState, useEffect } from 'react';
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconX } from '@tabler/icons-react';
 import type { TurtleSheetsData } from '../services/api';
-import { listSheets, createSheet, getTurtleNames, generateTurtleId } from '../services/api';
+import {
+  listSheets,
+  getLocations,
+  createSheet,
+  getTurtleNames,
+  generateTurtleId,
+} from '../services/api';
 import type {
   TurtleSheetsDataFormProps,
   UseTurtleSheetsDataFormReturn,
 } from '../components/TurtleSheetsDataForm.types';
 
 export type { UseTurtleSheetsDataFormReturn } from '../components/TurtleSheetsDataForm.types';
+
+/** Backend folder names that are not selectable as turtle location (new-turtle dialog). */
+const LOCATION_SYSTEM_FOLDERS = ['Incidental_Finds', 'Community_Uploads', 'Review_Queue'];
 
 export function useTurtleSheetsDataForm(
   props: TurtleSheetsDataFormProps,
@@ -25,6 +34,7 @@ export function useTurtleSheetsDataForm(
     onCombinedSubmit,
     addOnlyMode = false,
     initialAvailableSheets,
+    useBackendLocations = false,
   } = props;
 
   const [formData, setFormData] = useState<TurtleSheetsData>(initialData || {});
@@ -106,24 +116,28 @@ export function useTurtleSheetsDataForm(
     }
   }, [mode, existingTurtleNames, formData.name, duplicateNameMessage]);
 
-  // In create mode, when sheet and sex are set, generate biology ID and set id field
+  // In create mode, when sheet and sex are set, generate biology ID and set id field.
+  // Use a request ref so we only apply the latest response (avoids stale updates with Strict Mode or rapid re-runs).
+  const generateIdRequestRef = React.useRef(0);
   useEffect(() => {
     if (mode !== 'create' || !selectedSheetName) return;
     const sex = (formData.sex || '').trim().toUpperCase();
     if (!sex) return;
-    let cancelled = false;
-    generateTurtleId({ sheet_name: selectedSheetName, sex })
+    const sheetNameForApi =
+      useBackendLocations && selectedSheetName.includes('/')
+        ? selectedSheetName.split('/')[0].trim()
+        : selectedSheetName;
+    if (!sheetNameForApi) return;
+    const requestId = ++generateIdRequestRef.current;
+    generateTurtleId({ sheet_name: sheetNameForApi, sex })
       .then((res) => {
-        if (cancelled) return;
+        if (requestId !== generateIdRequestRef.current) return;
         if (res.success && res.id) {
           setFormData((prev) => ({ ...prev, id: res.id! }));
         }
       })
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [mode, selectedSheetName, formData.sex]);
+  }, [mode, selectedSheetName, formData.sex, useBackendLocations]);
 
   useEffect(() => {
     if (initialAvailableSheets != null && initialAvailableSheets.length > 0) {
@@ -134,35 +148,62 @@ export function useTurtleSheetsDataForm(
 
     let cancelled = false;
 
-    const loadSheets = async () => {
+    const loadOptions = async () => {
       setLoadingSheets(true);
       try {
-        const response = await listSheets();
-        if (cancelled) return;
-        if (response.success && response.sheets) {
-          const sheets = response.sheets;
-          setAvailableSheets(sheets);
-          setSelectedSheetName((current) => {
-            if (!current && !initialSheetName && sheets.length > 0) {
-              return sheets[0];
-            }
-            return current;
-          });
+        if (useBackendLocations) {
+          const response = await getLocations();
+          if (cancelled) return;
+          if (response.success && response.locations) {
+            const filtered = response.locations.filter((path) => {
+              const first = path.split('/')[0]?.trim() || '';
+              return first && !LOCATION_SYSTEM_FOLDERS.includes(first);
+            });
+            const states = [...new Set(filtered.map((p) => p.split('/')[0].trim()).filter(Boolean))].sort();
+            setAvailableSheets(states);
+            setSelectedSheetName((current) => {
+              if (!current && !initialSheetName && states.length > 0) {
+                return states[0];
+              }
+              return current;
+            });
+          } else {
+            setAvailableSheets([]);
+          }
+        } else {
+          const response = await listSheets();
+          if (cancelled) return;
+          if (response.success && response.sheets) {
+            const sheets = response.sheets;
+            setAvailableSheets(sheets);
+            setSelectedSheetName((current) => {
+              if (!current && !initialSheetName && sheets.length > 0) {
+                return sheets[0];
+              }
+              return current;
+            });
+          } else {
+            setAvailableSheets([]);
+          }
         }
       } catch (error) {
-        if (cancelled) return;
-        console.error('Failed to load sheets:', error);
-        setAvailableSheets([]);
+        if (!cancelled) {
+          console.error(
+            useBackendLocations ? 'Failed to load locations:' : 'Failed to load sheets:',
+            error,
+          );
+          setAvailableSheets([]);
+        }
       } finally {
         if (!cancelled) setLoadingSheets(false);
       }
     };
 
-    loadSheets();
+    loadOptions();
     return () => {
       cancelled = true;
     };
-  }, [initialSheetName, initialAvailableSheets]);
+  }, [initialSheetName, initialAvailableSheets, useBackendLocations]);
 
   const handleCreateNewSheet = async (sheetName: string) => {
     if (!sheetName?.trim()) {
@@ -228,6 +269,28 @@ export function useTurtleSheetsDataForm(
         return rest;
       });
     }
+    // In create mode, when user selects sex, fetch biology ID using selected sheet or first available
+    // so the ID field updates even if the effect hasn't run yet (e.g. timing/Strict Mode / webkit).
+    if (mode === 'create' && field === 'sex' && value?.trim()) {
+      const sheetToUse = selectedSheetName || availableSheets[0];
+      if (sheetToUse) {
+        const sheetNameForApi =
+          useBackendLocations && sheetToUse.includes('/')
+            ? sheetToUse.split('/')[0].trim()
+            : sheetToUse;
+        if (sheetNameForApi) {
+          const requestId = ++generateIdRequestRef.current;
+          generateTurtleId({ sheet_name: sheetNameForApi, sex: value.trim() })
+            .then((res) => {
+              if (requestId !== generateIdRequestRef.current) return;
+              if (res.success && res.id) {
+                setFormData((prev) => ({ ...prev, id: res.id! }));
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    }
   };
 
   const validate = (): boolean => {
@@ -285,10 +348,17 @@ export function useTurtleSheetsDataForm(
             : {}),
         };
       }
+      const backendLocationPath =
+        useBackendLocations && selectedSheetName
+          ? dataToSave.location?.trim()
+            ? `${selectedSheetName}/${dataToSave.location.trim()}`
+            : selectedSheetName
+          : undefined;
+
       if (onCombinedSubmit) {
-        await onCombinedSubmit(dataToSave, selectedSheetName);
+        await onCombinedSubmit(dataToSave, selectedSheetName, backendLocationPath);
       } else {
-        await onSave(dataToSave, selectedSheetName);
+        await onSave(dataToSave, selectedSheetName, backendLocationPath);
         notifications.show({
           title: 'Success!',
           message: `Turtle data ${mode === 'create' ? 'created' : 'updated'} successfully`,

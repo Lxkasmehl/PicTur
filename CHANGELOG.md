@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Google Sheets**: Single RLock for all Sheets API use and reinit to avoid concurrent SSL/connection errors (e.g. DECRYPTION_FAILED_OR_BAD_RECORD_MAC, record layer failure) and process segfaults (exit 139). Route that reads sheet values for validation now holds the same lock.
+- **Create New Turtle E2E (ID auto-generate)**: Test no longer fails on WebKit/Firefox when the ID field stays empty. The form now requests the biology ID when sex is selected, using the selected sheet or the first available sheet so the ID appears even when sheet selection state hasn’t updated yet. E2E test waits for the generate-id response and mocks `/api/locations` for the backend-locations flow.
 
 ---
 

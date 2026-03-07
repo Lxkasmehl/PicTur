@@ -45,6 +45,7 @@ export const TurtleSheetsDataForm = forwardRef<
     onCombinedSubmit,
     addOnlyMode = false,
     initialAvailableSheets,
+    useBackendLocations = false,
   },
   ref,
 ) {
@@ -61,6 +62,7 @@ export const TurtleSheetsDataForm = forwardRef<
     onCombinedSubmit,
     addOnlyMode,
     initialAvailableSheets,
+    useBackendLocations,
   });
 
   useImperativeHandle(ref, () => ({
