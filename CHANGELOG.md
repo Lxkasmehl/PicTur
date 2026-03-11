@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Email service**: Verification emails via `sendVerificationEmail`; shared helpers `wrapEmailHtml` and `sendMailSafe`; admin promotion and invitation emails refactored to use them. No-reply sender configurable via `SMTP_FROM`.
 - **Docker**: Configurable frontend host port via `FRONTEND_PORT` in `.env` (default 80). When port 80 is in use, set `FRONTEND_PORT=8080` and `FRONTEND_URL=http://localhost:8080` so auth redirects work correctly. See `.env.docker.example` and comments in `docker-compose.yml`.
 - **CI/E2E**: Staff test user credentials (`E2E_STAFF_EMAIL`, `E2E_STAFF_PASSWORD`) are passed in backend-integration and Playwright workflows and used by seed-test-users. Backend integration tests add `staff_token` fixture and README documents admin-role tests. Frontend E2E adds Staff login test and Playwright env for staff credentials; photo upload treats staff like admin for match sheet and post-upload navigation.
+- **Auth**: Last-admin protection—demoting the last admin is blocked with a 400 error. New POST /auth/validate for token validation (signature and revocation). Flask backend optional AUTH_URL; when set, staff/admin routes call the auth service so demotion revocation (tokens_valid_after) is enforced.
 
 ### Changed
 
@@ -32,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Google Sheets**: Single RLock for all Sheets API use and reinit to avoid concurrent SSL/connection errors (e.g. DECRYPTION_FAILED_OR_BAD_RECORD_MAC, record layer failure) and process segfaults (exit 139). Route that reads sheet values for validation now holds the same lock.
 - **E2E**: Stabilize flaky tests: scope sex dropdown option to listbox and wait before click (fixes WebKit failure in admin-turtle-id-auto-generate); increase timeout for "From this upload" on turtle match page (Chromium/Mobile Chrome); wait for review queue content before branching and add timeouts for "No pending reviews" (Mobile Safari).
 - **Auth**: When an admin demotes a user (e.g. admin→staff or staff→community), existing JWTs are invalidated so elevated privileges are revoked immediately. Auth backend stores `tokens_valid_after` per user and rejects tokens issued before that time.
+- **E2E**: Staff/community test stability: dedicated role-test-community@test.com user for the “change role” test so community@test.com is never mutated and Community badge tests stay correct. Role-update test accepts either “Role updated” toast or row showing Staff (10s timeout). Mobile menu opens with force-click when overlays intercept the burger. Review Queue test waits for “No pending reviews” or “X matches” (15s) before branching. CI seeds the role-test user.
 
 ---
 

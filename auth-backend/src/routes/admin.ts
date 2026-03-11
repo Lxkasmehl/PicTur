@@ -162,6 +162,18 @@ router.patch(
 
       const newRole = role as UserRole;
       const oldRole = user.role;
+
+      // Prevent demoting the last admin so admin routes remain reachable
+      if (oldRole === 'admin' && newRole !== 'admin') {
+        const adminCount = (db.prepare('SELECT COUNT(*) as count FROM users WHERE role = ?').get('admin') as { count: number }).count;
+        if (adminCount <= 1) {
+          res.status(400).json({
+            error: 'Cannot demote the last admin. Promote another user to admin first.',
+          });
+          return;
+        }
+      }
+
       db.prepare('UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newRole, userId);
 
       // Invalidate existing JWTs when demoting so elevated privileges are revoked immediately

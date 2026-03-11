@@ -267,6 +267,16 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
   }
 });
 
+// Validate token (signature + revocation). Used by Flask backend to enforce demotion revocation.
+router.post('/validate', authenticateToken, (req: Request, res: Response) => {
+  const authUser = (req as AuthRequest).user;
+  if (!authUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  res.json({ valid: true, user: authUser });
+});
+
 // Logout (client-side token removal, but we can track it here if needed)
 router.post('/logout', authenticateToken, (_req: Request, res: Response) => {
   res.json({ success: true, message: 'Logged out successfully' });

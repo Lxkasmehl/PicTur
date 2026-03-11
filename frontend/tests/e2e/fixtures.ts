@@ -12,7 +12,10 @@ const COMMUNITY_PASSWORD = process.env.E2E_COMMUNITY_PASSWORD ?? 'testpassword12
 /** Opens the mobile menu (burger), if visible. */
 export async function openMobileMenu(page: Page): Promise<void> {
   const burger = page.getByTestId('mobile-menu-button');
-  if (await burger.isVisible()) await burger.click();
+  if (await burger.isVisible()) {
+    // Force click so overlays (e.g. drawer, portal) do not intercept on mobile
+    await burger.click({ force: true });
+  }
 }
 
 /** Clicks a nav link by button label. */

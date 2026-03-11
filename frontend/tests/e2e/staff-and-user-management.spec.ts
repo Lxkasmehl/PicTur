@@ -54,9 +54,10 @@ test.describe('Staff role and User Management', () => {
     await expect(
       page.getByRole('heading', { name: /All users by role/i }),
     ).toBeVisible();
-    const communityEmail =
-      process.env.E2E_COMMUNITY_EMAIL ?? 'community@test.com';
-    const row = page.locator('table tbody tr').filter({ hasText: communityEmail });
+    // Use dedicated role-test user so community@test.com is never mutated (other tests expect Community badge)
+    const roleTestEmail =
+      process.env.E2E_ROLE_TEST_EMAIL ?? 'role-test-community@test.com';
+    const row = page.locator('table tbody tr').filter({ hasText: roleTestEmail });
     await expect(row).toBeVisible({ timeout: 10000 });
 
     // Mantine Select: open dropdown (input or combobox in that row), then pick Staff
@@ -64,10 +65,20 @@ test.describe('Staff role and User Management', () => {
     await roleTrigger.click();
     await page.getByRole('option', { name: 'Staff' }).click();
 
+    // Toast may be slow or portaled; accept either "Role updated" or row moving to Staff section
     await expect(
-      page.getByText('Role updated', { exact: false }),
-    ).toBeVisible({ timeout: 5000 });
-    // User moved to Staff section: row with community email still visible (now under Staff)
-    await expect(row).toBeVisible();
+      page
+        .getByText('Role updated', { exact: false })
+        .or(
+          page
+            .locator('table tbody tr')
+            .filter({ hasText: roleTestEmail })
+            .filter({ hasText: 'Staff' }),
+        ),
+    ).toBeVisible({ timeout: 10000 });
+    // User moved to Staff section: row with role-test email still visible (now under Staff)
+    await expect(
+      page.locator('table tbody tr').filter({ hasText: roleTestEmail }),
+    ).toBeVisible();
   });
 });

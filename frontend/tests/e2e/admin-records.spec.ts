@@ -92,6 +92,12 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
     await expect(page.getByRole('tab', { name: /Review Queue/ })).toBeVisible();
 
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
+    // Wait for queue content to settle (either items or empty state) before branching
+    await expect(
+      tabPanel
+        .getByText('No pending reviews')
+        .or(tabPanel.getByText(/\d+ matches/)),
+    ).toBeVisible({ timeout: 15_000 });
     const matchLink = tabPanel.getByText(/\d+ matches/).first();
     const hasItems = (await matchLink.count()) > 0;
     if (!hasItems) {

@@ -57,6 +57,8 @@ jobs:
             -e E2E_STAFF_PASSWORD=testpassword123 \
             -e E2E_COMMUNITY_EMAIL=community@test.com \
             -e E2E_COMMUNITY_PASSWORD=testpassword123 \
+            -e E2E_ROLE_TEST_EMAIL=role-test-community@test.com \
+            -e E2E_ROLE_TEST_PASSWORD=testpassword123 \
             auth-backend node dist/scripts/seed-test-users.js
 
       - uses: actions/setup-node@v4
