@@ -9,40 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Location selection (sheet + location)**: Two-level location hierarchy for new turtles and community uploads. Users select a spreadsheet/sheet (e.g. Kansas, Nebraska) and then a location folder (e.g. Wichita, Lawrence). Backend paths are now `data/<sheet>/<location>/<turtle_id>/` instead of `data/<sheet>/<turtle_id>/`. New locations can be added under an existing sheet without creating a new Google Sheet tab. API `GET /api/locations` returns backend location paths (State/Location) for dropdowns. Resolves #96.
-- **Post-confirmation automation**: After the turtle team confirms an upload (match or new turtle), the backend now (1) relabels photos/records with the confirmed turtle ID (e.g. copies images into the turtle folder with timestamped filenames) and (2) syncs confirmed data to a **community-facing Google Spreadsheet** (separate from the research spreadsheet). Set `GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID` in backend `.env`; community spreadsheet is required for community-upload confirmations. Resolves #73.
-- **Email verification**: New users (email/password registration) must verify their email via a link sent on signup. Auth backend supports `email_verified` / `email_verified_at` on users, an `email_verifications` table for tokens, and endpoints `POST /auth/verify-email` and `POST /auth/resend-verification`. Google OAuth users are treated as verified. Admin-only routes (promote-to-admin, users list) require a verified email via `requireEmailVerified` middleware.
-- **Password policy**: Registration and change-password enforce a password policy via `validatePassword`. New endpoint `POST /auth/change-password` (authenticated) to update password with the same policy.
-- **Email service**: Verification emails via `sendVerificationEmail`; shared helpers `wrapEmailHtml` and `sendMailSafe`; admin promotion and invitation emails refactored to use them. No-reply sender configurable via `SMTP_FROM`.
-- **Docker**: Configurable frontend host port via `FRONTEND_PORT` in `.env` (default 80). When port 80 is in use, set `FRONTEND_PORT=8080` and `FRONTEND_URL=http://localhost:8080` so auth redirects work correctly. See `.env.docker.example` and comments in `docker-compose.yml`.
-- Backend folder structure driven by admin and community sheet names (on startup and after full reset): `data/<admin sheet>`, `data/Community_Uploads/<community sheet>`.
-- Review queue: badges in list and detail view indicating "Admin upload" vs "Community upload" (by `request_id`).
-- Sheet/Location dropdown source: `sheetSource` (admin | community) so community uploads use community spreadsheet tabs and admin use admin sheet/State.
-- API: `GET /api/sheets/community-sheets`; `POST /api/sheets/sheets` and `POST /api/sheets/turtle` accept `target_spreadsheet: 'community'` to create/list in community spreadsheet.
-- Option "+ Create New Sheet" for community turtles; new community sheet creates tab and `data/Community_Uploads/<name>` folder.
-- **Community turtle move to admin**: When an admin re-finds a turtle that lives in the community spreadsheet, the match flow now (1) requires selecting an admin sheet and general location (both fields unlocked on the Turtle Match page), (2) creates the turtle row in the research spreadsheet, (3) moves the turtle folder from `data/Community_Uploads/<sheet>/` to `data/<State>/<Location>/`, (4) removes the turtle from the community spreadsheet, and (5) does not add it to the community sheet again. Match search always includes the selected location plus all community turtles.
+- **Location hierarchy (sheet + location)**: New turtles and community uploads use a two-level selection (e.g. sheet Kansas → location Wichita). Backend paths: `data/<sheet>/<location>/<turtle_id>/`. New locations can be added under an existing sheet without a new Google Sheet tab. Resolves #96.
+- **Post-confirmation automation**: After confirming an upload (match or new turtle), the backend relabels photos with the confirmed turtle ID and syncs data to a **community-facing Google Spreadsheet**. Configure `GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID` in backend `.env`. Resolves #73.
+- **Email verification**: New users (email/password) must verify their email via signup link. Endpoints: `POST /auth/verify-email`, `POST /auth/resend-verification`. Google OAuth users count as verified. Admin routes require verified email.
+- **Password policy**: Registration and change-password enforce policy via `validatePassword`. New endpoint `POST /auth/change-password` (authenticated).
+- **Email service**: Verification, admin promotion, and invitation emails use shared helpers; sender configurable via `SMTP_FROM`.
+- **Docker**: Frontend port configurable via `FRONTEND_PORT` (default 80). For port 80 conflicts use `FRONTEND_PORT=8080` and `FRONTEND_URL=http://localhost:8080`. See `.env.docker.example`.
+- **Review queue**: Badges for "Admin upload" vs "Community upload"; sheet/location dropdown respects `sheetSource` (admin vs community). API: `GET /api/sheets/community-sheets`; sheets/turtle endpoints accept `target_spreadsheet: 'community'`.
+- **Community sheets**: Option "+ Create New Sheet" for community turtles (creates tab and `data/Community_Uploads/<name>`). Backend folder layout: `data/<admin sheet>`, `data/Community_Uploads/<community sheet>`.
+- **Community turtle → admin**: When matching a community turtle to the research spreadsheet, flow selects admin sheet + location, creates turtle row, moves folder to `data/<State>/<Location>/`, and removes from community sheet. Match search includes selected location plus all community turtles.
 
 ### Changed
 
-- **Auth backend**: Database migration adds `email_verified` and `email_verified_at` to existing users (treated as verified). SQLite-style wrapper supports `email_verifications` table and DELETE on verification tokens. JWT and `/auth/me` include `email_verified`. Admin and auth middleware use Express `Request` with `AuthRequest` cast where needed.
-- **Test setup**: `seed-test-users` and `test-setup` scripts set test users to email-verified so E2E login flows land on the app as expected.
-- **Intake survey**: "Health Status" field with free-text input and an optional "?" tooltip guiding community members on what to look for when assessing turtle health (e.g. mucous discharge, eye coloration, shell damage, dehydration, flesh flies, mites). Data is stored in Google Sheets when the "Health Status" column is present.
-- **Docker**: Configurable frontend host port via `FRONTEND_PORT` in `.env` (default 80). When port 80 is in use, set `FRONTEND_PORT=8080` and `FRONTEND_URL=http://localhost:8080` so auth redirects work correctly. See `.env.docker.example` and comments in `docker-compose.yml`.
-- **Turtle forms**: ID field is always read-only (create and edit). Description clarifies read-only behavior and that IDs may not be unique across sheets. E2E tests cover ID read-only and descriptions in create (match dialog) and edit (Sheets Browser) flows.
-- Admin turtle backend path: always `data/State/Location/PrimaryID`; Location = General Location (sheet field). General Location is required when creating admin turtles.
-- Review queue new turtle: admin uploads send `new_location` as `Sheet/general_location`; community uploads use single sheet name and are stored in community spreadsheet and `Community_Uploads/<sheet>`.
-- `get_all_locations()` now includes state-level folder names so sheet-based state folders appear in dropdowns even with no Location subfolders.
-- **Match search scope**: Photo match search when a location is selected now always runs against that location and all turtles under `Community_Uploads` (in addition to the chosen location). Home page helper text updated accordingly.
+- **Auth**: DB migration adds `email_verified` / `email_verified_at`; existing users treated as verified. JWT and `/auth/me` include `email_verified`. Test setup marks test users verified for E2E.
+- **Intake survey**: "Health Status" field with free-text and optional tooltip (what to look for: mucous, eyes, shell, dehydration, mites, etc.); stored in Sheets when column exists.
+- **Turtle forms**: ID field always read-only (create and edit); copy clarifies that IDs may not be unique across sheets. General Location required for admin turtles; paths `data/State/Location/PrimaryID`.
+- **Locations**: `get_all_locations()` includes state-level folders so sheet-based states appear in dropdowns without subfolders. Review queue: admin `new_location` = Sheet/general_location; community = single sheet in community spreadsheet.
+- **Match search**: With a location selected, search runs against that location plus all `Community_Uploads` turtles; home page helper text updated.
 
 ### Fixed
 
-- **Google Sheets**: Single RLock for all Sheets API use and reinit to avoid concurrent SSL/connection errors (e.g. DECRYPTION_FAILED_OR_BAD_RECORD_MAC, record layer failure) and process segfaults (exit 139). Route that reads sheet values for validation now holds the same lock.
-- **Create New Turtle E2E (ID auto-generate)**: Test no longer fails on WebKit/Firefox when the ID field stays empty. The form now requests the biology ID when sex is selected, using the selected sheet or the first available sheet so the ID appears even when sheet selection state hasn’t updated yet. E2E test waits for the generate-id response and mocks `/api/locations` for the backend-locations flow.
-- **E2E**: Stabilize flaky tests: scope sex dropdown option to listbox and wait before click (fixes WebKit failure in admin-turtle-id-auto-generate); increase timeout for "From this upload" on turtle match page (Chromium/Mobile Chrome); wait for review queue content before branching and add timeouts for "No pending reviews" (Mobile Safari).
-- **Community sheet creation**: "Create New Sheet" for a community turtle no longer creates the sheet in the admin/research spreadsheet. The biology-ID endpoint (`POST /api/sheets/generate-id`) and the update-turtle endpoint (`PUT /api/sheets/turtle/<id>`) now accept `target_spreadsheet` and only create or use sheets in the chosen spreadsheet. Frontend passes `target_spreadsheet: 'community'` when `sheetSource` is community (review queue and create-new-turtle modal).
+- **Google Sheets**: Single RLock for all Sheets API use and reinit to avoid concurrent SSL errors and segfaults (e.g. DECRYPTION_FAILED_OR_BAD_RECORD_MAC, exit 139).
+- **Create New Turtle E2E**: ID field now populates on WebKit/Firefox (request biology ID when sex selected; test mocks `/api/locations` and waits for generate-id).
+- **E2E**: Flaky fixes—sex dropdown scoped to listbox, longer timeout for "From this upload", review queue content wait and "No pending reviews" timeouts (WebKit, Mobile Safari).
+- **Community sheet creation**: "Create New Sheet" for community turtles no longer creates the tab in the research spreadsheet; generate-id and update-turtle accept `target_spreadsheet`, frontend passes it when `sheetSource` is community.
 
 ### Removed
-- Incidental_Finds: removed from backend (reset, turtle_manager, README), frontend (HomePage, useTurtleSheetsDataForm), and locations API docstring.
+
+- **Incidental_Finds**: Removed from backend (reset, turtle_manager, README), frontend (HomePage, useTurtleSheetsDataForm), and locations API.
+
+### Testing
+
+- **E2E**: Review queue upload-source badges (Admin vs Community) and community-turtle-move-to-admin flow; `data-testid` on badges. Create New Turtle duplicate-name tests mock `/api/locations` and fill General Location.
+- **Integration**: Tests for `GET /api/locations` and for `POST /api/sheets/generate-id` with `target_spreadsheet` (research/community).
 
 ---
 

@@ -91,3 +91,38 @@ def test_generate_id_unknown_gender_defaults_to_u(client):
     data = r.get_json()
     assert data.get("success") is True and data.get("id")
     assert data["id"][0] == "U"
+
+
+def test_generate_id_accepts_target_spreadsheet_research(client):
+    """POST with target_spreadsheet=research (default) returns same as omitting it."""
+    r = client.post(
+        "/api/sheets/generate-id",
+        json={"sex": "F", "sheet_name": "Kansas", "target_spreadsheet": "research"},
+        content_type="application/json",
+    )
+    if r.status_code == 503:
+        pytest.skip("Google Sheets service not configured")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data.get("success") is True
+    assert "id" in data
+    assert data["id"][0] == "F"
+
+
+def test_generate_id_accepts_target_spreadsheet_community(client):
+    """POST with target_spreadsheet=community uses community spreadsheet for sequence (503 if not configured)."""
+    r = client.post(
+        "/api/sheets/generate-id",
+        json={"sex": "M", "sheet_name": "CommunitySheet", "target_spreadsheet": "community"},
+        content_type="application/json",
+    )
+    # 200 if community spreadsheet configured; 503 if not
+    if r.status_code == 503:
+        data = r.get_json() or {}
+        assert "error" in data
+        pytest.skip("Community spreadsheet not configured")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data.get("success") is True
+    assert "id" in data
+    assert data["id"][0] == "M"

@@ -124,6 +124,7 @@ export function ReviewQueueTab() {
                 size='lg'
                 variant='light'
                 color={uploadSourceBadgeColor(selectedItem.request_id)}
+                data-testid='review-upload-source-badge'
               >
                 {uploadSourceLabel(selectedItem.request_id)}
               </Badge>
@@ -466,6 +467,7 @@ export function ReviewQueueTab() {
                               color={uploadSourceBadgeColor(item.request_id)}
                               variant='light'
                               size='sm'
+                              data-testid='review-upload-source-badge'
                             >
                               {uploadSourceLabel(item.request_id)}
                             </Badge>

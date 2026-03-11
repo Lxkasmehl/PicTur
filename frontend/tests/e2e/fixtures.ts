@@ -146,6 +146,16 @@ export async function selectSheetInCreateTurtleDialog(
   await option.click();
 }
 
+/** Fills the General Location field in Create New Turtle dialog (required for admin backend path). */
+export async function fillGeneralLocationInCreateTurtleDialog(
+  dialog: ReturnType<Page['getByRole']>,
+  value: string,
+): Promise<void> {
+  const field = dialog.getByLabel('General Location', { exact: true });
+  await field.waitFor({ state: 'visible', timeout: 5000 });
+  await field.fill(value);
+}
+
 const SEX_SELECT_LABEL = 'Sex';
 const SEX_DROPDOWN_TIMEOUT = 10_000;
 /** Option order in UI (turtleSheetsDataFormFieldsConfig: F, M, J, U). */
