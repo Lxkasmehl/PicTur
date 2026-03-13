@@ -8,7 +8,9 @@ import type { TurtleSheetsData } from './sheets';
 export interface TurtleMatch {
   turtle_id: string;
   location: string;
-  distance: number;
+  score: number;
+  confidence: number;
+  distance?: number;
   file_path: string;
   filename: string;
 }

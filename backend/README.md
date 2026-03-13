@@ -104,19 +104,19 @@ backend/
 ├── data/                    # Main data directory
 │   ├── Review_Queue/        # Community uploads (waiting for review)
 │   ├── Community_Uploads/   # Saved community uploads
-│   └── [State]/[Location]/  # Official turtle data
+│   └── [Location]/ or [State]/[Location]/  # Official turtle data
 │       └── [TurtleID]/
 │           ├── ref_data/     # Reference images
 │           └── loose_images/ # Additional observations
 ├── app.py                   # Flask API Server
 ├── turtle_manager.py        # Main logic for turtle management
-├── image_processing.py      # SIFT/VLAD image processing
-└── search_utils.py          # FAISS search functions
+├── turtles/image_processing.py  # SuperPoint/LightGlue matching
+└── routes/                  # API route modules
 ```
 
 ## Important Notes
 
-- On first startup, the system will automatically generate FAISS indexes and vocabulary if they don't exist yet.
+- On startup, the system scans turtle reference `.pt` tensors and warms the in-memory matcher cache.
 - Community uploads are saved in `data/Review_Queue/` and wait for admin review.
 - Admin uploads are processed immediately and the top 5 matches are returned.
 
@@ -179,13 +179,10 @@ Make sure all packages are installed:
 pip install -r requirements.txt
 ```
 
-### FAISS Installation Issues
+### Docker and CUDA
 
-If `faiss-cpu` cannot be installed, try:
-
-```bash
-pip install faiss-cpu --no-cache-dir
-```
+The default `backend/Dockerfile` is CPU-focused (`python:3.11-slim`) and works without NVIDIA runtime.
+If you want GPU acceleration in Docker, use `backend/Dockerfile.cuda` and run with NVIDIA Container Toolkit.
 
 ### 500 Error on Photo Upload (POST /api/upload)
 

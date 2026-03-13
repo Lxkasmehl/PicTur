@@ -198,7 +198,7 @@ class TurtleDeepMatcher:
 
         for cand in self.vram_cache:
             # Apply location filter early to skip unnecessary math
-            if location_filter != "All Locations" and cand['location'] != location_filter:
+            if location_filter and location_filter != "All Locations" and cand['location'] != location_filter:
                 continue
 
             # --- NEW: Bulletproof device alignment check ---
@@ -245,10 +245,21 @@ class TurtleDeepMatcher:
 brain = TurtleDeepMatcher()
 
 
-def load_or_generate_persistent_data(data_dir): return True
+def load_or_generate_persistent_data(_data_dir):
+    """
+    Deprecated FAISS/SIFT compatibility shim.
+    """
+    logger.warning(
+        "load_or_generate_persistent_data() is deprecated in SuperPoint mode and should not be used."
+    )
+    return False
 
 
 def process_image_through_SIFT(image_path, output_path):
+    """
+    Deprecated compatibility shim for legacy codepaths.
+    Converts legacy .npz target naming to current .pt extraction output.
+    """
     pt_path = output_path.replace(".npz", ".pt")
     success = brain.process_and_save(image_path, pt_path)
     return success, None

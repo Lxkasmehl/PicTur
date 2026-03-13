@@ -4,6 +4,7 @@ import time
 import cv2 as cv
 import json
 import sys
+import uuid
 
 # --- PATH HACK ---
 # This ensures we can find the 'turtles' package regardless of where we run this script
@@ -100,19 +101,16 @@ class TurtleManager:
             brain.load_database_to_vram(self.db_index)
 
     def get_all_locations(self):
-        """Scans the data folder to build a list of locations for the GUI Dropdown."""
+        """Build location list from indexed turtles so filters match cached labels."""
         locations = ["Incidental_Finds", "Community_Uploads"]
-        if os.path.exists(self.base_dir):
-            # Loop through States
-            for state in sorted(os.listdir(self.base_dir)):
-                state_path = os.path.join(self.base_dir, state)
-                if not os.path.isdir(state_path) or state.startswith('.'): continue
-                if state in ["Review_Queue", "Community_Uploads", "Incidental_Finds", "benchmarks"]: continue
+        known = set(locations)
 
-                # Loop through Locations
-                for loc in sorted(os.listdir(state_path)):
-                    if os.path.isdir(os.path.join(state_path, loc)) and not loc.startswith('.'):
-                        locations.append(f"{state}/{loc}")
+        # Use the same location labels used by the matcher cache.
+        for _, _, location_name in self.db_index:
+            if location_name and location_name not in known:
+                known.add(location_name)
+                locations.append(location_name)
+
         return locations
 
     def create_new_location(self, state_name, location_name):
@@ -218,7 +216,9 @@ class TurtleManager:
         t_start = time.time()
 
         # Clean location filter if needed
-        loc = None if not location_filter or location_filter == "All Locations" else location_filter.strip()
+        loc = (location_filter or "").strip()
+        if not loc or loc == "All Locations":
+            loc = "All Locations"
 
         print(f"🔍 Deep Searching {filename} (VRAM Cached Mode)...")
 
@@ -248,7 +248,8 @@ class TurtleManager:
     # MERGE FIX: Uses your AI candidate generation, but adds partner's 'additional_images' folder.
     def create_review_packet(self, image_path, user_info=None):
         """Creates a pending packet in Review Queue, generates candidates, preps extra dirs."""
-        req_id = f"Req_{int(time.time())}_{os.path.basename(image_path)}"
+        safe_name = os.path.basename(image_path).replace(" ", "_")
+        req_id = f"Req_{int(time.time() * 1000)}_{safe_name}_{uuid.uuid4().hex[:6]}"
         packet_dir = os.path.join(self.review_queue_dir, req_id)
         os.makedirs(packet_dir, exist_ok=True)
 
@@ -348,20 +349,38 @@ class TurtleManager:
                         old_img_path = possible
                         break
 
+                op_ts = int(time.time() * 1000)
+                new_ext = os.path.splitext(query_image)[1]
+                staged_master_path = os.path.join(ref_dir, f"{match_turtle_id}_staged_{op_ts}{new_ext}")
+                staged_pt_path = os.path.join(ref_dir, f"{match_turtle_id}_staged_{op_ts}.pt")
+
+                # Extract features first; only replace old master if staging succeeds.
+                shutil.copy2(query_image, staged_master_path)
+                staged_ok = brain.process_and_save(staged_master_path, staged_pt_path)
+                if not staged_ok:
+                    try:
+                        if os.path.exists(staged_master_path):
+                            os.remove(staged_master_path)
+                        if os.path.exists(staged_pt_path):
+                            os.remove(staged_pt_path)
+                    except OSError:
+                        pass
+                    return False, f"Failed to extract features for replacement image of {match_turtle_id}"
+
                 if old_img_path:
-                    archive_name = f"Archived_Master_{int(time.time())}{os.path.splitext(old_img_path)[1]}"
+                    archive_name = f"Archived_Master_{op_ts}{os.path.splitext(old_img_path)[1]}"
                     shutil.move(old_img_path, os.path.join(loose_dir, archive_name))
                     print(f"   📦 Archived old master to {archive_name}")
 
                 if os.path.exists(old_pt_path):
                     os.remove(old_pt_path)
 
-                new_ext = os.path.splitext(query_image)[1]
                 new_master_path = os.path.join(ref_dir, f"{match_turtle_id}{new_ext}")
                 new_pt_path = os.path.join(ref_dir, f"{match_turtle_id}.pt")
-
-                shutil.copy2(query_image, new_master_path)
-                brain.process_and_save(new_master_path, new_pt_path)
+                if os.path.exists(new_master_path):
+                    os.remove(new_master_path)
+                shutil.move(staged_master_path, new_master_path)
+                shutil.move(staged_pt_path, new_pt_path)
 
                 obs_name = f"Obs_{int(time.time())}_{os.path.basename(query_image)}"
                 shutil.copy2(query_image, os.path.join(loose_dir, obs_name))
@@ -378,8 +397,8 @@ class TurtleManager:
         # Scenario B: Creating a completely new turtle
         elif new_location and new_turtle_id:
             print(f"🐢 Creating new turtle {new_turtle_id} at {new_location}...")
-            sheet_name = new_location.split("/")[0].strip() or new_location
-            location_dir = os.path.join(self.base_dir, sheet_name)
+            parts = [p.strip() for p in new_location.split("/") if p.strip()]
+            location_dir = os.path.join(self.base_dir, *parts) if parts else self.base_dir
             os.makedirs(location_dir, exist_ok=True)
 
             status = self._process_single_turtle(query_image, location_dir, new_turtle_id)
@@ -478,7 +497,10 @@ class TurtleManager:
         """Safely resolve a review-queue packet directory, preventing path traversal."""
         packet_dir = os.path.realpath(os.path.join(self.review_queue_dir, request_id))
         real_queue = os.path.realpath(self.review_queue_dir)
-        if not packet_dir.startswith(real_queue + os.sep) and packet_dir != real_queue:
+        try:
+            if os.path.commonpath([packet_dir, real_queue]) != real_queue:
+                return None
+        except ValueError:
             return None
         return packet_dir
 

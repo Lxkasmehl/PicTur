@@ -24,7 +24,8 @@ requests>=2.28.0
 # Deep Learning / AI
 torch>=2.0.0
 torchvision>=0.15.0
-lightglue @ https://github.com/cvg/LightGlue/archive/refs/heads/main.zip
+# Pin LightGlue for reproducible installs
+lightglue @ https://github.com/cvg/LightGlue/archive/refs/tags/v0.2.zip
 einops
 kornia
 scipy

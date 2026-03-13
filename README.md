@@ -36,6 +36,8 @@ You need **Docker** and **Docker Compose** installed.
 
 4. Open **http://localhost** in your browser (frontend). Auth API: **http://localhost:3001**, Turtle API: **http://localhost:5000**.
 
+Optional GPU backend image: `backend/Dockerfile.cuda` (requires NVIDIA Container Toolkit).
+
 5. **Promote the first user to admin** (so you can use admin features like Turtle Records and photo matching). After signing up or logging in once, run this once (replace with your email and a password):
 
    ```bash
@@ -220,8 +222,8 @@ echo "VITE_API_URL=http://localhost:5000/api" >> .env
 
 - Flask server with CORS for frontend communication
 - Uses `turtle_manager.py` for main logic
-- SIFT/VLAD for image processing
-- FAISS for fast similarity search
+- SuperPoint + LightGlue for feature extraction and matching
+- In-memory tensor cache for fast repeated matching
 
 ### Frontend Development
 

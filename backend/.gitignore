@@ -2,7 +2,6 @@ data/
 turtles/media
 
 # 🐢 Turtle Data & AI Tensors
-data/
 Temp Data/
 data/*.pt
 data/*.npz

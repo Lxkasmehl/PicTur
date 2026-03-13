@@ -173,7 +173,13 @@ export function AdminTurtleMatchView() {
                                 Location: {match.location}
                               </Text>
                               <Text size='sm' c='dimmed'>
-                                Distance: {match.distance.toFixed(4)}
+                                Matches: {typeof match.score === 'number' ? match.score : 0}
+                              </Text>
+                              <Text size='sm' c='dimmed'>
+                                Confidence:{' '}
+                                {typeof match.confidence === 'number'
+                                  ? match.confidence.toFixed(2)
+                                  : '0.00'}
                               </Text>
                               {match.file_path && (
                                 <Image
@@ -248,10 +254,22 @@ export function AdminTurtleMatchView() {
                         </Grid.Col>
                         <Grid.Col span={{ base: 12, sm: 6 }}>
                           <Text size='sm' c='dimmed'>
-                            Distance
+                            Matches
                           </Text>
                           <Text fw={500}>
-                            {selectedMatchData.distance.toFixed(4)}
+                            {typeof selectedMatchData.score === 'number'
+                              ? selectedMatchData.score
+                              : 0}
+                          </Text>
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 12, sm: 6 }}>
+                          <Text size='sm' c='dimmed'>
+                            Confidence
+                          </Text>
+                          <Text fw={500}>
+                            {typeof selectedMatchData.confidence === 'number'
+                              ? selectedMatchData.confidence.toFixed(2)
+                              : '0.00'}
                           </Text>
                         </Grid.Col>
                         {primaryId && (

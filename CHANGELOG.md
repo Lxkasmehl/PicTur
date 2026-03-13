@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Docker**: Configurable frontend host port via `FRONTEND_PORT` in `.env` (default 80). When port 80 is in use, set `FRONTEND_PORT=8080` and `FRONTEND_URL=http://localhost:8080` so auth redirects work correctly. See `.env.docker.example` and comments in `docker-compose.yml`.
 
+### Changed
+
+- **Matching pipeline**: Admin and GUI match flows now use SuperPoint/LightGlue match outputs (`score`, `confidence`) consistently across backend and frontend.
+- **Search filtering**: Fixed default and location-filtered matching in GUI/API by normalizing location filters and aligning filter labels with cached index locations.
+- **Review safety**: Hardened review-packet processing with safer packet IDs and staged reference-image replacement to avoid losing existing reference data if feature extraction fails.
+- **Dependencies**: Pinned LightGlue to `v0.2` for reproducible backend installs.
+- **Repository cleanup**: Removed unused root-level `package.json` to avoid confusion with the actual frontend package.
+
 ---
 
 ## [0.1.0] - 2026-02-27
