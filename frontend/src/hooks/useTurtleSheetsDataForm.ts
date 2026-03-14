@@ -22,7 +22,7 @@ import type {
 export type { UseTurtleSheetsDataFormReturn } from '../components/TurtleSheetsDataForm.types';
 
 /** Backend folder names that are not selectable as turtle location (new-turtle dialog). */
-const LOCATION_SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue'];
+const LOCATION_SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue', 'Incidental_Finds'];
 
 export function useTurtleSheetsDataForm(
   props: TurtleSheetsDataFormProps,
@@ -185,37 +185,19 @@ export function useTurtleSheetsDataForm(
               const first = path.split('/')[0]?.trim() || '';
               return first && !LOCATION_SYSTEM_FOLDERS.includes(first);
             });
-            const byState = new Map<string, Set<string>>();
+            // Only top-level states in dropdown; subfolders (e.g. Kansas/Wichita) are chosen via General Location field.
+            const stateSet = new Set<string>();
             for (const path of filtered) {
-              const parts = path
-                .split('/')
-                .map((p) => p.trim())
-                .filter(Boolean);
-              const state = parts[0];
-              if (!state) continue;
-              if (!byState.has(state)) byState.set(state, new Set<string>());
-              if (state === 'Kansas' && parts.length > 1) {
-                byState.get(state)!.add(`${state}/${parts.slice(1).join('/')}`);
-              }
+              const first = path.split('/')[0]?.trim();
+              if (first) stateSet.add(first);
             }
-            const states = Array.from(byState.keys()).sort((a, b) =>
+            const options = Array.from(stateSet).sort((a, b) =>
               a.localeCompare(b, undefined, { sensitivity: 'base' }),
             );
-            const options: string[] = [];
-            for (const state of states) {
-              options.push(state);
-              if (state === 'Kansas') {
-                const kansasLocations = Array.from(byState.get(state) ?? []).sort((a, b) =>
-                  a.localeCompare(b, undefined, { sensitivity: 'base' }),
-                );
-                options.push(...kansasLocations);
-              }
-            }
             setAvailableSheets(options);
             setSelectedSheetName((current) => {
               if (!current && !initialSheetName && options.length > 0) {
-                const defaultKansasLocation = options.find((opt) => opt.startsWith('Kansas/'));
-                return defaultKansasLocation || options[0];
+                return options[0];
               }
               return current;
             });

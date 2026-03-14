@@ -31,7 +31,7 @@ import { InstructionsModal } from '../components/InstructionsModal';
 import { getLocations } from '../services/api';
 
 const MATCH_ALL_VALUE = '__all__';
-const SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue'];
+const SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue', 'Incidental_Finds'];
 
 export default function HomePage() {
   const { role } = useUser();
@@ -126,7 +126,8 @@ export default function HomePage() {
       }
     }
 
-    options.push({ value: MATCH_ALL_VALUE, label: 'All locations (exception)' });
+    options.push({ value: 'Community_Uploads', label: 'Community Turtles only' });
+    options.push({ value: MATCH_ALL_VALUE, label: 'All locations (everything)' });
     return options;
   }, [availableLocations]);
 
@@ -295,14 +296,20 @@ export default function HomePage() {
                   data={matchScopeOptions}
                   value={selectedMatchSheet}
                   onChange={(v) => v != null && setSelectedMatchSheet(v)}
-                  placeholder={availableLocations.length ? 'Select state or location' : 'No locations yet'}
+                  placeholder={
+                    availableLocations.length
+                      ? 'Select state or location'
+                      : 'No locations yet'
+                  }
                   allowDeselect={false}
                   disabled={uploadState === 'uploading'}
                 />
               )}
               <Text size='xs' c='dimmed'>
-                Matches run against turtles in the selected location and always include
-                all community turtles. &quot;All locations&quot; only in exceptional cases.
+                Location: tested against that location, all Community Turtles and all
+                Incidental Finds. &quot;Community Turtles only&quot;: only community
+                uploads. &quot;All locations&quot;: everything (all locations, Community,
+                Incidental Finds).
               </Text>
             </Stack>
           )}

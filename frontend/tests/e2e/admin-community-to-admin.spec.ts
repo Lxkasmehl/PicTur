@@ -182,15 +182,20 @@ test.describe('Admin Community turtle move to admin', () => {
     await page.getByText(COMMUNITY_MATCH.turtle_id).first().click();
 
     // Form should show; for community match, Sheet / Location and General Location are editable
-    // Use getByRole to avoid strict mode: Mantine Select has both input and listbox with same label
-    const sheetLocationInput = page.getByRole('textbox', { name: 'Sheet / Location' });
+    // On mobile (≤768px) we use NativeSelect (native <select>); on desktop we use Mantine Select (listbox in portal)
+    const sheetLocationInput = page.getByRole('combobox', { name: 'Sheet / Location' });
     await expect(sheetLocationInput).toBeVisible({ timeout: 15_000 });
     await expect(page.getByLabel(/General Location/)).toBeVisible({
       timeout: 5000,
     });
 
-    await sheetLocationInput.click();
-    await page.getByRole('option', { name: 'Kansas' }).click();
+    const isNativeSelect = await sheetLocationInput.evaluate((el) => (el as HTMLElement).tagName === 'SELECT');
+    if (isNativeSelect) {
+      await sheetLocationInput.selectOption({ label: 'Kansas' });
+    } else {
+      await sheetLocationInput.click();
+      await page.getByRole('listbox').getByRole('option', { name: 'Kansas' }).click();
+    }
     await page.getByLabel(/General Location/).fill('Wichita');
 
     await page.getByRole('button', { name: 'Save to Sheets & Confirm Match' }).click();

@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Community turtle → admin**: When matching a community turtle to the research spreadsheet, flow selects admin sheet + location, creates turtle row, moves folder to `data/<State>/<Location>/`, and removes from community sheet. Match search includes selected location plus all community turtles.
 - **Flash-drive ingest mapping**: Configurable ingest routing maps drive folder names to backend destinations (`State/Location`) without renaming source folders. Supports flat drive roots and hierarchical `State/Location` layouts.
 - **Ingest state-level folder handling**: Added explicit support for top-level ingest folders that should be treated as state roots (not location folders), so imports can target `data/<State>/...` when needed.
+- **Incidental Finds in match scope**: Match search when a location is selected now includes the selected location, all Community_Uploads, and all Incidental_Finds. New Home page option “Community Turtles only” searches only Community_Uploads; “All locations” searches everything.
 
 ### Changed
 
@@ -30,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Match search**: With a location selected, search runs against that location plus all `Community_Uploads` turtles; home page helper text updated.
 - **Admin upload match scope**: Home page selector "Which location to test against?" now supports location-level options in `State/Location` format; Kansas expands to location entries while other states remain state-level.
 - **Create New Turtle selector**: In backend-location mode, `Sheet / Location` now mirrors Kansas-only location expansion. Selecting `Kansas/<location>` keeps Google Sheets tab at state level while targeting backend path at location level.
+- **Match scope and locations**: Backend location_filter when a sheet is selected: single location + Community_Uploads + Incidental_Finds; when scope is “Community_Uploads” only that folder is searched. Home page helper text describes the three scope behaviors (location + Community + Incidental Finds, Community only, All).
+- **Create New Turtle / locations**: Sheet / Location dropdown shows only top-level states (e.g. Kansas); Kansas sublocations (e.g. Kansas/Wichita) and system folders (Community_Uploads, Review_Queue, Incidental_Finds) are no longer selectable. LOCATION_SYSTEM_FOLDERS and SYSTEM_FOLDERS include Incidental_Finds.
+- **CI (Playwright)**: E2E runs smoke tests (auth, navigation, upload) first, then remaining E2E; Playwright report artifact is uploaded only on failure.
 
 ### Fixed
 
@@ -49,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **E2E**: Review queue upload-source badges (Admin vs Community) and community-turtle-move-to-admin flow; `data-testid` on badges. Create New Turtle duplicate-name tests mock `/api/locations` and fill General Location.
 - **Integration**: Tests for `GET /api/locations` and for `POST /api/sheets/generate-id` with `target_spreadsheet` (research/community).
+- **E2E**: Home page match-scope helper text (Incidental Finds, “Community Turtles only”, “All locations”); Create New Turtle sheet dropdown shows only top-level states and excludes sublocations/system folders. admin-community-to-admin and Create New Turtle handle both Mantine Select and native <select> for Sheet/Location; sheet option selection uses exact match to avoid Kansas vs Kansas/Wichita.
 
 ---
 

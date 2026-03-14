@@ -592,10 +592,15 @@ class TurtleManager:
         3. Return the best set of results.
         """
         total_search_start = time.time()
-        # When a location is selected, always search that location AND Community_Uploads (so community turtles are always included in match results).
+        # When a location is selected: search that location + Community_Uploads + Incidental_Finds.
+        # When "Community_Uploads" is selected as scope: search only Community_Uploads.
+        # When no sheet (all locations): no filter, search everything.
         raw_sheet = (sheet_name or '').strip() or None
         if raw_sheet:
-            location_filter = [raw_sheet, "Community_Uploads"]
+            if raw_sheet == "Community_Uploads":
+                location_filter = ["Community_Uploads"]
+            else:
+                location_filter = [raw_sheet, "Community_Uploads", "Incidental_Finds"]
         else:
             location_filter = None
 

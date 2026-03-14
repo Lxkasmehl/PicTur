@@ -71,7 +71,7 @@ jobs:
         working-directory: ./frontend
         run: npx playwright install --with-deps
 
-      - name: Run Playwright tests
+      - name: Run smoke E2E tests (auth, navigation, upload)
         working-directory: ./frontend
         env:
           PLAYWRIGHT_BASE_URL: http://localhost
@@ -79,11 +79,21 @@ jobs:
           E2E_ADMIN_PASSWORD: testpassword123
           E2E_COMMUNITY_EMAIL: community@test.com
           E2E_COMMUNITY_PASSWORD: testpassword123
-        # Runs all e2e tests (duplicate name validation, auto-generated ID field, etc.)
-        run: npm test
+        run: npx playwright test tests/e2e/auth.spec.ts tests/e2e/navigation.spec.ts tests/e2e/upload.spec.ts
+
+      - name: Run remaining E2E tests
+        if: success()
+        working-directory: ./frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost
+          E2E_ADMIN_EMAIL: admin@test.com
+          E2E_ADMIN_PASSWORD: testpassword123
+          E2E_COMMUNITY_EMAIL: community@test.com
+          E2E_COMMUNITY_PASSWORD: testpassword123
+        run: npx playwright test --ignore=tests/e2e/auth.spec.ts --ignore=tests/e2e/navigation.spec.ts --ignore=tests/e2e/upload.spec.ts
 
       - name: Upload test results
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
