@@ -92,11 +92,12 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
     await expect(page.getByRole('tab', { name: /Review Queue/ })).toBeVisible();
 
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
-    // Wait for queue content to settle (either items or empty state) before branching
+    // Wait for queue content to settle (either items or empty state) before branching.
+    // Use .first() on the matches text so the locator resolves to one element (strict mode).
     await expect(
       tabPanel
         .getByText('No pending reviews')
-        .or(tabPanel.getByText(/\d+ matches/)),
+        .or(tabPanel.getByText(/\d+ matches/).first()),
     ).toBeVisible({ timeout: 15_000 });
     const matchLink = tabPanel.getByText(/\d+ matches/).first();
     const hasItems = (await matchLink.count()) > 0;

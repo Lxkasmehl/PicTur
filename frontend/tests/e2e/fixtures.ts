@@ -13,25 +13,26 @@ const COMMUNITY_PASSWORD = process.env.E2E_COMMUNITY_PASSWORD ?? 'testpassword12
 export async function openMobileMenu(page: Page): Promise<void> {
   const burger = page.getByTestId('mobile-menu-button');
   if (await burger.isVisible()) {
-    // Force click so overlays (e.g. drawer, portal) do not intercept on mobile
-    await burger.click({ force: true });
+    // Normal click so the drawer actually opens on mobile (force: true can fail to trigger toggle on mobile Chrome/Safari).
+    await burger.click();
   }
 }
 
-/** Clicks a nav link by button label. When the mobile menu is opened, waits for the nav drawer and the button (by visible text) to be visible, then clicks to avoid flakiness from accessible-name or timing. */
+/** Clicks a nav link by button label. On mobile (burger visible) opens the drawer, waits for the target button, then clicks it. */
 export async function navClick(page: Page, label: string): Promise<void> {
   const burger = page.getByTestId('mobile-menu-button');
-  const drawer = page.getByTestId('nav-drawer');
+  const navButton = page.getByRole('button', { name: label });
   if (await burger.isVisible()) {
-    // Only open the drawer if it's not already open (burger toggles; clicking again would close it and detach the button).
-    if (!(await drawer.isVisible())) {
-      await burger.click({ force: true });
+    // Mobile: nav links only exist inside the drawer; if the button isn't visible, open the drawer first.
+    const buttonVisible = await navButton.isVisible().catch(() => false);
+    if (!buttonVisible) {
+      await burger.click();
     }
-    await drawer.waitFor({ state: 'visible' });
-    // Single locator chain + getByRole: re-query on each retry to avoid "element was detached" when the drawer re-renders (e.g. Mantine open animation).
-    await drawer.getByRole('button', { name: label }).click();
+    // Wait for the nav button (only present in drawer on mobile) – don't rely on nav-drawer visibility; on mobile/portal it can be reported differently.
+    await navButton.waitFor({ state: 'visible', timeout: 10000 });
+    await navButton.click({ force: true });
   } else {
-    await page.getByRole('button', { name: label }).click();
+    await navButton.click();
   }
 }
 
