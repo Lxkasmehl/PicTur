@@ -163,9 +163,12 @@ router.patch(
       const newRole = role as UserRole;
       const oldRole = user.role;
 
-      // Prevent demoting the last admin so admin routes remain reachable
+      // Prevent demoting the last admin so admin routes remain reachable.
+      // Compute count in app code: the in-repo JSON db does not support SQL aggregates (COUNT/etc.);
+      // .get() returns the first matching row, so SELECT COUNT(*) would yield undefined and bypass this check.
       if (oldRole === 'admin' && newRole !== 'admin') {
-        const adminCount = (db.prepare('SELECT COUNT(*) as count FROM users WHERE role = ?').get('admin') as { count: number }).count;
+        const admins = db.prepare('SELECT id FROM users WHERE role = ?').all('admin') as { id: number }[];
+        const adminCount = admins.length;
         if (adminCount <= 1) {
           res.status(400).json({
             error: 'Cannot demote the last admin. Promote another user to admin first.',

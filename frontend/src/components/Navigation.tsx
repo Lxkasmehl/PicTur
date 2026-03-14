@@ -325,7 +325,8 @@ export default function Navigation({ children }: NavigationProps) {
         size={isMobile ? '85%' : 'xs'}
         padding='md'
       >
-        <Stack gap='xs' h='90vh' justify='space-between'>
+        <div data-testid='nav-drawer'>
+          <Stack gap='xs' h='90vh' justify='space-between'>
           {/* Main navigation links at top */}
           <Stack gap='xs'>
             {getNavigationItems().map((item) => (
@@ -368,7 +369,8 @@ export default function Navigation({ children }: NavigationProps) {
               Login
             </Button>
           )}
-        </Stack>
+          </Stack>
+        </div>
       </Drawer>
 
       <AppShell.Main>{children}</AppShell.Main>

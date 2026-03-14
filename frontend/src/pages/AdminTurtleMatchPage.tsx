@@ -87,7 +87,7 @@ export default function AdminTurtleMatchPage() {
     getTurtleImages(selectedMatch, sheetNameHint)
       .then(setSelectedMatchTurtleImages)
       .catch(() => setSelectedMatchTurtleImages(null));
-  }, [selectedMatch, selectedMatchData?.location]);
+  }, [selectedMatch, selectedMatchData]);
 
   // Load sheets once when staff/admin (avoids each TurtleSheetsDataForm calling listSheets)
   useEffect(() => {

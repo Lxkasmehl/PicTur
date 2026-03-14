@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import {
   loginAsAdmin,
   loginAsStaff,
-  loginAsCommunity,
   navClick,
   openMobileMenu,
 } from './fixtures';
@@ -21,6 +20,8 @@ test.describe('Staff role and User Management', () => {
   });
 
   test('Staff can access Turtle Records and Release pages', async ({ page }) => {
+    // Use wide viewport so nav is in header (no drawer); avoids flaky drawer/portal visibility in Playwright.
+    await page.setViewportSize({ width: 1400, height: 800 });
     await loginAsStaff(page);
     await navClick(page, 'Turtle Records');
     await expect(page).toHaveURL(/\/admin\/turtle-records/);

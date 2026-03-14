@@ -50,7 +50,7 @@ def get_user_from_request():
     return True, payload, None
 
 
-def _check_auth_revocation(auth_header):
+def check_auth_revocation(auth_header):
     """
     Call auth service to enforce demotion revocation (tokens_valid_after).
     Returns (allowed: bool, error_message: str or None).
@@ -129,7 +129,7 @@ def require_admin(f):
         # Enforce demotion revocation: auth service rejects tokens issued before tokens_valid_after
         auth_header = request.headers.get('Authorization')
         if auth_header:
-            allowed, revoke_error = _check_auth_revocation(auth_header)
+            allowed, revoke_error = check_auth_revocation(auth_header)
             if not allowed:
                 return jsonify({'error': revoke_error or 'Token has been revoked'}), 403
 

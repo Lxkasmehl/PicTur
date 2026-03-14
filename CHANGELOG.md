@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **E2E**: Stabilize flaky tests: scope sex dropdown option to listbox and wait before click (fixes WebKit failure in admin-turtle-id-auto-generate); increase timeout for "From this upload" on turtle match page (Chromium/Mobile Chrome); wait for review queue content before branching and add timeouts for "No pending reviews" (Mobile Safari).
 - **Auth**: When an admin demotes a user (e.g. admin→staff or staff→community), existing JWTs are invalidated so elevated privileges are revoked immediately. Auth backend stores `tokens_valid_after` per user and rejects tokens issued before that time.
 - **E2E**: Staff/community test stability: dedicated role-test-community@test.com user for the “change role” test so community@test.com is never mutated and Community badge tests stay correct. Role-update test accepts either “Role updated” toast or row showing Staff (10s timeout). Mobile menu opens with force-click when overlays intercept the burger. Review Queue test waits for “No pending reviews” or “X matches” (15s) before branching. CI seeds the role-test user.
+- **Auth backend**: Last-admin demotion check now uses `SELECT id ... .all('admin')` and counts length; `COUNT(*)` with `.get()` was unreliable with the in-repo JSON/SQLite setup.
+- **Backend**: Staff/admin photo upload enforces token revocation (`check_auth_revocation`); temp file is removed on 403. `check_auth_revocation` exported from `auth` for use in upload route.
+- **E2E**: More reliable nav and staff tests: `data-testid="nav-drawer"` on mobile drawer; `navClick` scopes button to drawer and waits for it to avoid detach; Staff "Turtle Records" test uses wide viewport (1400×800) so header nav is used. Playwright webServer uses `cwd` and `127.0.0.1`; Vite `strictPort: true`. Unused `loginAsCommunity` import removed from staff-and-user-management spec.
+- **Admin match page**: `useEffect` dependency for loading turtle images fixed to `selectedMatchData` instead of `selectedMatchData?.location`.
 
 ---
 

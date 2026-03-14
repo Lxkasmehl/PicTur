@@ -18,10 +18,21 @@ export async function openMobileMenu(page: Page): Promise<void> {
   }
 }
 
-/** Clicks a nav link by button label. */
+/** Clicks a nav link by button label. When the mobile menu is opened, waits for the nav drawer and the button (by visible text) to be visible, then clicks to avoid flakiness from accessible-name or timing. */
 export async function navClick(page: Page, label: string): Promise<void> {
-  await openMobileMenu(page);
-  await page.getByRole('button', { name: label }).click();
+  const burger = page.getByTestId('mobile-menu-button');
+  const drawer = page.getByTestId('nav-drawer');
+  if (await burger.isVisible()) {
+    // Only open the drawer if it's not already open (burger toggles; clicking again would close it and detach the button).
+    if (!(await drawer.isVisible())) {
+      await burger.click({ force: true });
+    }
+    await drawer.waitFor({ state: 'visible' });
+    // Single locator chain + getByRole: re-query on each retry to avoid "element was detached" when the drawer re-renders (e.g. Mantine open animation).
+    await drawer.getByRole('button', { name: label }).click();
+  } else {
+    await page.getByRole('button', { name: label }).click();
+  }
 }
 
 /** Login as admin (email/password, waits for home + role badge). */
