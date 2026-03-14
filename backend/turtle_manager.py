@@ -23,10 +23,62 @@ except ImportError:
 # --- CONFIGURATION ---
 BASE_DATA_DIR = 'data'
 
-LOCATION_NAME_MAP = {
-    # "CBPS": "WT",
-    # "North Topeka": "NT",
+# Characters invalid in folder names (Windows + common Unix); replaced with _ when syncing sheet names to disk
+_FOLDER_NAME_INVALID = r'\/:*?"<>|'
+
+
+def _safe_folder_name(sheet_name):
+    """Sanitize sheet name for use as filesystem folder."""
+    if not sheet_name or not isinstance(sheet_name, str):
+        return "_"
+    out = sheet_name.strip()
+    for c in _FOLDER_NAME_INVALID:
+        out = out.replace(c, "_")
+    return out or "_"
+
+
+# --- FLASH DRIVE INGEST: Map drive folder names to backend folder names ---
+# When folder names on the flash drive don't match backend/Google Sheets, add mappings here.
+# Ingest will route files to the correct backend State/Location based on these maps.
+
+# Flat structure: when drive has location folders directly at root (no State parent),
+# map each folder name to "State/Location". Takes precedence over hierarchical logic.
+DRIVE_LOCATION_TO_BACKEND_PATH = {
+    "North Topeka": "Kansas/North Topeka",
+    "Lawrence": "Kansas/Lawrence",
+    "Karlyle Woods": "Kansas/Karlyle Woods",
+    "Valencia": "Kansas/Valencia",
+    "CPBS": "NebraskaCPBS/CPBS",
+    "Crescent Lake": "NebraskaCL/Crescent Lake",
 }
+
+# Flat structure: top-level folders that should be treated as State-level (not Location-level).
+# Images directly inside these folders ingest to data/<State>/<TurtleID>/...
+DRIVE_STATE_LEVEL_FOLDERS = {
+    "Incidental Places": "Incidental Places",
+    "Community": "Community",
+}
+
+# Hierarchical structure (drive_root/State/Location): map state/location names
+DRIVE_STATE_NAME_MAP = {
+    # Example: "KS": "Kansas",
+    # Example: "Kansas_2024": "Kansas",
+}
+
+LOCATION_NAME_MAP = {
+    # Example: "CBPS": "WT",
+    # Example: "TPK": "Topeka",
+}
+
+
+def _resolve_drive_state_name(drive_state_name):
+    """Map flash drive state folder name to backend state name."""
+    return DRIVE_STATE_NAME_MAP.get(drive_state_name, drive_state_name)
+
+
+def _resolve_drive_location_name(drive_location_name):
+    """Map flash drive location folder name to backend location name."""
+    return LOCATION_NAME_MAP.get(drive_location_name, drive_location_name)
 
 
 class TurtleManager:
@@ -45,10 +97,42 @@ class TurtleManager:
         print("✅ Resources Ready.")
 
     def _ensure_special_directories(self):
-        """Creates the folder roots for Community and Incidental finds."""
-        for special_folder in ["Community_Uploads", "Incidental_Finds"]:
-            path = os.path.join(self.base_dir, special_folder)
-            os.makedirs(path, exist_ok=True)
+        """Creates the folder root for Community uploads."""
+        path = os.path.join(self.base_dir, "Community_Uploads")
+        os.makedirs(path, exist_ok=True)
+
+    def ensure_data_folders_from_sheets(self, admin_sheet_names=None, community_sheet_names=None):
+        """
+        Ensure data/ contains folders for each admin sheet and Community_Uploads/<sheet> for each community sheet.
+        Call with lists from Google Sheets (e.g. on startup) so folder structure matches spreadsheets without running reset.
+        """
+        admin_sheet_names = admin_sheet_names or []
+        community_sheet_names = community_sheet_names or []
+        community_uploads_dir = os.path.join(self.base_dir, "Community_Uploads")
+        os.makedirs(community_uploads_dir, exist_ok=True)
+        created_admin = 0
+        created_community = 0
+        for name in admin_sheet_names:
+            safe = _safe_folder_name(name)
+            if not safe:
+                continue
+            path = os.path.join(self.base_dir, safe)
+            if not os.path.exists(path):
+                os.makedirs(path, exist_ok=True)
+                created_admin += 1
+        for name in community_sheet_names:
+            safe = _safe_folder_name(name)
+            if not safe:
+                continue
+            path = os.path.join(community_uploads_dir, safe)
+            if not os.path.exists(path):
+                os.makedirs(path, exist_ok=True)
+                created_community += 1
+        if created_admin or created_community:
+            try:
+                print(f"📁 Data folders: created {created_admin} admin, {created_community} community sheet folder(s)")
+            except UnicodeEncodeError:
+                print("[OK] Data folders: created admin/community sheet folder(s)")
 
     def get_official_location_name(self, folder_name):
         """Translates acronyms (CBPS) to official names (Central Biological Preserve)."""
@@ -57,18 +141,22 @@ class TurtleManager:
     def get_all_locations(self):
         """
         Scans the data folder to build a list of locations for the GUI Dropdown.
-        Returns: ["Nebraska/Topeka", "Kansas/Karlyle Woods", "Incidental_Finds", ...]
+        Returns state names (e.g. "Kansas") and State/Location paths (e.g. "Kansas/Wichita"), plus "Community_Uploads".
+        State-level folders from sheets are included even when they have no Location subfolders yet.
         """
-        locations = ["Incidental_Finds", "Community_Uploads"]
+        locations = ["Community_Uploads"]
 
         if os.path.exists(self.base_dir):
-            # Loop through States
             for state in sorted(os.listdir(self.base_dir)):
                 state_path = os.path.join(self.base_dir, state)
-                if not os.path.isdir(state_path) or state.startswith('.'): continue
-                if state in ["Review_Queue", "Community_Uploads", "Incidental_Finds"]: continue
+                if not os.path.isdir(state_path) or state.startswith('.'):
+                    continue
+                if state in ["Review_Queue", "Community_Uploads"]:
+                    continue
 
-                # Loop through Locations
+                # Include state name so sheet-based folders appear in dropdowns even with no subfolders
+                locations.append(state)
+
                 for loc in sorted(os.listdir(state_path)):
                     if os.path.isdir(os.path.join(state_path, loc)) and not loc.startswith('.'):
                         locations.append(f"{state}/{loc}")
@@ -85,7 +173,7 @@ class TurtleManager:
             state, loc = location_selection.split("/", 1)
             location_dir = os.path.join(self.base_dir, state, loc)
         else:
-            # Handle roots like "Incidental_Finds"
+            # Handle roots like "Community_Uploads"
             location_dir = os.path.join(self.base_dir, location_selection)
 
         if not os.path.exists(location_dir):
@@ -150,41 +238,60 @@ class TurtleManager:
         count_new = 0
         count_skipped = 0
 
-        for state_name in os.listdir(drive_root_path):
+        def process_location_folder(location_source_path, location_dest_path):
+            """Process all turtle images in a location folder."""
+            nonlocal count_new, count_skipped
+            for filename in os.listdir(location_source_path):
+                if not filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+                    continue
+                turtle_id = filename[:4].strip().rstrip('_')
+                source_path = os.path.join(location_source_path, filename)
+                status = self._process_single_turtle(source_path, location_dest_path, turtle_id)
+                if status == "created":
+                    count_new += 1
+                elif status == "skipped":
+                    count_skipped += 1
 
-            if state_name == "System Volume Information" or state_name.startswith('.'):
+        for top_level_name in os.listdir(drive_root_path):
+
+            if top_level_name == "System Volume Information" or top_level_name.startswith('.'):
                 continue
 
-            state_source_path = os.path.join(drive_root_path, state_name)
-            if not os.path.isdir(state_source_path): continue
+            top_level_path = os.path.join(drive_root_path, top_level_name)
+            if not os.path.isdir(top_level_path):
+                continue
 
-            state_dest_path = os.path.join(self.base_dir, state_name)
+            # Flat structure: location folders at root map directly to State/Location
+            if top_level_name in DRIVE_LOCATION_TO_BACKEND_PATH:
+                backend_path = DRIVE_LOCATION_TO_BACKEND_PATH[top_level_name]
+                state_name, location_name = backend_path.split("/", 1)
+                location_dest_path = os.path.join(self.base_dir, state_name, location_name)
+                os.makedirs(location_dest_path, exist_ok=True)
+                process_location_folder(top_level_path, location_dest_path)
+                continue
+
+            # Flat structure: State-level folders at root (not location folders)
+            if top_level_name in DRIVE_STATE_LEVEL_FOLDERS:
+                state_dest_name = DRIVE_STATE_LEVEL_FOLDERS[top_level_name]
+                state_dest_path = os.path.join(self.base_dir, state_dest_name)
+                os.makedirs(state_dest_path, exist_ok=True)
+                process_location_folder(top_level_path, state_dest_path)
+                continue
+
+            # Hierarchical structure: State/Location
+            state_dest_name = _resolve_drive_state_name(top_level_name)
+            state_dest_path = os.path.join(self.base_dir, state_dest_name)
             os.makedirs(state_dest_path, exist_ok=True)
 
-            for location_name in os.listdir(state_source_path):
-                location_source_path = os.path.join(state_source_path, location_name)
-                if not os.path.isdir(location_source_path) or location_name.startswith('.'): continue
+            for location_name in os.listdir(top_level_path):
+                location_source_path = os.path.join(top_level_path, location_name)
+                if not os.path.isdir(location_source_path) or location_name.startswith('.'):
+                    continue
 
-                official_name = self.get_official_location_name(location_name)
+                official_name = _resolve_drive_location_name(location_name)
                 location_dest_path = os.path.join(state_dest_path, official_name)
                 os.makedirs(location_dest_path, exist_ok=True)
-
-                for filename in os.listdir(location_source_path):
-                    if not filename.lower().endswith(('.jpg', '.jpeg', '.png')): continue
-
-                    # Extract only the first 4 chars (Letter + 3 Numbers)
-                    # Example: "T101_date.jpg" -> "T101"
-                    turtle_id = filename[:4].strip().rstrip('_')
-
-                    source_path = os.path.join(location_source_path, filename)
-
-                    # Call helper (which handles the duplicate skipping logic)
-                    status = self._process_single_turtle(source_path, location_dest_path, turtle_id)
-
-                    if status == "created":
-                        count_new += 1
-                    elif status == "skipped":
-                        count_skipped += 1
+                process_location_folder(location_source_path, location_dest_path)
         # --- TIMER END ---
         total_time = time.time() - ingest_start_time
         print(f"\n🎉 Ingest Complete. New: {count_new}, Skipped (Existing/Duplicates): {count_skipped}")
@@ -485,7 +592,17 @@ class TurtleManager:
         3. Return the best set of results.
         """
         total_search_start = time.time()
-        location_filter = (sheet_name or '').strip() or None
+        # When a location is selected: search that location + Community_Uploads + Incidental_Finds.
+        # When "Community_Uploads" is selected as scope: search only Community_Uploads.
+        # When no sheet (all locations): no filter, search everything.
+        raw_sheet = (sheet_name or '').strip() or None
+        if raw_sheet:
+            if raw_sheet == "Community_Uploads":
+                location_filter = ["Community_Uploads"]
+            else:
+                location_filter = [raw_sheet, "Community_Uploads", "Incidental_Finds"]
+        else:
+            location_filter = None
 
         MATCH_CONFIDENCE_THRESHOLD = 15
 
@@ -497,7 +614,7 @@ class TurtleManager:
         candidates_normal = image_processing.smart_search(
             query_image_path, location_filter=location_filter, k_results=20
         )
-        if location_filter and not candidates_normal:
+        if raw_sheet and not candidates_normal:
             candidates_normal = image_processing.smart_search(
                 query_image_path, location_filter=None, k_results=20
             )
@@ -535,7 +652,7 @@ class TurtleManager:
             candidates_mirror = image_processing.smart_search(
                 mirror_path, location_filter=location_filter, k_results=20
             )
-            if location_filter and not candidates_mirror:
+            if raw_sheet and not candidates_mirror:
                 candidates_mirror = image_processing.smart_search(
                     mirror_path, location_filter=None, k_results=20
                 )
@@ -628,10 +745,13 @@ class TurtleManager:
         return None
 
     def approve_review_packet(self, request_id, match_turtle_id=None, new_location=None, new_turtle_id=None,
-                              uploaded_image_path=None, find_metadata=None):
+                              uploaded_image_path=None, find_metadata=None, is_community_upload=False,
+                              match_from_community=False, community_sheet_name=None, new_admin_location=None):
         """
         Called when Admin approves a packet.
         - Merges date-stamped additional_images correctly.
+        - is_community_upload: when True, new turtle files go under data/Community_Uploads/<sheet_name>.
+        - match_from_community: when True, the matched turtle is in Community_Uploads; we move its folder to new_admin_location and caller removes from community sheet.
         """
         query_image = None
         packet_dir = os.path.join(self.review_queue_dir, request_id)
@@ -657,9 +777,19 @@ class TurtleManager:
             print(f"✅ Observation added to {match_turtle_id}")
 
         elif new_location and new_turtle_id:
+            # Create new turtle. new_location can be "State", "State/Location", or (community) single sheet name.
             print(f"🐢 Creating new turtle {new_turtle_id} at {new_location}...")
-            sheet_name = new_location.split("/")[0].strip() or new_location
-            location_dir = os.path.join(self.base_dir, sheet_name)
+            parts = [p.strip() for p in new_location.split("/") if p.strip()]
+            sheet_name = parts[0] if parts else new_location
+            if is_community_upload:
+                # Community uploads: data/Community_Uploads/<sheet_name>/
+                location_dir = os.path.join(self.base_dir, "Community_Uploads", sheet_name)
+            elif len(parts) >= 2:
+                # Two-level: data/<sheet>/<location>/<turtle_id>/
+                location_dir = os.path.join(self.base_dir, parts[0], parts[1])
+            else:
+                # Single-level (backward compatible): data/<sheet>/<turtle_id>/
+                location_dir = os.path.join(self.base_dir, sheet_name)
             os.makedirs(location_dir, exist_ok=True)
 
             status = self._process_single_turtle(query_image, location_dir, new_turtle_id)
@@ -677,7 +807,14 @@ class TurtleManager:
             return False, "Either match_turtle_id or both new_location and new_turtle_id must be provided"
 
         target_turtle_id = match_turtle_id if match_turtle_id else new_turtle_id
-        location_hint = (new_location or "").split("/")[0].strip() if new_location else None
+        if new_location:
+            first = (new_location or "").split("/")[0].strip()
+            location_hint = f"Community_Uploads/{first}" if is_community_upload else first
+        elif match_from_community and community_sheet_name:
+            # So we find and move the folder under Community_Uploads, not an existing admin copy
+            location_hint = f"Community_Uploads/{community_sheet_name}"
+        else:
+            location_hint = None
         target_dir = self._get_turtle_folder(target_turtle_id, location_hint)
 
         if target_dir:
@@ -738,6 +875,24 @@ class TurtleManager:
                             # Save merged manifest
                             with open(dest_manifest_path, 'w') as f:
                                 json.dump(existing_manifest, f, indent=4)
+
+            # Move turtle folder from Community_Uploads to admin location when admin re-found a community turtle
+            if match_from_community and new_admin_location and match_turtle_id and target_dir and os.path.isdir(target_dir):
+                parts = [p.strip() for p in new_admin_location.split("/") if p.strip()]
+                if parts:
+                    dest_dir = os.path.join(self.base_dir, *parts, match_turtle_id)
+                    if not os.path.exists(dest_dir):
+                        try:
+                            os.makedirs(os.path.dirname(dest_dir), exist_ok=True)
+                            shutil.move(target_dir, dest_dir)
+                            print(f"📁 Moved turtle from Community_Uploads to {new_admin_location}")
+                            print("♻️  Rebuilding search index...")
+                            image_processing.rebuild_index_and_reload(self.base_dir)
+                            print("✅ Search index updated.")
+                        except Exception as move_err:
+                            print(f"⚠️ Failed to move turtle folder: {move_err}")
+                    else:
+                        print(f"⚠️ Destination {dest_dir} already exists; turtle left in place.")
 
         if os.path.exists(packet_dir):
             try:
@@ -811,7 +966,7 @@ class TurtleManager:
             state_path = os.path.join(self.base_dir, state)
             if not os.path.isdir(state_path) or state.startswith('.'):
                 continue
-            if state in ["Review_Queue", "Community_Uploads", "Incidental_Finds"]:
+            if state in ["Review_Queue", "Community_Uploads"]:
                 continue
             for name in sorted(os.listdir(state_path)):
                 sub_path = os.path.join(state_path, name)

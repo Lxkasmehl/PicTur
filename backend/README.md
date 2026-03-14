@@ -214,7 +214,7 @@ The crash happened when the backend had an **unfitted vocabulary** (`vlad_vocab.
   Copy your `backend/data/` (and optionally the generated files in `backend/turtles/`: `vlad_vocab.pkl`, `turtles.index`, `metadata.pkl`, `global_vlad_array.npy`) to your colleague’s machine in the same relative paths. Then restart the backend.
 
 - **Option B – Empty setup (no matches):**  
-  Ensure `backend/data/` exists (e.g. `backend/data/Review_Queue`, `backend/data/Community_Uploads`, `backend/data/Incidental_Finds` are created on first run). With the current code, an empty `data/` no longer causes 500; uploads succeed and return **no matches** until reference data (and index) are added. If you had a 500 before, delete **all** index/vocab files in `backend/turtles/` (see Option C) so no stale unfitted vocab remains.
+  Ensure `backend/data/` exists (e.g. `backend/data/Review_Queue`, `backend/data/Community_Uploads` are created on first run; after a full reset, folder structure is recreated from admin and community sheet names). With the current code, an empty `data/` no longer causes 500; uploads succeed and return **no matches** until reference data (and index) are added. If you had a 500 before, delete **all** index/vocab files in `backend/turtles/` (see Option C) so no stale unfitted vocab remains.
 
 - **Option C – Clear index/vocab together:**  
   If you clear or replace `backend/data/`, also remove **all** of these in `backend/turtles/`: `vlad_vocab.pkl`, `turtles.index`, `metadata.pkl`, `global_vlad_array.npy`, `trained_kmeans_vocabulary.pkl`. That avoids the "unfitted vocab + old index" state. You can use `python reset_complete_backend.py` to reset everything (data + index + vocab) in one go.
@@ -357,6 +357,21 @@ The Google Sheets spreadsheet should have:
 - **Sheet names should match state names** (e.g., "Kansas", "Nebraska")
 - The system automatically finds columns by header name, so column order can change
 - New columns can be added - just make sure the header name matches the expected format
+
+### Post-confirmation automation (relabeling and community spreadsheet)
+
+Once the turtle team confirms an upload (match to existing turtle or new turtle), the backend automates:
+
+1. **Relabeling photos and records**
+   - **Match:** The uploaded image is copied into the confirmed turtle’s folder (`data/<location>/<turtle_id>/loose_images/`) with a timestamped filename (e.g. `Obs_<timestamp>_<original>.jpg`). The review packet is then removed. The correct turtle ID is thus reflected by the folder and filename.
+   - **New turtle:** The image is processed into a new turtle folder under the chosen location/sheet.
+   - Research Google Sheet is updated by the admin (or frontend) before or during confirm; the backend does not change sheet data for matches beyond optional community sync.
+
+2. **Community-facing spreadsheet (required)**
+   - Community uploads are always synced to a **separate** community spreadsheet. Set `GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID` in `.env` (see `env.template`). Use the same service account and share the community spreadsheet with it (Editor).
+   - **Match to existing turtle:** The confirmed row is synced from the research spreadsheet to the community spreadsheet (research remains the source of truth for that turtle).
+   - **New turtle from community upload:** The turtle is created **only** in the community spreadsheet, not in the research spreadsheet. So community-only turtles exist only in the community sheet.
+   - If the community spreadsheet is not configured or sync fails, the approval request fails with a 503 and a clear error message.
 
 ### Google Sheets API Endpoints
 

@@ -7,6 +7,7 @@ import os
 import ssl
 import threading
 import time
+from http.client import IncompleteRead
 from typing import Dict, List, Optional, Any
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -32,7 +33,7 @@ class GoogleSheetsService:
     # Reverse mapping: internal field names to Google Sheets column headers
     FIELD_TO_COLUMN = FIELD_TO_COLUMN
 
-    # Single lock for all Sheets API use and reinit to avoid SSL races and segfaults (exit 139)
+    # Reentrant lock for all Google Sheets API access (avoids SSL/connection errors from concurrent use)
     LIST_SHEETS_CACHE_TTL_SEC = 30
 
     def __init__(self, spreadsheet_id: Optional[str] = None, credentials_path: Optional[str] = None):
@@ -55,7 +56,9 @@ class GoogleSheetsService:
         if not os.path.exists(credentials_file):
             raise FileNotFoundError(f"Credentials file not found: {credentials_file}")
         
-        # Cache for list_sheets to reduce concurrent API calls and SSL issues
+        # Reentrant lock so the same thread can call list_sheets from within ensure_primary_id_column
+        self._api_lock = threading.RLock()
+        # Cache for list_sheets to reduce API calls and SSL issues
         self._list_sheets_cache = None
         self._list_sheets_cache_time = 0.0
         # Cache for column indices (header row) to avoid duplicate reads in same create flow
@@ -117,12 +120,31 @@ class GoogleSheetsService:
         )
     
     def _ensure_primary_id_column(self, sheet_name: str) -> bool:
-        """Ensure the "Primary ID" column exists in the sheet."""
-        return sheet_management.ensure_primary_id_column(
-            self.service, self.spreadsheet_id, sheet_name,
-            self._get_all_column_indices,
-            invalidate_column_indices_cache_func=self._invalidate_column_indices_cache,
-        )
+        """Ensure the "Primary ID" column exists in the sheet. Retries on SSL/connection errors."""
+        max_attempts = 2
+        for attempt in range(max_attempts):
+            try:
+                with self._api_lock:
+                    return sheet_management.ensure_primary_id_column(
+                        self.service, self.spreadsheet_id, sheet_name,
+                        self._get_all_column_indices,
+                        invalidate_column_indices_cache_func=self._invalidate_column_indices_cache,
+                    )
+            except (ssl.SSLError, IncompleteRead, OSError) as e:
+                err_msg = str(e).lower()
+                if attempt < max_attempts - 1 and (
+                    'ssl' in err_msg or 'decryption' in err_msg or 'incompleteread' in err_msg
+                    or 'wrong_version' in err_msg or 'cipher' in err_msg or 'mac' in err_msg
+                ):
+                    print(f"SSL/connection error in ensure_primary_id_column: {e}. Reinitializing and retrying...")
+                    try:
+                        self._reinitialize_service()
+                        time.sleep(0.5)
+                    except Exception:
+                        pass
+                    continue
+                print(f"Error ensuring Primary ID column: {e}")
+                return False
     
     def _column_index_to_letter(self, col_idx: int) -> str:
         """Convert a 0-based column index to Google Sheets column letter."""
@@ -147,7 +169,7 @@ class GoogleSheetsService:
                 print(f"⚠️ Failed to reinitialize Google Sheets service: {e}")
                 raise
 
-    # Public CRUD methods
+    # Public CRUD methods (all run under _api_lock to avoid concurrent API use and SSL errors)
     def get_turtle_data(self, primary_id: str, sheet_name: str, state: Optional[str] = None, location: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Get turtle data from Google Sheets by primary ID."""
         with self._api_lock:
@@ -221,6 +243,32 @@ class GoogleSheetsService:
                 self.service, self.spreadsheet_id, self.list_sheets, self._ensure_primary_id_column, self.generate_primary_id
             )
 
+    def get_sheet_values(self, range_name: str) -> Optional[Dict[str, Any]]:
+        """Get values for a range (e.g. "Sheet1!A:Z"). Runs under API lock; retries on SSL/connection errors."""
+        max_attempts = 2
+        for attempt in range(max_attempts):
+            try:
+                with self._api_lock:
+                    result = self.service.spreadsheets().values().get(
+                        spreadsheetId=self.spreadsheet_id,
+                        range=range_name,
+                    ).execute()
+                    return result
+            except (ssl.SSLError, IncompleteRead, OSError) as e:
+                err_msg = str(e).lower()
+                if attempt < max_attempts - 1 and (
+                    'ssl' in err_msg or 'decryption' in err_msg or 'incompleteread' in err_msg
+                    or 'wrong_version' in err_msg or 'cipher' in err_msg or 'mac' in err_msg
+                ):
+                    try:
+                        self._reinitialize_service()
+                        time.sleep(0.5)
+                    except Exception:
+                        pass
+                    continue
+                raise
+        return None
+
     # Sheet management methods
     def _invalidate_list_sheets_cache(self):
         """Invalidate cached sheet list (e.g. after creating a new sheet)."""
@@ -228,7 +276,7 @@ class GoogleSheetsService:
 
     def list_sheets(self) -> List[str]:
         """List all available sheets (tabs) in the spreadsheet.
-        Uses a lock and short-lived cache to avoid concurrent Google API calls
+        Uses a reentrant lock and short-lived cache to avoid concurrent Google API calls
         that can trigger SSL errors (DECRYPTION_FAILED_OR_BAD_RECORD_MAC, WRONG_VERSION_NUMBER).
         """
         with self._api_lock:
@@ -251,6 +299,6 @@ class GoogleSheetsService:
             result = sheet_management.create_sheet_with_headers(
                 self.service, self.spreadsheet_id, sheet_name, self.COLUMN_MAPPING, self.list_sheets
             )
-        if result:
-            self._invalidate_list_sheets_cache()
-        return result
+            if result:
+                self._invalidate_list_sheets_cache()
+            return result

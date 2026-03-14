@@ -8,6 +8,7 @@ import { TurtleFormField } from './TurtleFormField';
 import { TURTLE_SHEETS_FORM_FIELDS } from './turtleSheetsDataFormFieldsConfig';
 import type { FieldSpan } from './turtleSheetsDataFormFieldsConfig';
 import { CommunityLocationHint } from './TurtleSheetsDataFormSections';
+import type { TurtleSheetsDataFormFieldsProps } from './TurtleSheetsDataForm.types';
 
 const FORM_FIELD_ORDER: (keyof TurtleSheetsData | '__dates_refound__' | '__community_hint__' | '__notes__')[] = [
   'id',
@@ -42,23 +43,7 @@ const configByKey = Object.fromEntries(
   TURTLE_SHEETS_FORM_FIELDS.map((c) => [c.key, c]),
 ) as Record<keyof TurtleSheetsData, (typeof TURTLE_SHEETS_FORM_FIELDS)[0]>;
 
-export interface TurtleSheetsDataFormFieldsProps {
-  formData: TurtleSheetsData;
-  handleChange: (field: keyof TurtleSheetsData, value: string) => void;
-  isFieldModeRestricted: boolean;
-  isFieldUnlocked: (field: keyof TurtleSheetsData) => boolean;
-  requestUnlock: (field: keyof TurtleSheetsData) => void;
-  additionalDatesRefound: string;
-  setAdditionalDatesRefound: (v: string) => void;
-  additionalNotes: string;
-  setAdditionalNotes: (v: string) => void;
-  primaryId?: string;
-  hintLocationFromCommunity?: string;
-  hintCoordinates?: { latitude: number; longitude: number; source?: 'gps' | 'manual' };
-  errors?: Record<string, string>;
-  /** Affects ID field description only; ID is always read-only and never editable. */
-  mode?: 'create' | 'edit';
-}
+export type { TurtleSheetsDataFormFieldsProps } from './TurtleSheetsDataForm.types';
 
 function toSpan(span: FieldSpan) {
   return typeof span === 'number' ? span : span;
@@ -79,7 +64,12 @@ export function TurtleSheetsDataFormFields({
   hintCoordinates,
   errors,
   mode,
+  requireGeneralLocationForPath = false,
+  requireNewSheetForCommunityMatch = false,
 }: TurtleSheetsDataFormFieldsProps) {
+  // When moving community turtle to admin, sheet and general_location must be editable without unlock
+  const effectiveRestrictedForField = (field: keyof TurtleSheetsData) =>
+    requireNewSheetForCommunityMatch && field === 'general_location' ? false : isFieldModeRestricted;
   return (
     <>
       {primaryId && (
@@ -179,42 +169,30 @@ export function TurtleSheetsDataFormFields({
         const span = toSpan(config.span);
         const value = formData[config.key] ?? '';
 
-        // ID is always read-only (no unlock, not editable in Sheets browser or match page)
-        if (config.key === 'id') {
-          return (
-            <Grid.Col key="id" span={span}>
-              <TextInput
-                label={config.label}
-                value={value}
-                disabled
-                description={
-                  mode === 'create'
-                    ? 'Auto-generated from sex + sequence for this sheet (e.g. M1, F2)'
-                    : config.description
-                }
-                error={errors?.['id']}
-              />
-            </Grid.Col>
-          );
-        }
-
         return (
           <Grid.Col key={config.key} span={span}>
             <TurtleFormField
               field={config.key}
               label={config.label}
               placeholder={config.placeholder}
-              description={config.description}
+              description={
+                config.key === 'id' && mode === 'create'
+                  ? 'Auto-generated from sex + sequence for this sheet (e.g. M1, F2)'
+                  : config.key === 'general_location' && requireGeneralLocationForPath
+                    ? 'Required for backend path (State/Location).'
+                    : config.description
+              }
               infoTooltip={config.infoTooltip}
               value={value}
               onChange={(v) => handleChange(config.key, v)}
               type={config.type}
               selectData={config.selectData}
-              isFieldModeRestricted={isFieldModeRestricted}
+              isFieldModeRestricted={effectiveRestrictedForField(config.key)}
               isFieldUnlocked={isFieldUnlocked}
               requestUnlock={requestUnlock}
-              disabled={false}
+              disabled={config.key === 'id'}
               error={errors?.[config.key]}
+              required={config.key === 'general_location' ? requireGeneralLocationForPath : undefined}
             />
           </Grid.Col>
         );

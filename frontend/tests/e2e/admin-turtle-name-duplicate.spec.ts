@@ -1,11 +1,14 @@
 import { test, expect } from '@playwright/test';
-import {
+import * as helpers from './fixtures';
+
+const {
   loginAsAdmin,
   grantLocationPermission,
   getTestImageBuffer,
   clickUploadPhotoButton,
   selectSheetInCreateTurtleDialog,
-} from './fixtures';
+  fillGeneralLocationInCreateTurtleDialog,
+} = helpers;
 
 /**
  * E2E tests: duplicate turtle name validation in the Create New Turtle form.
@@ -52,6 +55,22 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
       }
     });
 
+    // Create New Turtle (admin) uses GET /api/locations for Sheet/Location dropdown
+    await page.route('**/api/locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            locations: ['Kansas', 'Kansas/Wichita'],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
     await loginAsAdmin(page);
 
     const fileInput = page.locator('input[type="file"]:not([capture])').first();
@@ -81,8 +100,9 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     await expect(page.getByRole('heading', { name: 'Create New Turtle' })).toBeVisible();
     await turtleNamesResponse;
 
-    // Select a sheet so name validation can run (form requires sheet for submit)
+    // Select sheet and General Location (required for admin create)
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
+    await fillGeneralLocationInCreateTurtleDialog(dialog, 'Wichita');
 
     // Fill Name with an existing name (case-insensitive match)
     const nameInput = dialog.getByLabel('Name', { exact: true });
@@ -126,6 +146,20 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
         await route.continue();
       }
     });
+    await page.route('**/api/locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            locations: ['Kansas', 'Kansas/Wichita'],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
 
     await loginAsAdmin(page);
 
@@ -149,6 +183,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     await turtleNamesResponse;
 
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
+    await fillGeneralLocationInCreateTurtleDialog(dialog, 'Wichita');
 
     // Different casing than stored "Leonardo" – should still be treated as duplicate
     const nameInput = dialog.getByLabel('Name', { exact: true });
@@ -184,6 +219,20 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
         await route.continue();
       }
     });
+    await page.route('**/api/locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            locations: ['Kansas', 'Kansas/Wichita'],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
 
     await loginAsAdmin(page);
 
@@ -202,6 +251,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     await expect(dialog).toBeVisible();
 
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
+    await fillGeneralLocationInCreateTurtleDialog(dialog, 'Wichita');
 
     const nameInput = dialog.getByLabel('Name', { exact: true });
     await nameInput.fill('E2E Unique Turtle Name 999');
@@ -232,6 +282,20 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({ sheets: ['Kansas'], success: true }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    await page.route('**/api/locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            locations: ['Kansas', 'Kansas/Wichita'],
+          }),
         });
       } else {
         await route.continue();
@@ -276,6 +340,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     await expect(createDataBtn).toBeEnabled();
 
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
+    await fillGeneralLocationInCreateTurtleDialog(dialog, 'Wichita');
 
     const nameInput = dialog.getByLabel('Name', { exact: true });
     await nameInput.fill('Master Oogway');
@@ -317,6 +382,20 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
         await route.continue();
       }
     });
+    await page.route('**/api/locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            locations: ['Kansas', 'Kansas/Wichita'],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
 
     await loginAsAdmin(page);
 
@@ -337,8 +416,9 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
 
-    // Do NOT wait for turtle-names. Select sheet, fill duplicate name, click submit immediately.
+    // Do NOT wait for turtle-names. Select sheet, General Location, fill duplicate name, click submit immediately.
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
+    await fillGeneralLocationInCreateTurtleDialog(dialog, 'Wichita');
     const nameInput = dialog.getByLabel('Name', { exact: true });
     await nameInput.fill('Master Oogway');
     await nameInput.blur();

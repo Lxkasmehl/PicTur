@@ -13,6 +13,31 @@ test.describe('Admin Turtle Match', () => {
     await grantLocationPermission(page);
   });
 
+  test('HomePage: match scope section shows new options and helper text mentions Incidental Finds', async ({
+    page,
+  }) => {
+    // Mock locations so admin home renders the scope section (not "No locations yet")
+    await page.route('**/api/locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, locations: ['Kansas'] }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    await loginAsAdmin(page);
+    await page.getByText('Loading locations…').waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
+
+    await expect(page.getByText('Which location to test against?')).toBeVisible({ timeout: 5000 });
+    const helperText = page.getByText(/Incidental Finds/, { exact: false });
+    await expect(helperText).toBeVisible();
+    await expect(helperText).toContainText('Community Turtles only');
+    await expect(helperText).toContainText('All locations');
+  });
+
   test('After upload: match page shows header and Back button', async ({ page }) => {
     test.setTimeout(60_000);
     await loginAsAdmin(page);
@@ -74,7 +99,10 @@ test.describe('Admin Turtle Match', () => {
 
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Create New Turtle' })).toBeVisible();
-    await expect(page.getByRole('dialog').getByLabel('Sheet / Location')).toBeVisible();
+    // Create New Turtle modal uses backend locations, so the field is "Sheet (State / Region)" not "Sheet / Location"
+    await expect(
+      page.getByRole('dialog').getByLabel(/Sheet.*(State \/ Region|Location)/),
+    ).toBeVisible();
   });
 
   test('Create New Turtle modal shows Google Sheets form', async ({ page }) => {
@@ -103,6 +131,72 @@ test.describe('Admin Turtle Match', () => {
     ).toBeVisible();
     await expect(dialog.getByText('Google Sheets Data', { exact: false })).toBeVisible();
     await expect(dialog.getByLabel('Sheet / Location')).toBeVisible();
+  });
+
+  test('Create New Turtle: Sheet/Location dropdown shows only top-level states (no sublocations or system folders)', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    // Backend returns state, sublocation, and system folders; UI must show only selectable states (Kansas), not Kansas/Wichita, Community_Uploads, Incidental_Finds
+    await page.route('**/api/locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            locations: ['Kansas', 'Kansas/Wichita', 'Community_Uploads', 'Incidental_Finds'],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await loginAsAdmin(page);
+    const fileInput = page.locator('input[type="file"]:not([capture])').first();
+    await fileInput.setInputFiles({
+      name: 'scope-e2e.png',
+      mimeType: 'image/png',
+      buffer: getTestImageBuffer(),
+    });
+    await page.waitForSelector('button:has-text("Upload Photo")', { timeout: 5000 });
+    await clickUploadPhotoButton(page);
+    await expect(page).toHaveURL(/\/admin\/turtle-match\/[^/]+/, { timeout: 30_000 });
+    await expect(page.getByRole('heading', { name: /Turtle Match Review/ })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const locationsResponse = page.waitForResponse(
+      (r) => r.url().includes('/api/locations') && r.status() === 200,
+      { timeout: 15_000 },
+    );
+    await page.getByRole('button', { name: 'Create New Turtle' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Create New Turtle' })).toBeVisible();
+    await locationsResponse;
+
+    const sheetSelect = dialog.getByLabel('Sheet / Location');
+    await expect(sheetSelect).toBeVisible({ timeout: 10_000 });
+    const isNativeSelect = await sheetSelect.evaluate((el) => (el as HTMLElement).tagName === 'SELECT');
+    if (isNativeSelect) {
+      const options = await sheetSelect.locator('option').allTextContents();
+      expect(options).toContain('Kansas');
+      expect(options).not.toContain('Kansas/Wichita');
+      expect(options).not.toContain('Community_Uploads');
+      expect(options).not.toContain('Incidental_Finds');
+    } else {
+      await sheetSelect.click();
+      const listbox = page.getByRole('listbox', { name: 'Sheet / Location' });
+      await expect(listbox).toBeVisible({ timeout: 5000 });
+      const optionTexts = await listbox.getByRole('option').allTextContents();
+      expect(optionTexts).toContain('Kansas');
+      expect(optionTexts).not.toContain('Kansas/Wichita');
+      expect(optionTexts).not.toContain('Community_Uploads');
+      expect(optionTexts).not.toContain('Incidental_Finds');
+      await page.keyboard.press('Escape');
+    }
   });
 
   test('Community cannot access match page', async ({ page }) => {

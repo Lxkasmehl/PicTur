@@ -65,6 +65,13 @@ export function ReviewQueueTab() {
   const fullSheetName =
     state && location ? `${state}/${location}` : state || location || null;
 
+  const isAdminUpload = (requestId: string | undefined) =>
+    Boolean(requestId?.startsWith('admin_'));
+  const uploadSourceLabel = (requestId: string | undefined) =>
+    isAdminUpload(requestId) ? 'Admin upload' : 'Community upload';
+  const uploadSourceBadgeColor = (requestId: string | undefined) =>
+    isAdminUpload(requestId) ? 'blue' : 'teal';
+
   // Load selected candidate turtle's existing additional images when a match is selected (must run before any early return)
   useEffect(() => {
     if (!selectedCandidate || !selectedItem) {
@@ -104,14 +111,24 @@ export function ReviewQueueTab() {
       {selectedItem ? (
         <Stack gap='lg' style={{ position: 'relative' }}>
           <Group justify='space-between' wrap='wrap' gap='xs'>
-            <Button
-              variant='subtle'
-              leftSection={<IconList size={16} />}
-              size='sm'
-              onClick={onBackToList}
-            >
-              ← Back to list ({queueItems.length} pending)
-            </Button>
+            <Group gap='sm'>
+              <Button
+                variant='subtle'
+                leftSection={<IconList size={16} />}
+                size='sm'
+                onClick={onBackToList}
+              >
+                ← Back to list ({queueItems.length} pending)
+              </Button>
+              <Badge
+                size='lg'
+                variant='light'
+                color={uploadSourceBadgeColor(selectedItem.request_id)}
+                data-testid='review-upload-source-badge'
+              >
+                {uploadSourceLabel(selectedItem.request_id)}
+              </Badge>
+            </Group>
             <Button
               variant='subtle'
               color='red'
@@ -341,6 +358,9 @@ export function ReviewQueueTab() {
                     initialAvailableSheets={
                       availableSheets.length > 0 ? availableSheets : undefined
                     }
+                    sheetSource={
+                      selectedItem.request_id?.startsWith('admin_') ? 'admin' : 'community'
+                    }
                     state={state}
                     location={location}
                     hintLocationFromCommunity={
@@ -438,10 +458,20 @@ export function ReviewQueueTab() {
                       onClick={() => onItemSelect(item)}
                     >
                       <Stack gap='sm'>
-                        <Group justify='space-between'>
-                          <Badge color='orange' variant='light' size='sm'>
-                            Pending
-                          </Badge>
+                        <Group justify='space-between' wrap='wrap' gap='xs'>
+                          <Group gap='xs'>
+                            <Badge color='orange' variant='light' size='sm'>
+                              Pending
+                            </Badge>
+                            <Badge
+                              color={uploadSourceBadgeColor(item.request_id)}
+                              variant='light'
+                              size='sm'
+                              data-testid='review-upload-source-badge'
+                            >
+                              {uploadSourceLabel(item.request_id)}
+                            </Badge>
+                          </Group>
                           <Group gap='xs'>
                             <Text size='xs' c='dimmed'>
                               {item.metadata.finder || 'Anonymous'}

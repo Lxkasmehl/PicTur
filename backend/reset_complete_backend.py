@@ -23,6 +23,16 @@ turtles_dir = os.path.join(base_dir, 'turtles')
 if turtles_dir not in sys.path:
     sys.path.insert(0, turtles_dir)
 
+# Load .env so sheet-based folder creation can use GOOGLE_SHEETS_* (before Django)
+try:
+    from dotenv import load_dotenv
+    for env_path in [Path(base_dir) / '.env', Path(base_dir).parent / '.env']:
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
+            break
+except ImportError:
+    pass
+
 # Setup Django environment
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'turtles.settings')
 
@@ -126,8 +136,8 @@ def clear_official_turtle_data():
     deleted_folders = 0
     deleted_files = 0
     
-    # List of folders to keep (Review_Queue, Community_Uploads, Incidental_Finds)
-    keep_folders = {'Review_Queue', 'Community_Uploads', 'Incidental_Finds'}
+    # List of folders to keep (Review_Queue, Community_Uploads)
+    keep_folders = {'Review_Queue', 'Community_Uploads'}
     
     for item in os.listdir(data_dir):
         item_path = os.path.join(data_dir, item)
@@ -156,11 +166,11 @@ def clear_official_turtle_data():
 
 
 def clear_uploaded_data():
-    """Clear Review Queue, Community Uploads, and Incidental Finds"""
+    """Clear Review Queue and Community Uploads"""
     print("\n📤 Clearing uploaded data...")
     
     data_dir = os.path.join(base_dir, 'data')
-    upload_folders = ['Review_Queue', 'Community_Uploads', 'Incidental_Finds']
+    upload_folders = ['Review_Queue', 'Community_Uploads']
     
     total_deleted = 0
     
@@ -236,6 +246,88 @@ def clear_training_data():
     print(f"   ✅ Deleted {model_count} model files")
 
 
+def _safe_folder_name(sheet_name: str) -> str:
+    """Sanitize sheet name for use as filesystem folder (e.g. replace / \\ : * ? \" < > |)."""
+    if not sheet_name or not isinstance(sheet_name, str):
+        return "_"
+    invalid = r'\/:*?"<>|'
+    out = sheet_name.strip()
+    for c in invalid:
+        out = out.replace(c, "_")
+    return out or "_"
+
+
+def ensure_data_folders_from_sheets():
+    """
+    After reset, ensure data/ has at least:
+    - Review_Queue, Community_Uploads
+    - One folder per admin-facing sheet (State-level folders)
+    - Community_Uploads/<sheet> for each community-facing sheet
+    Uses GOOGLE_SHEETS_SPREADSHEET_ID and GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID if set.
+    """
+    print("\n📁 Ensuring data folder structure from sheets...")
+    data_dir = os.path.join(base_dir, 'data')
+    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(os.path.join(data_dir, 'Review_Queue'), exist_ok=True)
+    community_uploads_dir = os.path.join(data_dir, 'Community_Uploads')
+    os.makedirs(community_uploads_dir, exist_ok=True)
+
+    created_admin = 0
+    created_community = 0
+
+    try:
+        # Ensure we can import Flask app services (add backend to path if needed)
+        if base_dir not in sys.path:
+            sys.path.insert(0, base_dir)
+        from services import manager_service
+
+        # Admin-facing sheet folders (one top-level folder per sheet)
+        admin_sheets = []
+        try:
+            svc = manager_service.get_sheets_service()
+            if svc:
+                admin_sheets = svc.list_sheets()
+        except Exception as e:
+            print(f"   ℹ️  Could not read admin sheets (Google Sheets not configured or unavailable): {e}")
+
+        for name in admin_sheets or []:
+            safe = _safe_folder_name(name)
+            if not safe:
+                continue
+            path = os.path.join(data_dir, safe)
+            if not os.path.exists(path):
+                os.makedirs(path, exist_ok=True)
+                created_admin += 1
+                print(f"   📁 Created admin folder: {safe}")
+
+        # Community-facing sheet subfolders under Community_Uploads
+        community_sheets = []
+        try:
+            comm = manager_service.get_community_sheets_service()
+            if comm:
+                community_sheets = comm.list_sheets()
+        except Exception as e:
+            print(f"   ℹ️  Could not read community sheets: {e}")
+
+        for name in community_sheets or []:
+            safe = _safe_folder_name(name)
+            if not safe:
+                continue
+            path = os.path.join(community_uploads_dir, safe)
+            if not os.path.exists(path):
+                os.makedirs(path, exist_ok=True)
+                created_community += 1
+                print(f"   📁 Created Community_Uploads/{safe}")
+
+    except Exception as e:
+        print(f"   ⚠️  Could not create sheet-based folders: {e}")
+
+    if created_admin or created_community:
+        print(f"   ✅ Created {created_admin} admin folder(s), {created_community} community subfolder(s)")
+    else:
+        print("   ✅ Review_Queue and Community_Uploads ensured (no sheet list or already present)")
+
+
 def reset_complete_backend():
     """Main function to reset everything"""
     print("=" * 60)
@@ -269,6 +361,9 @@ def reset_complete_backend():
         
         # 4. Clear training data
         clear_training_data()
+        
+        # 5. Ensure data folder structure (admin + community sheet folders)
+        ensure_data_folders_from_sheets()
         
         print("\n" + "=" * 60)
         print("🎉 COMPLETE BACKEND RESET FINISHED!")

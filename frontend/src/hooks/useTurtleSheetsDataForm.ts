@@ -6,38 +6,23 @@ import React, { useState, useEffect } from 'react';
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconX } from '@tabler/icons-react';
 import type { TurtleSheetsData } from '../services/api';
-import { listSheets, createSheet, getTurtleNames, generateTurtleId } from '../services/api';
-import type { TurtleSheetsDataFormProps } from '../components/TurtleSheetsDataForm.types';
+import {
+  listSheets,
+  listCommunitySheets,
+  getLocations,
+  createSheet,
+  getTurtleNames,
+  generateTurtleId,
+} from '../services/api';
+import type {
+  TurtleSheetsDataFormProps,
+  UseTurtleSheetsDataFormReturn,
+} from '../components/TurtleSheetsDataForm.types';
 
-export interface UseTurtleSheetsDataFormReturn {
-  formData: TurtleSheetsData;
-  loading: boolean;
-  errors: Record<string, string>;
-  availableSheets: string[];
-  selectedSheetName: string;
-  setSelectedSheetName: (v: string) => void;
-  loadingSheets: boolean;
-  showCreateSheetModal: boolean;
-  setShowCreateSheetModal: (v: boolean) => void;
-  newSheetName: string;
-  setNewSheetName: (v: string) => void;
-  creatingSheet: boolean;
-  additionalNotes: string;
-  setAdditionalNotes: (v: string) => void;
-  additionalDatesRefound: string;
-  setAdditionalDatesRefound: (v: string) => void;
-  unlockConfirmField: keyof TurtleSheetsData | null;
-  setUnlockConfirmField: (v: keyof TurtleSheetsData | null) => void;
-  isFieldModeRestricted: boolean;
-  isFieldUnlocked: (field: keyof TurtleSheetsData) => boolean;
-  requestUnlock: (field: keyof TurtleSheetsData) => void;
-  confirmUnlock: () => void;
-  handleChange: (field: keyof TurtleSheetsData, value: string) => void;
-  handleCreateNewSheet: (sheetName: string) => Promise<void>;
-  handleSubmit: () => Promise<void>;
-  /** In create mode, true until existing turtle names have been loaded (for duplicate check). */
-  loadingTurtleNames: boolean;
-}
+export type { UseTurtleSheetsDataFormReturn } from '../components/TurtleSheetsDataForm.types';
+
+/** Backend folder names that are not selectable as turtle location (new-turtle dialog). */
+const LOCATION_SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue', 'Incidental_Finds'];
 
 export function useTurtleSheetsDataForm(
   props: TurtleSheetsDataFormProps,
@@ -50,6 +35,9 @@ export function useTurtleSheetsDataForm(
     onCombinedSubmit,
     addOnlyMode = false,
     initialAvailableSheets,
+    useBackendLocations = false,
+    sheetSource = 'admin',
+    requireNewSheetForCommunityMatch = false,
   } = props;
 
   const [formData, setFormData] = useState<TurtleSheetsData>(initialData || {});
@@ -131,63 +119,129 @@ export function useTurtleSheetsDataForm(
     }
   }, [mode, existingTurtleNames, formData.name, duplicateNameMessage]);
 
-  // In create mode, when sheet and sex are set, generate biology ID and set id field
+  // In create mode, when sheet and sex are set, generate biology ID and set id field.
+  // Use a request ref so we only apply the latest response (avoids stale updates with Strict Mode or rapid re-runs).
+  const generateIdRequestRef = React.useRef(0);
   useEffect(() => {
     if (mode !== 'create' || !selectedSheetName) return;
     const sex = (formData.sex || '').trim().toUpperCase();
     if (!sex) return;
-    let cancelled = false;
-    generateTurtleId({ sheet_name: selectedSheetName, sex })
+    const sheetNameForApi =
+      useBackendLocations && selectedSheetName.includes('/')
+        ? selectedSheetName.split('/')[0].trim()
+        : selectedSheetName;
+    if (!sheetNameForApi) return;
+    const requestId = ++generateIdRequestRef.current;
+    const targetSpreadsheet = sheetSource === 'community' ? 'community' : 'research';
+    generateTurtleId({ sheet_name: sheetNameForApi, sex, target_spreadsheet: targetSpreadsheet })
       .then((res) => {
-        if (cancelled) return;
+        if (requestId !== generateIdRequestRef.current) return;
         if (res.success && res.id) {
           setFormData((prev) => ({ ...prev, id: res.id! }));
         }
       })
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [mode, selectedSheetName, formData.sex]);
+  }, [mode, selectedSheetName, formData.sex, useBackendLocations, sheetSource]);
 
   useEffect(() => {
-    if (initialAvailableSheets != null && initialAvailableSheets.length > 0) {
+    // When admin source and parent passed a list, use it to avoid duplicate fetch
+    if (sheetSource === 'admin' && initialAvailableSheets != null && initialAvailableSheets.length > 0) {
       setAvailableSheets(initialAvailableSheets);
       setLoadingSheets(false);
+      if (!requireNewSheetForCommunityMatch) {
+        setSelectedSheetName((current) => {
+          if (!current && !initialSheetName && initialAvailableSheets.length > 0) return initialAvailableSheets[0];
+          return current;
+        });
+      }
       return;
     }
 
     let cancelled = false;
 
-    const loadSheets = async () => {
+    const loadOptions = async () => {
       setLoadingSheets(true);
       try {
-        const response = await listSheets();
-        if (cancelled) return;
-        if (response.success && response.sheets) {
-          const sheets = response.sheets;
-          setAvailableSheets(sheets);
-          setSelectedSheetName((current) => {
-            if (!current && !initialSheetName && sheets.length > 0) {
-              return sheets[0];
+        if (sheetSource === 'community') {
+          const response = await listCommunitySheets();
+          if (cancelled) return;
+          if (response.success && response.sheets) {
+            const sheets = response.sheets;
+            setAvailableSheets(sheets);
+            setSelectedSheetName((current) => {
+              if (!current && !initialSheetName && sheets.length > 0) return sheets[0];
+              return current;
+            });
+          } else {
+            setAvailableSheets([]);
+          }
+          return;
+        }
+        if (useBackendLocations) {
+          const response = await getLocations();
+          if (cancelled) return;
+          if (response.success && response.locations) {
+            const filtered = response.locations.filter((path) => {
+              const first = path.split('/')[0]?.trim() || '';
+              return first && !LOCATION_SYSTEM_FOLDERS.includes(first);
+            });
+            // Only top-level states in dropdown; subfolders (e.g. Kansas/Wichita) are chosen via General Location field.
+            const stateSet = new Set<string>();
+            for (const path of filtered) {
+              const first = path.split('/')[0]?.trim();
+              if (first) stateSet.add(first);
             }
-            return current;
-          });
+            const options = Array.from(stateSet).sort((a, b) =>
+              a.localeCompare(b, undefined, { sensitivity: 'base' }),
+            );
+            setAvailableSheets(options);
+            setSelectedSheetName((current) => {
+              if (!current && !initialSheetName && options.length > 0) {
+                return options[0];
+              }
+              return current;
+            });
+          } else {
+            setAvailableSheets([]);
+          }
+        } else {
+          const response = await listSheets();
+          if (cancelled) return;
+          if (response.success && response.sheets) {
+            const sheets = response.sheets;
+            setAvailableSheets(sheets);
+            setSelectedSheetName((current) => {
+              if (!current && !initialSheetName && sheets.length > 0) {
+                return sheets[0];
+              }
+              return current;
+            });
+          } else {
+            setAvailableSheets([]);
+          }
         }
       } catch (error) {
-        if (cancelled) return;
-        console.error('Failed to load sheets:', error);
-        setAvailableSheets([]);
+        if (!cancelled) {
+          console.error(
+            sheetSource === 'community'
+              ? 'Failed to load community sheets:'
+              : useBackendLocations
+                ? 'Failed to load locations:'
+                : 'Failed to load sheets:',
+            error,
+          );
+          setAvailableSheets([]);
+        }
       } finally {
         if (!cancelled) setLoadingSheets(false);
       }
     };
 
-    loadSheets();
+    loadOptions();
     return () => {
       cancelled = true;
     };
-  }, [initialSheetName, initialAvailableSheets]);
+  }, [initialSheetName, initialAvailableSheets, useBackendLocations, sheetSource, requireNewSheetForCommunityMatch]);
 
   const handleCreateNewSheet = async (sheetName: string) => {
     if (!sheetName?.trim()) {
@@ -201,11 +255,22 @@ export function useTurtleSheetsDataForm(
 
     setCreatingSheet(true);
     try {
-      const response = await createSheet({ sheet_name: sheetName.trim() });
+      const targetSpreadsheet = sheetSource === 'community' ? 'community' : 'research';
+      const response = await createSheet({
+        sheet_name: sheetName.trim(),
+        target_spreadsheet: targetSpreadsheet,
+      });
       if (response.success) {
-        const sheetsResponse = await listSheets();
-        if (sheetsResponse.success && sheetsResponse.sheets) {
-          setAvailableSheets(sheetsResponse.sheets);
+        if (sheetSource === 'community') {
+          const sheetsResponse = await listCommunitySheets();
+          if (sheetsResponse.success && sheetsResponse.sheets) {
+            setAvailableSheets(sheetsResponse.sheets);
+          }
+        } else {
+          const sheetsResponse = await listSheets();
+          if (sheetsResponse.success && sheetsResponse.sheets) {
+            setAvailableSheets(sheetsResponse.sheets);
+          }
         }
         setSelectedSheetName(sheetName.trim());
         setShowCreateSheetModal(false);
@@ -253,6 +318,33 @@ export function useTurtleSheetsDataForm(
         return rest;
       });
     }
+    // In create mode, when user selects sex, fetch biology ID using selected sheet or first available
+    // so the ID field updates even if the effect hasn't run yet (e.g. timing/Strict Mode / webkit).
+    if (mode === 'create' && field === 'sex' && value?.trim()) {
+      const sheetToUse = selectedSheetName || availableSheets[0];
+      if (sheetToUse) {
+        const sheetNameForApi =
+          useBackendLocations && sheetToUse.includes('/')
+            ? sheetToUse.split('/')[0].trim()
+            : sheetToUse;
+        if (sheetNameForApi) {
+          const requestId = ++generateIdRequestRef.current;
+          const targetSpreadsheet = sheetSource === 'community' ? 'community' : 'research';
+          generateTurtleId({
+            sheet_name: sheetNameForApi,
+            sex: value.trim(),
+            target_spreadsheet: targetSpreadsheet,
+          })
+            .then((res) => {
+              if (requestId !== generateIdRequestRef.current) return;
+              if (res.success && res.id) {
+                setFormData((prev) => ({ ...prev, id: res.id! }));
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    }
   };
 
   const validate = (): boolean => {
@@ -262,6 +354,20 @@ export function useTurtleSheetsDataForm(
         'Loading existing names to check for duplicates. Please wait a moment.';
     } else if (mode === 'create' && formData.name && checkDuplicateName(formData.name)) {
       newErrors.name = duplicateNameMessage;
+    }
+    const selectedHasLocation = useBackendLocations && selectedSheetName.includes('/');
+    // Admin backend path is data/State/Location/PrimaryID; Location comes from General Location
+    // unless a location-level selector option was chosen (e.g. Kansas/North Topeka).
+    if (
+      (useBackendLocations || sheetSource === 'admin') &&
+      (mode === 'create' || requireNewSheetForCommunityMatch) &&
+      !selectedHasLocation &&
+      !formData.general_location?.trim()
+    ) {
+      newErrors.general_location = 'General location is required (used for backend path State/Location)';
+    }
+    if (requireNewSheetForCommunityMatch && !selectedSheetName?.trim()) {
+      newErrors.sheet_name = 'Select an admin sheet where this turtle will be stored (moving from community to research).';
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -310,10 +416,39 @@ export function useTurtleSheetsDataForm(
             : {}),
         };
       }
+      const selectedPathParts = selectedSheetName
+        .split('/')
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const selectedState = selectedPathParts[0] || selectedSheetName;
+      const selectedLocationFromPath =
+        selectedPathParts.length > 1 ? selectedPathParts.slice(1).join('/') : '';
+
+      // If a location-level option was chosen in selector (e.g. Kansas/North Topeka),
+      // keep sheets tab as state (Kansas) and mirror location into general_location.
+      if (useBackendLocations && selectedLocationFromPath && !dataToSave.general_location?.trim()) {
+        dataToSave = { ...dataToSave, general_location: selectedLocationFromPath };
+      }
+
+      // Backend path: data/State/Location/PrimaryID where Location = general_location.
+      const backendLocationPath =
+        useBackendLocations && selectedPathParts.length > 1
+          ? selectedSheetName
+          : useBackendLocations && selectedState && dataToSave.general_location?.trim()
+            ? `${selectedState}/${dataToSave.general_location.trim()}`
+            : useBackendLocations && selectedState
+              ? selectedState
+            : undefined;
+
+      const sheetNameForSubmit =
+        useBackendLocations && selectedPathParts.length > 1
+          ? selectedState
+          : selectedSheetName;
+
       if (onCombinedSubmit) {
-        await onCombinedSubmit(dataToSave, selectedSheetName);
+        await onCombinedSubmit(dataToSave, sheetNameForSubmit, backendLocationPath);
       } else {
-        await onSave(dataToSave, selectedSheetName);
+        await onSave(dataToSave, sheetNameForSubmit, backendLocationPath);
         notifications.show({
           title: 'Success!',
           message: `Turtle data ${mode === 'create' ? 'created' : 'updated'} successfully`,
@@ -333,13 +468,32 @@ export function useTurtleSheetsDataForm(
     }
   };
 
+  const handleSelectedSheetNameChange = (value: string) => {
+    setSelectedSheetName(value);
+    if (!useBackendLocations) return;
+    const parts = value
+      .split('/')
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (parts.length > 1) {
+      const loc = parts.slice(1).join('/');
+      setFormData((prev) => ({ ...prev, general_location: prev.general_location?.trim() ? prev.general_location : loc }));
+      setErrors((prev) => {
+        if (!prev.general_location) return prev;
+        const next = { ...prev };
+        delete next.general_location;
+        return next;
+      });
+    }
+  };
+
   return {
     formData,
     loading,
     errors,
     availableSheets,
     selectedSheetName,
-    setSelectedSheetName,
+    setSelectedSheetName: handleSelectedSheetNameChange,
     loadingSheets,
     showCreateSheetModal,
     setShowCreateSheetModal,

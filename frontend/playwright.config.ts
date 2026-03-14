@@ -1,8 +1,13 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { defineConfig, devices } from '@playwright/test';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(__dirname, '..');
 
 /** When set (e.g. in CI with Docker), frontend is already running at this URL; no dev server is started. */
 const baseURL =
-  process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173';
+  process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173';
 
 /**
  * @see https://playwright.dev/docs/test-configuration
@@ -76,25 +81,21 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : [
-    // Start auth backend first (with test user seeding)
+    // Start auth backend (with test user seeding)
     {
-      command:
-        process.platform === 'win32'
-          ? 'cd ..\\auth-backend && npm run test:dev'
-          : 'cd ../auth-backend && npm run test:dev',
-      url: 'http://localhost:3001/api/health',
-      reuseExistingServer: true, // Reuse existing server in CI (started by workflow) and locally
+      command: 'npm run test:dev',
+      cwd: path.join(projectRoot, 'auth-backend'),
+      url: 'http://127.0.0.1:3001/api/health',
+      reuseExistingServer: true,
       timeout: 120 * 1000,
       stdout: 'pipe',
       stderr: 'pipe',
       env: {
         ...process.env,
-        // Test user credentials
         E2E_ADMIN_EMAIL: process.env.E2E_ADMIN_EMAIL || 'admin@test.com',
         E2E_ADMIN_PASSWORD: process.env.E2E_ADMIN_PASSWORD || 'testpassword123',
         E2E_COMMUNITY_EMAIL: process.env.E2E_COMMUNITY_EMAIL || 'community@test.com',
         E2E_COMMUNITY_PASSWORD: process.env.E2E_COMMUNITY_PASSWORD || 'testpassword123',
-        // Auth backend configuration (with defaults for testing)
         PORT: process.env.AUTH_PORT || '3001',
         NODE_ENV: process.env.NODE_ENV || 'test',
         JWT_SECRET: process.env.JWT_SECRET || 'test-jwt-secret-key-for-e2e-tests-only',
@@ -105,41 +106,30 @@ export default defineConfig({
     },
     // Start Flask backend (turtle API server)
     {
-      command:
-        process.platform === 'win32'
-          ? 'cd ..\\backend && python app.py'
-          : 'cd ../backend && python3 app.py',
-      // Use 127.0.0.1 instead of localhost for more reliable connection
-      // Try health endpoint first, fallback to root if needed
+      command: process.platform === 'win32' ? 'python app.py' : 'python3 app.py',
+      cwd: path.join(projectRoot, 'backend'),
       url: 'http://127.0.0.1:5000/api/health',
-      reuseExistingServer: true, // Reuse existing server in CI (started by workflow) and locally
+      reuseExistingServer: true,
       timeout: 120 * 1000,
       stdout: 'pipe',
       stderr: 'pipe',
-      // Health check settings - Playwright will poll this URL until it gets 200
-      // Make sure the endpoint responds quickly
       env: {
         ...process.env,
-        // JWT_SECRET must match auth-backend for token verification
         JWT_SECRET: process.env.JWT_SECRET || 'test-jwt-secret-key-for-e2e-tests-only',
         PORT: process.env.BACKEND_PORT || '5000',
-        // Disable Flask debug mode for tests to avoid reload issues
         FLASK_DEBUG: 'false',
-        // Force Python to output immediately (unbuffered)
         PYTHONUNBUFFERED: '1',
       },
     },
-    // Start frontend dev server last (after backends are ready)
-    // Vite should start quickly, but we need to ensure it's fully ready
+    // Start frontend dev server
     {
       command: 'npm run dev',
-      url: 'http://localhost:5173',
-      reuseExistingServer: true, // Reuse existing server in CI and locally
-      timeout: 180 * 1000, // Increased timeout for Vite startup
+      cwd: __dirname,
+      url: 'http://127.0.0.1:5173',
+      reuseExistingServer: true,
+      timeout: 180 * 1000,
       stdout: 'pipe',
       stderr: 'pipe',
-      // Vite typically starts quickly, but may need more time on first run
-      // The URL check ensures Vite is serving the app before tests start
     },
   ],
 });

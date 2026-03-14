@@ -47,6 +47,12 @@ export interface ListSheetsResponse {
   error?: string;
 }
 
+export interface GetLocationsResponse {
+  success: boolean;
+  locations?: string[];
+  error?: string;
+}
+
 export interface GeneratePrimaryIdRequest {
   state: string;
   location?: string;
@@ -63,6 +69,8 @@ export interface CreateTurtleSheetsDataRequest {
   state?: string;
   location?: string;
   turtle_data: TurtleSheetsData;
+  /** When 'community', create in community-facing spreadsheet (e.g. review queue community upload). Default 'research'. */
+  target_spreadsheet?: 'research' | 'community';
 }
 
 export interface CreateTurtleSheetsDataResponse {
@@ -77,6 +85,8 @@ export interface UpdateTurtleSheetsDataRequest {
   state?: string;
   location?: string;
   turtle_data: Partial<TurtleSheetsData>;
+  /** When 'community', update in community spreadsheet. Default 'research'. */
+  target_spreadsheet?: 'research' | 'community';
 }
 
 export interface UpdateTurtleSheetsDataResponse {
@@ -87,6 +97,8 @@ export interface UpdateTurtleSheetsDataResponse {
 
 export interface CreateSheetRequest {
   sheet_name: string;
+  /** When 'community', create in community-facing spreadsheet. Default 'research'. */
+  target_spreadsheet?: 'research' | 'community';
 }
 
 export interface CreateSheetResponse {
@@ -99,6 +111,8 @@ export interface CreateSheetResponse {
 export interface GenerateTurtleIdRequest {
   sex: string; // M, F, J, or U
   sheet_name: string;
+  /** When 'community', use community spreadsheet for ID generation (do not create sheet in research). */
+  target_spreadsheet?: 'research' | 'community';
 }
 
 export interface GenerateTurtleIdResponse {
@@ -341,6 +355,54 @@ export const listSheets = async (
     }
     throw error;
   }
+};
+
+// List sheet (tab) names from the community-facing spreadsheet (for Review Queue – community uploads)
+export const listCommunitySheets = async (
+  timeoutMs: number = 25000,
+): Promise<ListSheetsResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${TURTLE_API_BASE_URL}/sheets/community-sheets`, {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to list community sheets');
+    }
+    return await response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+};
+
+// List backend location paths (State/Location) for community upload and manual upload
+export const getLocations = async (): Promise<GetLocationsResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await fetch(`${TURTLE_API_BASE_URL}/locations`, {
+    method: 'GET',
+    headers,
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to load locations');
+  }
+  return await response.json();
 };
 
 // List all turtle names across sheets (for duplicate-name validation)

@@ -87,8 +87,12 @@ export interface ApproveReviewRequest {
   new_location?: string;
   new_turtle_id?: string;
   uploaded_image_path?: string;
-  sheets_data?: TurtleSheetsData;
+  sheets_data?: TurtleSheetsData & { sheet_name?: string; primary_id?: string };
   find_metadata?: FindMetadata;
+  /** When the matched turtle is from the community spreadsheet (admin re-found it). Backend will move folder and remove from community sheet. */
+  match_from_community?: boolean;
+  /** Community sheet tab name where the turtle currently lives (e.g. "Unknown"). Required when match_from_community is true. */
+  community_sheet_name?: string;
 }
 
 /** Optional flag/collected-to-lab and extra images for upload (community flow) */

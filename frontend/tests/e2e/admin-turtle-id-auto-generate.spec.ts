@@ -27,8 +27,8 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
   }) => {
     test.setTimeout(90_000);
 
-    // Mock generate-id so the form gets a predictable biology ID preview
-    await page.route('**/api/sheets/generate-id', async (route) => {
+    // Mock generate-id so the form gets a predictable biology ID preview (match any base URL)
+    await page.route('**/sheets/generate-id', async (route) => {
       if (route.request().method() === 'POST') {
         await route.fulfill({
           status: 200,
@@ -60,6 +60,23 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
       }
     });
 
+    // Create New Turtle uses useBackendLocations and GET /api/locations.
+    // Mock backend paths (State or State/Location); test selects "Kansas".
+    await page.route('**/api/locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            locations: ['Kansas', 'Kansas/Wichita'],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
     await loginAsAdmin(page);
     await page
       .getByText('Successfully logged in!')
@@ -81,17 +98,30 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
 
     const createBtn = page.getByRole('button', { name: 'Create New Turtle' });
     await expect(createBtn).toBeVisible({ timeout: 15_000 });
+
+    const locationsResponse = page.waitForResponse(
+      (resp) => resp.url().includes('/api/locations') && resp.status() === 200,
+      { timeout: 15_000 },
+    );
     await createBtn.click();
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Create New Turtle' })).toBeVisible();
+    await locationsResponse;
 
-    // Select sheet (Kansas) then sex (F) – this triggers generate-id and fills the ID field
+    // Wait for generate-id request so we know the app requested an ID before asserting the field
+    const generateIdResponse = page.waitForResponse(
+      (resp) => resp.url().includes('generate-id') && resp.status() === 200,
+      { timeout: 20_000 },
+    );
+
+    // Select sheet (Kansas) then sex (F) – this triggers generate-id in the app
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
     await selectSexInCreateTurtleDialog(page, dialog, 'F');
+    await generateIdResponse;
 
-    // ID field should show the auto-generated value (from mocked generate-id) and be disabled
+    // Wait for UI outcome: ID field shows auto-generated value and is disabled
     const idField = dialog.getByLabel('ID', { exact: true });
     await expect(idField).toHaveValue(MOCK_BIOLOGY_ID, { timeout: 15_000 });
     await expect(idField).toBeDisabled();
@@ -143,6 +173,22 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
       }
     });
 
+    // Mock backend location paths (State or State/Location) so dropdown has Kansas
+    await page.route('**/api/locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            locations: ['Kansas', 'Kansas/Wichita'],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
     await loginAsAdmin(page);
     await page
       .getByText('Successfully logged in!')
@@ -159,9 +205,14 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
     await clickUploadPhotoButton(page);
     await expect(page).toHaveURL(/\/admin\/turtle-match\/[^/]+/, { timeout: 30_000 });
 
+    const locationsResponse = page.waitForResponse(
+      (resp) => resp.url().includes('/api/locations') && resp.status() === 200,
+      { timeout: 15_000 },
+    );
     await page.getByRole('button', { name: 'Create New Turtle' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
+    await locationsResponse;
 
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
 

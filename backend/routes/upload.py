@@ -175,9 +175,11 @@ def register_upload_routes(app):
                         dist_val = float(match.get('distance', 0))
                     except (TypeError, ValueError):
                         dist_val = 0.0
+                    # location is full path (state/location) so frontend can detect Community_Uploads
+                    loc = (match.get('location') or 'Unknown').strip() or 'Unknown'
                     formatted_matches.append({
                         'turtle_id': match.get('site_id', 'Unknown') or 'Unknown',
-                        'location': match.get('location', 'Unknown') or 'Unknown',
+                        'location': loc,
                         'distance': dist_val,
                         'file_path': image_path,
                         'filename': match.get('filename', '') or ''

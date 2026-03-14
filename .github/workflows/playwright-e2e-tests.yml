@@ -79,7 +79,6 @@ jobs:
           E2E_ADMIN_PASSWORD: testpassword123
           E2E_COMMUNITY_EMAIL: community@test.com
           E2E_COMMUNITY_PASSWORD: testpassword123
-        # Runs all e2e tests (duplicate name validation, auto-generated ID field, etc.)
         run: npm test
 
       - name: Upload test results

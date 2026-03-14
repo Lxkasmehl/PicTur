@@ -189,20 +189,30 @@ def smart_search(image_path, location_filter=None, k_results=20):
         if idx_int < 0 or idx_int >= len(metadata):
             continue
         meta = metadata[idx_int]
-        # Restrict to given sheet (tab name) when filter is set. Match only against sheet name = state or folder name from backend path, never the "Location" column from the sheet.
+        # Restrict to given sheet (tab name) when filter is set. location_filter can be str or list (e.g. [state, "Community_Uploads"]).
         if location_filter:
             state_val = str(meta.get('state') or '')
             loc_val = str(meta.get('location') or '')
-            if state_val != str(location_filter) and loc_val != str(location_filter):
-                continue
+            if isinstance(location_filter, (list, tuple)):
+                allowed = [str(x) for x in location_filter]
+                if state_val not in allowed and loc_val not in allowed:
+                    continue
+            else:
+                if state_val != str(location_filter) and loc_val != str(location_filter):
+                    continue
         site_id = meta.get('site_id', 'Unknown')
         if site_id not in seen_sites:
             seen_sites.add(site_id)
+            # Full path (state/location) so frontend can detect e.g. Community_Uploads/SheetName
+            loc_part = meta.get('location', '') or ''
+            state_part = meta.get('state', '') or ''
+            full_location = f"{state_part}/{loc_part}".strip('/') if (state_part or loc_part) else 'Unknown'
             results.append({
                 'filename': meta.get('filename'),
                 'file_path': meta.get('file_path'),
                 'site_id': site_id,
-                'location': meta.get('location', 'Unknown'),
+                'location': full_location,
+                'state': state_part,
                 'distance': float(dists[0][i])
             })
         if len(results) >= k_results: break

@@ -27,12 +27,13 @@ import {
   getReviewPacket,
   getTurtleImages,
   approveReview,
-  updateTurtleSheetsData,
   createTurtleSheetsData,
+  updateTurtleSheetsData,
   generatePrimaryId,
   getTurtleSheetsData,
   listSheets,
   type TurtleSheetsData,
+  type FindMetadata,
   type ReviewQueueItem,
   type TurtleImagesResponse,
 } from '../services/api';
@@ -66,8 +67,10 @@ export default function AdminTurtleMatchPage() {
     null,
   );
   const [newTurtleSheetName, setNewTurtleSheetName] = useState('');
+  const [newTurtleBackendPath, setNewTurtleBackendPath] = useState<string | undefined>(undefined);
   const [loadingTurtleData, setLoadingTurtleData] = useState(false);
   const [availableSheets, setAvailableSheets] = useState<string[]>([]);
+  const [findMetadata] = useState<FindMetadata | null>(null);
   const [selectedMatchTurtleImages, setSelectedMatchTurtleImages] = useState<TurtleImagesResponse | null>(null);
   const formRef = useRef<TurtleSheetsDataFormRef>(null);
   const isMobile = useMediaQuery('(max-width: 576px)');
@@ -75,6 +78,10 @@ export default function AdminTurtleMatchPage() {
   const selectedMatchData = selectedMatch && matchData
     ? matchData.matches.find((m) => m.turtle_id === selectedMatch)
     : undefined;
+
+  /** True when the selected match is from the community spreadsheet (admin re-found a community turtle). */
+  const isMatchFromCommunity =
+    (selectedMatchData?.location?.startsWith('Community_Uploads') ?? false);
 
   // Load selected match turtle's existing additional images (microhabitat/condition)
   useEffect(() => {
@@ -203,17 +210,28 @@ export default function AdminTurtleMatchPage() {
       throw new Error('Match not found');
     }
 
-    const locationParts = match.location.split('/');
-    const state = locationParts.length >= 1 ? locationParts[0] : '';
-    const location = locationParts.length >= 2 ? locationParts.slice(1).join('/') : '';
     const currentPrimaryId = primaryId || selectedMatch;
 
-    await updateTurtleSheetsData(currentPrimaryId, {
-      sheet_name: sheetName,
-      state,
-      location,
-      turtle_data: data,
-    });
+    if (isMatchFromCommunity) {
+      // Turtle is from community spreadsheet; create a new row in the research spreadsheet.
+      await createTurtleSheetsData({
+        sheet_name: sheetName,
+        state: data.general_location ?? '',
+        location: data.location ?? '',
+        turtle_data: { ...data, primary_id: currentPrimaryId },
+        target_spreadsheet: 'research',
+      });
+    } else {
+      const locationParts = match.location.split('/');
+      const state = locationParts.length >= 1 ? locationParts[0] : '';
+      const location = locationParts.length >= 2 ? locationParts.slice(1).join('/') : '';
+      await updateTurtleSheetsData(currentPrimaryId, {
+        sheet_name: sheetName,
+        state,
+        location,
+        turtle_data: data,
+      });
+    }
 
     setSheetsData(data);
   };
@@ -233,10 +251,23 @@ export default function AdminTurtleMatchPage() {
       // First, save to Google Sheets
       await handleSaveSheetsData(data, sheetName);
 
-      // Then, confirm the match
+      // Then, confirm the match (full sheets_data so backend can move folder and remove from community sheet)
+      const currentPrimaryId = primaryId || selectedMatch;
+      const communitySheetName = isMatchFromCommunity
+        ? (selectedMatchData?.location?.split('/')[1]?.trim() || 'Unknown')
+        : '';
       await approveReview(imageId, {
         match_turtle_id: selectedMatch,
         uploaded_image_path: matchData.uploaded_image_path,
+        find_metadata: findMetadata ?? undefined,
+        sheets_data: {
+          ...data,
+          primary_id: currentPrimaryId,
+          sheet_name: sheetName,
+          general_location: data.general_location ?? '',
+        },
+        match_from_community: isMatchFromCommunity,
+        community_sheet_name: isMatchFromCommunity ? communitySheetName : undefined,
       });
 
       localStorage.removeItem(`match_${imageId}`);
@@ -269,55 +300,58 @@ export default function AdminTurtleMatchPage() {
   };
 
   const handleCreateNewTurtle = async () => {
-    // Open modal for creating new turtle
     setShowNewTurtleModal(true);
     setNewTurtlePrimaryId(null);
     setNewTurtleSheetsData(null);
     setNewTurtleSheetName('');
+    setNewTurtleBackendPath(undefined);
   };
 
   const handleSaveNewTurtleSheetsData = async (
     data: TurtleSheetsData,
     sheetName: string,
+    backendLocationPath?: string,
   ) => {
-    // Save the sheets data to state (for UI display)
     setNewTurtleSheetsData(data);
     setNewTurtleSheetName(sheetName);
+    setNewTurtleBackendPath(backendLocationPath);
 
-    // Extract state and location from form data
     const state = data.general_location || '';
     const location = data.location || '';
 
-    // Generate primary ID if not already generated
-    let primaryId = newTurtlePrimaryId;
-    if (!primaryId) {
+    let generatedPrimaryId = newTurtlePrimaryId;
+    if (!generatedPrimaryId) {
       try {
         const primaryIdResponse = await generatePrimaryId({
           state,
           location,
         });
         if (primaryIdResponse.success && primaryIdResponse.primary_id) {
-          primaryId = primaryIdResponse.primary_id;
-          setNewTurtlePrimaryId(primaryId);
+          generatedPrimaryId = primaryIdResponse.primary_id;
+          setNewTurtlePrimaryId(generatedPrimaryId);
         }
       } catch (error) {
         console.error('Error generating primary ID:', error);
       }
     }
 
-    // Automatically confirm and create the turtle after saving the form data
-    // Pass data and sheetName directly to avoid React state update timing issues
-    // This avoids having two buttons (one in form, one outside)
-    await handleConfirmNewTurtle(sheetName, data);
+    await handleConfirmNewTurtle(
+      sheetName,
+      data,
+      backendLocationPath,
+      generatedPrimaryId || undefined,
+    );
   };
 
   const handleConfirmNewTurtle = async (
     sheetNameOverride?: string,
     sheetsDataOverride?: TurtleSheetsData,
+    backendPathOverride?: string,
+    primaryIdOverride?: string,
   ) => {
-    // Use provided values or fall back to state
     const effectiveSheetName = sheetNameOverride || newTurtleSheetName;
     const effectiveSheetsData = sheetsDataOverride || newTurtleSheetsData;
+    const effectiveBackendPath = backendPathOverride ?? newTurtleBackendPath;
 
     if (!effectiveSheetName) {
       notifications.show({
@@ -347,10 +381,19 @@ export default function AdminTurtleMatchPage() {
     }
 
     setProcessing(true);
+    const progressNotificationId = `new-turtle-${imageId}`;
+    notifications.show({
+      id: progressNotificationId,
+      title: 'Creating turtle...',
+      message: 'Saving to Google Sheets and rebuilding search index.',
+      color: 'blue',
+      loading: true,
+      autoClose: false,
+      withCloseButton: false,
+    });
     try {
-      // Backend path: always use sheet name only (never general_location/location from form).
-      // general_location and location are only for the Google Sheet row data.
-      const backendPathLocation = effectiveSheetName;
+      // Backend path: State/Location (e.g. Kansas/Wichita) when useBackendLocations, else sheet name
+      const backendPathLocation = effectiveBackendPath ?? effectiveSheetName;
 
       const formState = effectiveSheetsData?.general_location || '';
       const formLocation = effectiveSheetsData?.location || '';
@@ -358,7 +401,7 @@ export default function AdminTurtleMatchPage() {
       const turtleLocation = formLocation || '';
 
       // Generate primary ID if not already generated
-      let finalPrimaryId = newTurtlePrimaryId;
+      let finalPrimaryId = primaryIdOverride || newTurtlePrimaryId;
       if (!finalPrimaryId) {
         try {
           const primaryIdResponse = await generatePrimaryId({
@@ -374,44 +417,21 @@ export default function AdminTurtleMatchPage() {
         }
       }
 
-      // Create turtle in Google Sheets first (before approveReview)
-      // This ensures the data is created exactly as the user entered it
-      let sheetsDataCreated = false;
-      if (effectiveSheetsData && finalPrimaryId && effectiveSheetName) {
-        try {
-          const result = await createTurtleSheetsData({
-            sheet_name: effectiveSheetName,
-            state: turtleState,
-            location: turtleLocation,
-            turtle_data: {
-              ...effectiveSheetsData,
-              primary_id: finalPrimaryId,
-              general_location: effectiveSheetsData?.general_location ?? '',
-              location: effectiveSheetsData?.location ?? '',
-            },
-          });
-          if (result.success) {
-            sheetsDataCreated = true;
-          } else {
-            sheetsDataCreated = false;
-          }
-        } catch (sheetsError) {
-          console.error('Error creating turtle in sheets:', sheetsError);
-          // Show error to user but continue - backend will create it as fallback
-          notifications.show({
-            title: 'Warning',
-            message:
-              'Failed to create turtle in Google Sheets. Backend will create it as fallback.',
-            color: 'yellow',
-          });
-          sheetsDataCreated = false;
-        }
-      }
-
-      // Approve review with new turtle
-      // Note: We already created the Sheets entry above, so approveReview should skip creating it
-      // Use primary ID as turtle ID, or fallback to generated ID
       const turtleIdForReview = finalPrimaryId || `T${Date.now()}`;
+      const isAdminUpload = imageId.startsWith('admin_');
+
+      // Admin upload + new turtle: create row in research (admin) spreadsheet first; backend does not sync to community.
+      if (isAdminUpload && effectiveSheetsData) {
+        await createTurtleSheetsData({
+          sheet_name: effectiveSheetName,
+          state: effectiveSheetsData.general_location || undefined,
+          location: effectiveSheetsData.location || undefined,
+          turtle_data: {
+            ...effectiveSheetsData,
+            primary_id: finalPrimaryId ?? undefined,
+          },
+        });
+      }
 
       await approveReview(imageId, {
         new_location: backendPathLocation,
@@ -420,34 +440,39 @@ export default function AdminTurtleMatchPage() {
         sheets_data: effectiveSheetsData
           ? {
               ...effectiveSheetsData,
-              sheet_name: effectiveSheetName, // Use the effective sheet name
-              // Only include primary_id if sheets data was successfully created by frontend
-              // Otherwise, let backend create it in fallback mode
-              primary_id: sheetsDataCreated
-                ? ((finalPrimaryId ?? undefined) as string | undefined)
-                : undefined,
+              sheet_name: effectiveSheetName,
+              primary_id: finalPrimaryId ?? undefined,
             }
           : undefined,
       });
 
       localStorage.removeItem(`match_${imageId}`);
 
-      notifications.show({
+      notifications.update({
+        id: progressNotificationId,
         title: 'Success!',
         message: 'New turtle created successfully',
         color: 'green',
         icon: <IconCheck size={18} />,
+        loading: false,
+        autoClose: 1800,
+        withCloseButton: true,
       });
 
       // Close the modal after successful creation
       setShowNewTurtleModal(false);
 
-      navigate('/');
+      // Small delay so success state is visible before navigation.
+      window.setTimeout(() => navigate('/'), 500);
     } catch (error) {
-      notifications.show({
+      notifications.update({
+        id: progressNotificationId,
         title: 'Error',
         message: error instanceof Error ? error.message : 'Failed to create new turtle',
         color: 'red',
+        loading: false,
+        autoClose: 5000,
+        withCloseButton: true,
       });
     } finally {
       setProcessing(false);
@@ -742,7 +767,7 @@ export default function AdminTurtleMatchPage() {
                       <TurtleSheetsDataForm
                         ref={formRef}
                         initialData={sheetsData || undefined}
-                        sheetName={sheetsData?.sheet_name}
+                        sheetName={isMatchFromCommunity ? '' : (sheetsData?.sheet_name)}
                         primaryId={primaryId || undefined}
                         mode={sheetsData ? 'edit' : 'create'}
                         onSave={handleSaveSheetsData}
@@ -750,6 +775,8 @@ export default function AdminTurtleMatchPage() {
                         onCombinedSubmit={handleSaveAndConfirm}
                         addOnlyMode={true}
                         initialAvailableSheets={availableSheets.length > 0 ? availableSheets : undefined}
+                        sheetSource="admin"
+                        requireNewSheetForCommunityMatch={isMatchFromCommunity}
                       />
                     </ScrollArea>
                   </Paper>
@@ -851,7 +878,7 @@ export default function AdminTurtleMatchPage() {
             mode='create'
             onSave={handleSaveNewTurtleSheetsData}
             onCancel={() => setShowNewTurtleModal(false)}
-            initialAvailableSheets={availableSheets.length > 0 ? availableSheets : undefined}
+            useBackendLocations
           />
         </Stack>
       </Modal>

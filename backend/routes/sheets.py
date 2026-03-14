@@ -2,13 +2,15 @@
 Google Sheets API endpoints
 """
 
+import os
+import re
 import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from flask import request, jsonify
 from auth import require_admin
-from services.manager_service import get_sheets_service
+from services.manager_service import get_sheets_service, get_community_sheets_service
 
 # Timeout for single attempt to find sheet + get turtle data (avoids hanging on SSL/slow API)
 SHEETS_TURTLE_DATA_TIMEOUT_SEC = 25
@@ -42,6 +44,16 @@ def _fetch_turtle_sheets_data_impl(service, primary_id, sheet_name_arg, state, l
     return sn, data
 
 
+def _fetch_turtle_sheets_data_community_impl(service, primary_id, community_sheet_name):
+    """Run in thread: get turtle data from community spreadsheet. sheet = tab name (e.g. second path segment)."""
+    sn = (community_sheet_name or '').strip()
+    if not sn:
+        return None, None
+    # Community sheets: state/location convention may use sheet as both
+    data = service.get_turtle_data(primary_id, sn, sn, '')
+    return sn, data
+
+
 def register_sheets_routes(app):
     """Register Google Sheets routes"""
     
@@ -58,7 +70,12 @@ def register_sheets_routes(app):
             state = request.args.get('state', '')
             location = request.args.get('location', '')
             
-            service = get_sheets_service()
+            # When match is from Community_Uploads, fetch from community spreadsheet (sheet = second path segment).
+            use_community = (state or '').strip() == 'Community_Uploads'
+            if use_community:
+                service = get_community_sheets_service()
+            else:
+                service = get_sheets_service()
             if not service:
                 return jsonify({'error': 'Google Sheets service not configured'}), 503
             
@@ -67,10 +84,17 @@ def register_sheets_routes(app):
             for attempt in range(2):
                 executor = ThreadPoolExecutor(max_workers=1)
                 try:
-                    future = executor.submit(
-                        _fetch_turtle_sheets_data_impl,
-                        service, primary_id, sheet_name, state, location
-                    )
+                    if use_community:
+                        community_sheet = (location or sheet_name or '').strip()
+                        future = executor.submit(
+                            _fetch_turtle_sheets_data_community_impl,
+                            service, primary_id, community_sheet
+                        )
+                    else:
+                        future = executor.submit(
+                            _fetch_turtle_sheets_data_impl,
+                            service, primary_id, sheet_name, state, location
+                        )
                     result_sheet, result_data = future.result(timeout=SHEETS_TURTLE_DATA_TIMEOUT_SEC)
                     break
                 except FuturesTimeoutError:
@@ -171,12 +195,16 @@ def register_sheets_routes(app):
     def generate_turtle_id():
         """
         Generate the next biology ID (ID column) for the given sheet: M/F/J/U + next sequence number (Admin only).
-        Body: { "sex": "M"|"F"|"J"|"U", "sheet_name": "Kansas" }. Sequence is scoped to that sheet only.
+        Body: { "sex": "M"|"F"|"J"|"U", "sheet_name": "Kansas", "target_spreadsheet": "research"|"community" }.
+        Sequence is scoped to that sheet only. Use target_spreadsheet so community sheets are not created in research.
         """
         try:
             data = request.json or {}
             sex = (data.get('sex') or data.get('gender') or '').strip().upper()
             sheet_name = (data.get('sheet_name') or '').strip()
+            target_spreadsheet = (data.get('target_spreadsheet') or 'research').strip().lower()
+            if target_spreadsheet not in ('research', 'community'):
+                target_spreadsheet = 'research'
             # Normalize: M, F, J, U; anything else -> U
             if sex in ('M', 'F', 'J'):
                 gender = sex
@@ -188,9 +216,21 @@ def register_sheets_routes(app):
             if not sheet_name:
                 return jsonify({'error': 'sheet_name is required for ID generation'}), 400
 
-            service = get_sheets_service()
-            if not service:
-                return jsonify({'error': 'Google Sheets service not configured'}), 503
+            if target_spreadsheet == 'community':
+                service = get_community_sheets_service()
+                if not service:
+                    return jsonify({'error': 'Community Google Sheets not configured'}), 503
+            else:
+                service = get_sheets_service()
+                if not service:
+                    return jsonify({'error': 'Google Sheets service not configured'}), 503
+
+            # If sheet does not exist in the TARGET spreadsheet, create it there only (do not touch the other spreadsheet)
+            existing_sheets = service.list_sheets()
+            if sheet_name not in existing_sheets:
+                if not service.create_sheet_with_headers(sheet_name):
+                    return jsonify({'error': f'Could not create sheet "{sheet_name}" for ID generation'}), 500
+                print(f"✅ Created new sheet '{sheet_name}' in {'community' if target_spreadsheet == 'community' else 'research'} spreadsheet (for ID generation)")
 
             id_value = service.generate_biology_id(gender, sheet_name)
             return jsonify({
@@ -210,31 +250,45 @@ def register_sheets_routes(app):
     @require_admin
     def create_turtle_sheets_data():
         """
-        Create new turtle data in Google Sheets (Admin only)
+        Create new turtle data in Google Sheets (Admin only).
+        Optional body param target_spreadsheet: 'research' (default) or 'community'.
+        Use 'community' when creating a turtle from a community upload in the review queue.
         """
         try:
-            data = request.json
+            data = request.json or {}
             sheet_name = data.get('sheet_name', '').strip()
             state = data.get('state', '')
             location = data.get('location', '')
             turtle_data = data.get('turtle_data', {})
-            
+            target_spreadsheet = (data.get('target_spreadsheet') or 'research').strip().lower()
+            if target_spreadsheet not in ('research', 'community'):
+                target_spreadsheet = 'research'
+
             if not sheet_name:
                 return jsonify({'error': 'sheet_name is required'}), 400
-            
-            service = get_sheets_service()
-            if not service:
-                return jsonify({'error': 'Google Sheets service not configured'}), 503
-            
-            # Use primary_id from turtle_data if provided (frontend already generated it), otherwise generate new one
-            # Primary ID is globally unique across all sheets
+
+            if target_spreadsheet == 'community':
+                service = get_community_sheets_service()
+                if not service:
+                    return jsonify({'error': 'Community Google Sheets not configured'}), 503
+            else:
+                service = get_sheets_service()
+                if not service:
+                    return jsonify({'error': 'Google Sheets service not configured'}), 503
+
+            # If sheet (tab) does not exist, create it with required headers
+            existing_sheets = service.list_sheets()
+            if sheet_name not in existing_sheets:
+                if not service.create_sheet_with_headers(sheet_name):
+                    return jsonify({'error': f'Could not create sheet "{sheet_name}" in spreadsheet'}), 500
+                print(f"✅ Created new sheet '{sheet_name}' in {'community' if target_spreadsheet == 'community' else 'research'} spreadsheet")
+
             if turtle_data.get('primary_id'):
                 primary_id = turtle_data['primary_id']
             else:
                 primary_id = service.generate_primary_id(state, location)
                 turtle_data['primary_id'] = primary_id
 
-            # Always auto-generate biology ID (ID column) on create: M/F/J/U + next sequence number (scoped to this sheet)
             sex = (turtle_data.get('sex') or '').strip().upper()
             gender = sex if sex in ('M', 'F', 'J') else 'U'
             turtle_data['id'] = service.generate_biology_id(gender, sheet_name)
@@ -266,26 +320,40 @@ def register_sheets_routes(app):
     @require_admin
     def update_turtle_sheets_data(primary_id):
         """
-        Update or create turtle data in Google Sheets (Admin only)
+        Update or create turtle data in Google Sheets (Admin only).
+        Optional body param target_spreadsheet: 'research' (default) or 'community'.
         If turtle doesn't exist, creates it. Otherwise updates it.
         """
         try:
-            data = request.json
+            data = request.json or {}
             sheet_name = data.get('sheet_name', '').strip()
             state = data.get('state', '')
             location = data.get('location', '')
             turtle_data = data.get('turtle_data', {})
-            
+            target_spreadsheet = (data.get('target_spreadsheet') or 'research').strip().lower()
+            if target_spreadsheet not in ('research', 'community'):
+                target_spreadsheet = 'research'
+
             if not sheet_name:
                 print(f"ERROR: sheet_name is empty. Received data: {data}")
                 return jsonify({'error': 'sheet_name is required'}), 400
-            
-            # Debug: Log the sheet_name to verify it's correct
-            
-            service = get_sheets_service()
-            if not service:
-                return jsonify({'error': 'Google Sheets service not configured'}), 503
-            
+
+            if target_spreadsheet == 'community':
+                service = get_community_sheets_service()
+                if not service:
+                    return jsonify({'error': 'Community Google Sheets not configured'}), 503
+            else:
+                service = get_sheets_service()
+                if not service:
+                    return jsonify({'error': 'Google Sheets service not configured'}), 503
+
+            # If sheet (tab) does not exist, create it with required headers (e.g. when using backend locations like "Kansas")
+            existing_sheets = service.list_sheets()
+            if sheet_name not in existing_sheets:
+                if not service.create_sheet_with_headers(sheet_name):
+                    return jsonify({'error': f'Could not create sheet "{sheet_name}" in spreadsheet'}), 500
+                print(f"✅ Created new sheet '{sheet_name}' in {'community' if target_spreadsheet == 'community' else 'research'} spreadsheet")
+
             # Check if turtle exists in the new sheet
             existing_data = service.get_turtle_data(primary_id, sheet_name, state, location)
             
@@ -364,35 +432,52 @@ def register_sheets_routes(app):
             print(f"Traceback:\n{error_trace}")
             return jsonify({'error': f'Failed to update turtle data: {str(e)}'}), 500
 
+    def _safe_folder_name(name):
+        """Sanitize sheet name for filesystem (e.g. for Community_Uploads subfolder)."""
+        if not name or not isinstance(name, str):
+            return '_'
+        out = re.sub(r'[/\\:*?"<>|]', '_', name.strip())
+        return out or '_'
+
     @app.route('/api/sheets/sheets', methods=['GET', 'POST'])
     @require_admin
     def list_sheets():
         """
         List all available sheets (tabs) in the Google Spreadsheet (Admin only)
-        POST: Create a new sheet with headers
+        POST: Create a new sheet with headers. Body may include target_spreadsheet: 'research' | 'community'.
         GET: List all sheets
         """
         try:
-            service = get_sheets_service()
-            if not service:
-                return jsonify({
-                    'success': False,
-                    'error': 'Google Sheets service not configured',
-                    'sheets': []
-                }), 503
-            
             if request.method == 'POST':
-                # Create new sheet
                 data = request.json or {}
                 sheet_name = data.get('sheet_name', '').strip()
-                
+                target = (data.get('target_spreadsheet') or 'research').strip().lower()
+                if target not in ('research', 'community'):
+                    target = 'research'
+
                 if not sheet_name:
                     return jsonify({
                         'success': False,
                         'error': 'sheet_name is required'
                     }), 400
-                
-                # Check if sheet already exists
+
+                if target == 'community':
+                    service = get_community_sheets_service()
+                    if not service:
+                        return jsonify({
+                            'success': False,
+                            'error': 'Community Google Sheets not configured',
+                            'sheets': []
+                        }), 503
+                else:
+                    service = get_sheets_service()
+                    if not service:
+                        return jsonify({
+                            'success': False,
+                            'error': 'Google Sheets service not configured',
+                            'sheets': []
+                        }), 503
+
                 existing_sheets = service.list_sheets()
                 if sheet_name in existing_sheets:
                     return jsonify({
@@ -400,20 +485,35 @@ def register_sheets_routes(app):
                         'message': f'Sheet "{sheet_name}" already exists',
                         'sheets': service.list_sheets()
                     })
-                
-                # Create new sheet with headers
+
                 if service.create_sheet_with_headers(sheet_name):
+                    if target == 'community':
+                        try:
+                            backend_base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                            data_dir = os.path.join(backend_base, 'data')
+                            community_dir = os.path.join(data_dir, 'Community_Uploads')
+                            safe_name = _safe_folder_name(sheet_name)
+                            os.makedirs(os.path.join(community_dir, safe_name), exist_ok=True)
+                        except Exception as folder_err:
+                            print(f"Warning: could not create Community_Uploads folder for new sheet: {folder_err}")
                     return jsonify({
                         'success': True,
                         'message': f'Sheet "{sheet_name}" created successfully',
                         'sheets': service.list_sheets()
                     })
-                else:
-                    return jsonify({
-                        'success': False,
-                        'error': f'Failed to create sheet "{sheet_name}"'
-                    }), 500
-            
+                return jsonify({
+                    'success': False,
+                    'error': f'Failed to create sheet "{sheet_name}"'
+                }), 500
+
+            service = get_sheets_service()
+            if not service:
+                return jsonify({
+                    'success': False,
+                    'error': 'Google Sheets service not configured',
+                    'sheets': []
+                }), 503
+
             # GET: List sheets
             try:
                 sheets = service.list_sheets()
@@ -445,6 +545,42 @@ def register_sheets_routes(app):
             return jsonify({
                 'success': False,
                 'error': f'Failed to process request: {str(e)}',
+                'sheets': []
+            }), 500
+
+    @app.route('/api/sheets/community-sheets', methods=['GET'])
+    @require_admin
+    def list_community_sheets():
+        """
+        List all sheet (tab) names from the community-facing spreadsheet (Admin only).
+        Used when approving a community upload so the admin can pick the community sheet to store the turtle in.
+        """
+        try:
+            service = get_community_sheets_service()
+            if not service:
+                return jsonify({
+                    'success': False,
+                    'error': 'Community Google Sheets not configured',
+                    'sheets': []
+                }), 503
+            try:
+                sheets = service.list_sheets()
+                if not isinstance(sheets, list):
+                    sheets = []
+            except Exception as list_error:
+                print(f"Error listing community sheets: {list_error}")
+                traceback.print_exc()
+                return jsonify({
+                    'success': False,
+                    'error': f'Failed to list community sheets: {str(list_error)}',
+                    'sheets': []
+                }), 500
+            return jsonify({'success': True, 'sheets': sheets})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'error': str(e),
                 'sheets': []
             }), 500
 
@@ -601,16 +737,17 @@ def register_sheets_routes(app):
                     for name_attempt in range(2):
                         try:
                             with service._api_lock:
+                                service._ensure_primary_id_column(sheet)
                                 escaped_sheet = sheet
                                 if any(char in sheet for char in [' ', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '+', '=']):
                                     escaped_sheet = f"'{sheet}'"
                                 range_name = f"{escaped_sheet}!A:Z"
-                                result = service.service.spreadsheets().values().get(
-                                    spreadsheetId=service.spreadsheet_id,
-                                    range=range_name
-                                ).execute()
+                                result = service.get_sheet_values(range_name)
+                                if not result:
+                                    sheet_ok = True
+                                    break
 
-                            values = result.get('values', [])
+                            values = result.get('values', []) if result else []
                             if len(values) < 2:
                                 sheet_ok = True
                                 break

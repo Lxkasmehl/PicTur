@@ -22,24 +22,26 @@ import {
   IconCamera,
   IconInfoCircle,
 } from '@tabler/icons-react';
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { validateFile } from '../utils/fileValidation';
 import { useUser } from '../hooks/useUser';
 import { usePhotoUpload } from '../hooks/usePhotoUpload';
-import { useAvailableSheets } from '../hooks/useAvailableSheets';
 import { PreviewCard } from '../components/PreviewCard';
 import { InstructionsModal } from '../components/InstructionsModal';
+import { getLocations } from '../services/api';
 
 const MATCH_ALL_VALUE = '__all__';
+const SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue', 'Incidental_Finds'];
 
 export default function HomePage() {
   const { role } = useUser();
-  const { sheets: availableSheets, loading: sheetsLoading } =
-    useAvailableSheets(role);
   const isMobile = useMediaQuery('(max-width: 768px)');
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [instructionsOpened, setInstructionsOpened] = useState(false);
+  // Admin: backend folder locations for match scope (State and State/Location)
+  const [availableLocations, setAvailableLocations] = useState<string[]>([]);
+  const [locationsLoading, setLocationsLoading] = useState(false);
   const [selectedMatchSheet, setSelectedMatchSheet] = useState<string>(MATCH_ALL_VALUE);
 
   // Auto-open instructions on first visit
@@ -50,14 +52,84 @@ export default function HomePage() {
     }
   }, []);
 
-  // Admin: default to first location when sheets load
+  // Admin: load backend locations (state and state/location) for match dropdown
   useEffect(() => {
-    if (role === 'admin' && availableSheets.length > 0) {
+    if (role !== 'admin') return;
+    setLocationsLoading(true);
+    getLocations()
+      .then((res) => {
+        if (!res.success || !res.locations?.length) {
+          setAvailableLocations([]);
+          return;
+        }
+        const paths = new Set<string>();
+        for (const rawPath of res.locations as string[]) {
+          const path = (rawPath || '').trim();
+          const first = (path.split('/')[0] ?? '').trim();
+          if (path && first && !SYSTEM_FOLDERS.includes(first)) {
+            paths.add(path);
+          }
+        }
+        const list = Array.from(paths).sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: 'base' }),
+        );
+        setAvailableLocations(list);
+        const firstLocation = list.find((p) => p.includes('/'));
+        const defaultSelection = firstLocation || list[0] || MATCH_ALL_VALUE;
+        setSelectedMatchSheet((prev) =>
+          prev === MATCH_ALL_VALUE ? defaultSelection : prev,
+        );
+      })
+      .catch(() => setAvailableLocations([]))
+      .finally(() => setLocationsLoading(false));
+  }, [role]);
+  useEffect(() => {
+    if (role === 'admin' && availableLocations.length > 0) {
+      const firstLocation = availableLocations.find((p) => p.startsWith('Kansas/'));
+      const defaultSelection = firstLocation || availableLocations[0];
       setSelectedMatchSheet((prev) =>
-        prev === MATCH_ALL_VALUE ? availableSheets[0] : prev,
+        prev === MATCH_ALL_VALUE ? defaultSelection : prev,
       );
     }
-  }, [role, availableSheets]);
+  }, [role, availableLocations]);
+
+  const matchScopeOptions = useMemo(() => {
+    const byState = new Map<string, Set<string>>();
+
+    for (const path of availableLocations) {
+      const parts = path
+        .split('/')
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const state = parts[0];
+      if (!state) continue;
+      if (!byState.has(state)) byState.set(state, new Set<string>());
+      if (parts.length > 1) {
+        byState.get(state)!.add(`${state}/${parts.slice(1).join('/')}`);
+      }
+    }
+
+    const orderedStates = Array.from(byState.keys()).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' }),
+    );
+    const options: { value: string; label: string }[] = [];
+
+    for (const state of orderedStates) {
+      options.push({ value: state, label: state });
+      if (state === 'Kansas') {
+        const stateLocations = Array.from(byState.get(state) ?? []).sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: 'base' }),
+        );
+        for (const loc of stateLocations) {
+          options.push({ value: loc, label: loc });
+        }
+      }
+    }
+
+    options.push({ value: 'Community_Uploads', label: 'Community Turtles only' });
+    options.push({ value: MATCH_ALL_VALUE, label: 'All locations (everything)' });
+    return options;
+  }, [availableLocations]);
 
   const matchSheetForUpload =
     role === 'admin'
@@ -206,13 +278,13 @@ export default function HomePage() {
             </Stack>
           </Center>
 
-          {/* Admin: select which location/datasheet to test against (from Google Sheets) */}
+          {/* Admin: select which location (backend folder / state) to test against */}
           {role === 'admin' && (
             <Stack gap='xs'>
               <Text size='sm' fw={500}>
                 Which location to test against?
               </Text>
-              {sheetsLoading ? (
+              {locationsLoading ? (
                 <Group gap='xs'>
                   <Loader size='sm' />
                   <Text size='sm' c='dimmed'>
@@ -221,20 +293,23 @@ export default function HomePage() {
                 </Group>
               ) : (
                 <Select
-                  data={[
-                    ...availableSheets.map((s) => ({ value: s, label: s })),
-                    { value: MATCH_ALL_VALUE, label: 'All locations (exception)' },
-                  ]}
+                  data={matchScopeOptions}
                   value={selectedMatchSheet}
                   onChange={(v) => v != null && setSelectedMatchSheet(v)}
-                  placeholder='Select location'
+                  placeholder={
+                    availableLocations.length
+                      ? 'Select state or location'
+                      : 'No locations yet'
+                  }
                   allowDeselect={false}
                   disabled={uploadState === 'uploading'}
                 />
               )}
               <Text size='xs' c='dimmed'>
-                Default: only turtles from this location. &quot;All locations&quot; only
-                in exceptional cases.
+                Location: tested against that location, all Community Turtles and all
+                Incidental Finds. &quot;Community Turtles only&quot;: only community
+                uploads. &quot;All locations&quot;: everything (all locations, Community,
+                Incidental Finds).
               </Text>
             </Stack>
           )}

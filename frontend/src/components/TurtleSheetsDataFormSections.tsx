@@ -54,6 +54,7 @@ export function SheetSelectionRow({
   setSelectedSheetName,
   availableSheets,
   setShowCreateSheetModal,
+  allowCreateNewSheet = true,
 }: {
   loadingSheets: boolean;
   isFieldModeRestricted: boolean;
@@ -63,11 +64,12 @@ export function SheetSelectionRow({
   setSelectedSheetName: (v: string) => void;
   availableSheets: string[];
   setShowCreateSheetModal: (v: boolean) => void;
+  allowCreateNewSheet?: boolean;
 }) {
   const isMobile = useMediaQuery('(max-width: 768px)');
   const sheetOptionsForSelect = [
     ...availableSheets.map((name) => ({ value: name, label: name })),
-    { value: '__create_new__', label: '+ Create New Sheet' },
+    ...(allowCreateNewSheet !== false ? [{ value: '__create_new__' as const, label: '+ Create New Sheet' }] : []),
   ];
   const sheetOptionsForNative = [
     { value: '', label: 'Select a sheet or create new' },
@@ -140,6 +142,7 @@ export function SheetSelectionRow({
       value={selectedSheetName}
       onChange={handleSheetChange}
       required
+      allowDeselect={false}
       description='Select the Google Sheets tab where this turtle data should be stored'
       error={!selectedSheetName ? 'Sheet selection is required' : undefined}
       searchable

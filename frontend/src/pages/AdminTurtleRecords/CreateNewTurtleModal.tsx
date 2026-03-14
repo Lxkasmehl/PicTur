@@ -50,6 +50,9 @@ export function CreateNewTurtleModal({ size }: CreateNewTurtleModalProps) {
           initialData={newTurtleSheetsData || undefined}
           sheetName={newTurtleSheetName}
           initialAvailableSheets={availableSheets.length > 0 ? availableSheets : undefined}
+          sheetSource={
+            selectedItem?.request_id?.startsWith('admin_') ? 'admin' : 'community'
+          }
           hintLocationFromCommunity={
             selectedItem?.metadata?.state && selectedItem?.metadata?.location
               ? `${selectedItem.metadata.state} / ${selectedItem.metadata.location}`
