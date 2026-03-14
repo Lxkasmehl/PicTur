@@ -80,6 +80,25 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
   test('Filled mass and morphometrics are sent in POST turtle_data', async ({ page }) => {
     test.setTimeout(90_000);
 
+    const e2eRequestId = 'e2e-morph-request-1';
+    await page.route('**/upload', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            request_id: e2eRequestId,
+            uploaded_image_path: '/e2e/morph-submit-e2e.png',
+            matches: [],
+            message: 'Uploaded',
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
     await page.route('**/api/sheets/turtle-names', async (route) => {
       await route.fulfill({
         status: 200,
@@ -109,11 +128,20 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
         await route.continue();
       }
     });
+    await page.route('**/api/sheets/generate-primary-id', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, primary_id: 'E2E-MORPH-002' }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
 
-    let postBody: { turtle_data?: { mass_g?: string; dome_height_mm?: string } } = {};
     await page.route('**/api/sheets/turtle', async (route) => {
       if (route.request().method() === 'POST') {
-        postBody = route.request().postDataJSON() || {};
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -148,14 +176,26 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
     await selectSexInCreateTurtleDialog(page, dialog, 'F');
 
     await dialog.getByLabel('Name', { exact: true }).fill('E2E Morph Turtle');
-    await dialog.getByLabel('Mass (g)', { exact: true }).fill('300');
-    await dialog.getByLabel('Dome height (mm)', { exact: true }).fill('98');
+    const massInput = dialog.getByLabel('Mass (g)', { exact: true });
+    const domeHeightInput = dialog.getByLabel('Dome height (mm)', { exact: true });
+    await massInput.fill('300');
+    await domeHeightInput.fill('98');
+    await expect(massInput).toHaveValue('300');
+    await expect(domeHeightInput).toHaveValue('98');
+    await domeHeightInput.press('Tab');
 
     const createTurtleDataBtn = dialog.getByRole('button', { name: 'Create Turtle Data' });
     await expect(createTurtleDataBtn).toBeEnabled({ timeout: 15_000 });
-    await createTurtleDataBtn.click();
 
-    await expect(page.getByText(/created|success/i)).toBeVisible({ timeout: 10_000 }).catch(() => {});
+    const postResponsePromise = page.waitForResponse(
+      (res) => res.url().includes('sheets/turtle') && res.request().method() === 'POST',
+      { timeout: 15_000 },
+    );
+    await createTurtleDataBtn.click();
+    const postResponse = await postResponsePromise;
+    const postBody = postResponse.request().postDataJSON() as {
+      turtle_data?: { mass_g?: string; dome_height_mm?: string };
+    };
 
     expect(postBody.turtle_data?.mass_g).toBe('300');
     expect(postBody.turtle_data?.dome_height_mm).toBe('98');
