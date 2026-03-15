@@ -302,3 +302,23 @@ class GoogleSheetsService:
             if result:
                 self._invalidate_list_sheets_cache()
             return result
+
+    def get_sheet_values(self, sheet_name: str) -> Optional[List[List[Any]]]:
+        """
+        Get all values from a sheet (for backup export).
+        Returns a list of rows, each row a list of cell values, or None on error.
+        """
+        with self._api_lock:
+            try:
+                range_ = self._escape_sheet_name(sheet_name)
+                result = self.service.spreadsheets().values().get(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=range_,
+                ).execute()
+                return result.get('values') or []
+            except HttpError as e:
+                print(f"Backup: could not read sheet '{sheet_name}': {e}")
+                return None
+            except Exception as e:
+                print(f"Backup: error reading sheet '{sheet_name}': {e}")
+                return None

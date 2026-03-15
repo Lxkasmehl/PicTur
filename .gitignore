@@ -11,3 +11,6 @@
 Thumbs.db
 
 .env
+
+# Local backup output (see docs/BACKUP.md)
+backups/

@@ -400,3 +400,15 @@ Once the turtle team confirms an upload (match to existing turtle or new turtle)
 - Check that the service account has "Editor" permissions on the spreadsheet
 - Verify the sheet name matches the state name
 - Check that all required columns exist in the header row
+
+### Backup (Google Sheets export)
+
+The backend can export all sheets from both the admin and community spreadsheets to CSV (and JSON) for backup and history. See **docs/BACKUP.md** for the full strategy (where to store backups, Docker, retention, restore).
+
+- **Run manually** (from `backend` directory):
+  ```bash
+  python -m backup.run
+  ```
+- **Output:** `BACKUP_OUTPUT_DIR/sheets/YYYY-MM-DD/` with one CSV per sheet (`admin_SheetName.csv`, `community_SheetName.csv`) and optional `admin.json` / `community.json`.
+- **Env:** `BACKUP_OUTPUT_DIR` (default: `./backups`). With Docker, the compose file mounts `./backups` on the host to `/app/backups` so backups are stored outside the container.
+- **On the server:** Set `BACKUP_OUTPUT_DIR` to a host path (e.g. `/srv/turtletracker/backups`) and mount that directory into the backend container; run `python -m backup.run` daily via cron (e.g. `docker compose exec backend python -m backup.run`).

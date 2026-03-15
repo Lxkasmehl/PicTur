@@ -49,8 +49,12 @@ services:
       JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
       GOOGLE_SHEETS_SPREADSHEET_ID: ${GOOGLE_SHEETS_SPREADSHEET_ID:-}
       GOOGLE_SHEETS_CREDENTIALS_PATH: ${GOOGLE_SHEETS_CREDENTIALS_PATH:-/app/credentials/google-sheets-credentials.json}
+      GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID: ${GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID:-}
+      BACKUP_OUTPUT_DIR: ${BACKUP_OUTPUT_DIR:-/app/backups}
     volumes:
       - backend-data:/app/data
+      # Backups on host so they survive container/volume removal (see docs/BACKUP.md)
+      - ./backups:/app/backups
       # Mount Google credentials from host (create backend/credentials/ and add JSON)
       - ./backend/credentials:/app/credentials:ro
     # Backend may take a while to load vocabulary/index
