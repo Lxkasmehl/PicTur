@@ -11,6 +11,7 @@ from werkzeug.utils import secure_filename
 from auth import require_admin
 from services import manager_service
 from services.manager_service import get_sheets_service, get_community_sheets_service
+from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 
 # Metadata keys to strip when syncing turtle data to community spreadsheet
 _COMMUNITY_SYNC_STRIP_KEYS = ('sheet_name', 'row_index')
@@ -67,7 +68,6 @@ def _sync_confirmed_to_community(data, sheets_data, service, new_location, new_t
     else:
         comm.create_turtle_data(turtle_data, sheet_name, state, location)
         print(f"✅ Community spreadsheet: added turtle {primary_id} to sheet '{sheet_name}'")
-from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 
 
 def register_review_routes(app):

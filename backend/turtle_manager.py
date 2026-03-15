@@ -212,52 +212,6 @@ class TurtleManager:
 
         return locations
 
-    def process_manual_upload(self, image_path, location_selection):
-        """
-        Handles the GUI Manual Upload.
-        Parses 'State/Location' string and calls the processor.
-        """
-        # 1. Determine Destination Folder
-        if "/" in location_selection:
-            state, loc = location_selection.split("/", 1)
-            location_dir = os.path.join(self.base_dir, state, loc)
-        else:
-            # Handle roots like "Community_Uploads"
-            location_dir = os.path.join(self.base_dir, location_selection)
-
-        if not os.path.exists(location_dir):
-            os.makedirs(location_dir, exist_ok=True)
-
-        # 2. Extract ID (First 4 chars)
-        filename = os.path.basename(image_path)
-        turtle_id = filename[:4].strip().rstrip('_')
-
-        # 3. Run the standard processor
-        print(f"Manual Upload: Processing {turtle_id} into {location_dir}...")
-        return self._process_single_turtle(image_path, location_dir, turtle_id)
-
-    def get_review_queue(self):
-        """
-        RECOVERS STATE ON RESTART.
-        Scans the 'Review_Queue' folder and returns the list of pending requests.
-        """
-        queue_items = []
-
-        # If the server restarted, this loop finds all the folders we haven't finished yet
-        if os.path.exists(self.review_queue_dir):
-            for req_id in os.listdir(self.review_queue_dir):
-                req_path = os.path.join(self.review_queue_dir, req_id)
-
-                if os.path.isdir(req_path):
-                    # Basic info to send to frontend
-                    queue_items.append({
-                        'request_id': req_id,
-                        'path': req_path,
-                        'status': 'pending'  # If it's in this folder, it is pending
-                    })
-
-        return queue_items
-
     def create_new_location(self, state_name, location_name):
         """Allows Admin to generate a new research site folder from the GUI."""
         official_name = self.get_official_location_name(location_name)
@@ -384,30 +338,6 @@ class TurtleManager:
         else:
             print(f"   ⚠️ SuperPoint Processing Failed: {turtle_id}")
             return "error"
-
-    # --- FAST VRAM SEARCH LOGIC ---
-    def search_for_matches(self, query_image_path, location_filter="All Locations"):
-        """VRAM cached SuperPoint/LightGlue search path."""
-        filename = os.path.basename(query_image_path)
-        t_start = time.time()
-
-        # Clean location filter if needed
-        loc = (location_filter or "").strip()
-        if not loc or loc == "All Locations":
-            loc = "All Locations"
-
-        print(f"🔍 Deep Searching {filename} (VRAM Cached Mode)...")
-
-        # Call the new VRAM Matcher
-        results = brain.match_query_robust_vram(query_image_path, loc)
-        t_elapsed = time.time() - t_start
-
-        if results:
-            print(f"✅ Found {len(results)} matches in {t_elapsed:.2f}s")
-        else:
-            print(f"⚠️ No matches found in {t_elapsed:.2f}s")
-
-        return results[:5], t_elapsed
 
     def handle_community_upload(self, image_path, finder_name="Anonymous"):
         """Saves an image to Community_Uploads and queues it."""
@@ -790,25 +720,25 @@ class TurtleManager:
                 if try_delete(date_dir): return True, None
         return False, "Image not found"
 
-    def search_for_matches(self, query_image_path, sheet_name=None):
+    def search_for_matches(self, query_image_path, location_filter=None):
         """VRAM cached SuperPoint/LightGlue search with multi-location scope."""
         t_start = time.time()
         filename = os.path.basename(query_image_path)
 
         # Build location filter: selected location always includes Community_Uploads + Incidental_Finds
-        raw_sheet = (sheet_name or '').strip() or None
-        if raw_sheet:
-            if raw_sheet == 'Community_Uploads':
-                location_filter = ['Community_Uploads']
+        raw_loc = (location_filter or '').strip() or None
+        if raw_loc and raw_loc != 'All Locations':
+            if raw_loc == 'Community_Uploads':
+                loc_filter = ['Community_Uploads']
             else:
-                location_filter = [raw_sheet, 'Community_Uploads', 'Incidental_Finds']
+                loc_filter = [raw_loc, 'Community_Uploads', 'Incidental_Finds']
         else:
-            location_filter = None
+            loc_filter = None
 
-        scope = f" (Location: {location_filter})" if location_filter else " (all locations)"
+        scope = f" (Location: {loc_filter})" if loc_filter else " (all locations)"
         print(f"🔍 Searching {filename} (VRAM Cached Mode){scope}...")
 
-        results = brain.match_query_robust_vram(query_image_path, location_filter)
+        results = brain.match_query_robust_vram(query_image_path, loc_filter)
         t_elapsed = time.time() - t_start
 
         if results:
