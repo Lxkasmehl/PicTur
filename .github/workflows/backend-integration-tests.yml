@@ -36,6 +36,10 @@ jobs:
           docker compose -f docker-compose.integration.yml exec -T \
             -e E2E_ADMIN_EMAIL=admin@test.com \
             -e E2E_ADMIN_PASSWORD=testpassword123 \
+            -e E2E_STAFF_EMAIL=staff@test.com \
+            -e E2E_STAFF_PASSWORD=testpassword123 \
+            -e E2E_COMMUNITY_EMAIL=community@test.com \
+            -e E2E_COMMUNITY_PASSWORD=testpassword123 \
             auth-backend node dist/scripts/seed-test-users.js
 
       - name: Wait for Flask backend
@@ -64,5 +68,9 @@ jobs:
           AUTH_URL: http://localhost:3001/api
           E2E_ADMIN_EMAIL: admin@test.com
           E2E_ADMIN_PASSWORD: testpassword123
+          E2E_STAFF_EMAIL: staff@test.com
+          E2E_STAFF_PASSWORD: testpassword123
+          E2E_COMMUNITY_EMAIL: community@test.com
+          E2E_COMMUNITY_PASSWORD: testpassword123
         # Includes test_sheets_turtle_names.py, test_sheets_generate_id.py (turtle-names, biology ID auto-generation)
         run: python -m pytest tests/integration -v --tb=short

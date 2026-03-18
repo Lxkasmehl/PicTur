@@ -10,7 +10,7 @@ import traceback
 from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
-from auth import optional_auth
+from auth import optional_auth, check_auth_revocation
 from services import manager_service
 
 
@@ -117,7 +117,24 @@ def register_upload_routes(app):
             if not os.path.exists(temp_path):
                 return jsonify({'error': 'Failed to save file'}), 500
             
-            if user_role == 'admin':
+            if user_role in ('staff', 'admin'):
+                # Enforce revocation before privileged path (demotion must revoke immediately)
+                auth_header = request.headers.get('Authorization')
+                if not auth_header:
+                    if os.path.exists(temp_path):
+                        try:
+                            os.remove(temp_path)
+                        except OSError:
+                            pass
+                    return jsonify({'error': 'Staff or admin access requires a valid token'}), 403
+                allowed, revoke_error = check_auth_revocation(auth_header)
+                if not allowed:
+                    if os.path.exists(temp_path):
+                        try:
+                            os.remove(temp_path)
+                        except OSError:
+                            pass
+                    return jsonify({'error': revoke_error or 'Token has been revoked'}), 403
                 # Admin: create a packet (so we can add additional images on match page) then run search
                 request_id = f"admin_{int(time.time())}_{filename}"
                 packet_dir = os.path.join(manager_service.manager.review_queue_dir, request_id)

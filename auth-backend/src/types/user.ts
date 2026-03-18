@@ -1,8 +1,11 @@
+/** User roles: community (default), staff (admin-like, no user management), admin (full, can manage users) */
+export type UserRole = 'community' | 'staff' | 'admin';
+
 export interface User {
   id: number;
   email: string;
   name: string | null;
-  role: 'community' | 'admin';
+  role: UserRole;
   google_id: string | null;
   created_at: string;
   email_verified: boolean;
