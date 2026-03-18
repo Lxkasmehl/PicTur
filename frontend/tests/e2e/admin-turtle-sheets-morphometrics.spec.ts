@@ -4,6 +4,7 @@ import {
   grantLocationPermission,
   getTestImageBuffer,
   clickUploadPhotoButton,
+  fillGeneralLocationInCreateTurtleDialog,
   selectSheetInCreateTurtleDialog,
   selectSexInCreateTurtleDialog,
 } from './fixtures';
@@ -30,12 +31,15 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
         body: JSON.stringify({ success: true, names: [] }),
       });
     });
-    await page.route('**/api/sheets/sheets**', async (route) => {
+    await page.route('**/api/locations', async (route) => {
       if (route.request().method() === 'GET') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ sheets: ['Kansas'], success: true }),
+          body: JSON.stringify({
+            success: true,
+            locations: ['Kansas', 'Kansas/Wichita'],
+          }),
         });
       } else {
         await route.continue();
@@ -80,7 +84,7 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
   test('Filled mass and morphometrics are sent in POST turtle_data', async ({ page }) => {
     test.setTimeout(90_000);
 
-    const e2eRequestId = 'e2e-morph-request-1';
+    const e2eRequestId = 'admin_e2e-morph-request-1';
     await page.route('**/upload', async (route) => {
       if (route.request().method() === 'POST') {
         await route.fulfill({
@@ -106,12 +110,15 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
         body: JSON.stringify({ success: true, names: [] }),
       });
     });
-    await page.route('**/api/sheets/sheets**', async (route) => {
+    await page.route('**/api/locations', async (route) => {
       if (route.request().method() === 'GET') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ sheets: ['Kansas'], success: true }),
+          body: JSON.stringify({
+            success: true,
+            locations: ['Kansas', 'Kansas/Wichita'],
+          }),
         });
       } else {
         await route.continue();
@@ -174,6 +181,7 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
 
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
     await selectSexInCreateTurtleDialog(page, dialog, 'F');
+    await fillGeneralLocationInCreateTurtleDialog(dialog, 'Wichita');
 
     await dialog.getByLabel('Name', { exact: true }).fill('E2E Morph Turtle');
     const massInput = dialog.getByLabel('Mass (g)', { exact: true });
