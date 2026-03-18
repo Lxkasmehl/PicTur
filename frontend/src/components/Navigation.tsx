@@ -30,6 +30,7 @@ import {
 } from '@tabler/icons-react';
 import { useUser } from '../hooks/useUser';
 import { logout as apiLogout } from '../services/api';
+import { isStaffRole } from '../services/api/auth';
 import { notifications } from '@mantine/notifications';
 
 interface NavigationProps {
@@ -50,11 +51,17 @@ export default function Navigation({ children }: NavigationProps) {
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const { role, isLoggedIn, user, logout: setUserLogout } = useUser();
 
+  const isStaff = isStaffRole(role);
+  const isAdmin = role === 'admin';
+  // Theme/UI color per role: community=blue, staff=orange, admin=red
+  const roleColor = role === 'admin' ? 'red' : role === 'staff' ? 'orange' : 'blue';
+  const roleColorHex =
+    role === 'admin' ? theme.colors.red[6] : role === 'staff' ? theme.colors.orange[6] : theme.colors.blue[6];
+
   // Get navigation items in the correct order based on role
   const getNavigationItems = () => {
     const items = [...navigationItems];
-    if (role === 'admin') {
-      // Insert admin items after Home
+    if (isStaff) {
       items.splice(1, 0, {
         label: 'Turtle Records',
         path: '/admin/turtle-records',
@@ -65,11 +72,13 @@ export default function Navigation({ children }: NavigationProps) {
         path: '/admin/release',
         icon: IconFlag,
       });
-      items.splice(3, 0, {
-        label: 'User Management',
-        path: '/admin/users',
-        icon: IconUsers,
-      });
+      if (isAdmin) {
+        items.splice(3, 0, {
+          label: 'User Management',
+          path: '/admin/users',
+          icon: IconUsers,
+        });
+      }
     }
     return items;
   };
@@ -80,8 +89,8 @@ export default function Navigation({ children }: NavigationProps) {
   const dynamicBreakpoint = useMemo(() => {
     const baseBreakpoint = 1000; // Base breakpoint for customer view with normal name
 
-    // Calculate item count based on role
-    const itemCount = role === 'admin' ? 6 : 3; // Admin has 3 extra items
+    // Calculate item count based on role (admin: 6, staff: 5, community: 3)
+    const itemCount = isAdmin ? 6 : isStaff ? 5 : 3;
 
     // Admin has 2 extra items, increase breakpoint by ~167px per extra item
     // This makes drawer appear earlier when there are more nav items
@@ -97,7 +106,7 @@ export default function Navigation({ children }: NavigationProps) {
 
     // Calculate final breakpoint (higher = drawer appears at larger screen width)
     return baseBreakpoint + itemAdjustment + userNameAdjustment;
-  }, [role, user?.name, user?.email]);
+  }, [role, isStaff, isAdmin, user?.name, user?.email]);
 
   // Use dynamic breakpoint; on mobile (< 768px) always show drawer for best touch UX
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -141,16 +150,12 @@ export default function Navigation({ children }: NavigationProps) {
       leftSection={<item.icon size={16} />}
       onClick={() => handleNavigation(item.path)}
       color={
-        location.pathname === item.path ? (role === 'admin' ? 'red' : 'blue') : undefined
+        location.pathname === item.path ? roleColor : undefined
       }
       data-active={location.pathname === item.path ? 'true' : 'false'}
       style={{
         backgroundColor:
-          location.pathname === item.path
-            ? role === 'admin'
-              ? theme.colors.red[6]
-              : theme.colors.blue[6]
-            : 'transparent',
+          location.pathname === item.path ? roleColorHex : 'transparent',
         color: location.pathname === item.path ? 'white' : undefined,
         transition: 'all 0.2s ease',
       }}
@@ -191,14 +196,14 @@ export default function Navigation({ children }: NavigationProps) {
             </Text>
             <Badge
               data-testid='role-badge'
-              color={role === 'admin' ? 'red' : 'blue'}
+              color={roleColor}
               leftSection={
-                role === 'admin' ? <IconShield size={12} /> : <IconUser size={12} />
+                isStaff ? <IconShield size={12} /> : <IconUser size={12} />
               }
               size='sm'
               style={{ flexShrink: 0 }}
             >
-              {role === 'admin' ? 'Admin' : 'Community'}
+              {role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Community'}
             </Badge>
           </Group>
 
@@ -258,19 +263,11 @@ export default function Navigation({ children }: NavigationProps) {
                     leftSection={<IconLogin size={16} />}
                     onClick={() => handleNavigation('/login')}
                     color={
-                      location.pathname === '/login'
-                        ? role === 'admin'
-                          ? 'red'
-                          : 'blue'
-                        : undefined
+                      location.pathname === '/login' ? roleColor : undefined
                     }
                     style={{
                       backgroundColor:
-                        location.pathname === '/login'
-                          ? role === 'admin'
-                            ? theme.colors.red[6]
-                            : theme.colors.blue[6]
-                          : 'transparent',
+                        location.pathname === '/login' ? roleColorHex : 'transparent',
                       color: location.pathname === '/login' ? 'white' : undefined,
                       transition: 'all 0.2s ease',
                     }}
@@ -328,7 +325,8 @@ export default function Navigation({ children }: NavigationProps) {
         size={isMobile ? '85%' : 'xs'}
         padding='md'
       >
-        <Stack gap='xs' h='90vh' justify='space-between'>
+        <div data-testid='nav-drawer'>
+          <Stack gap='xs' h='90vh' justify='space-between'>
           {/* Main navigation links at top */}
           <Stack gap='xs'>
             {getNavigationItems().map((item) => (
@@ -348,7 +346,7 @@ export default function Navigation({ children }: NavigationProps) {
                 variant='light'
                 leftSection={<IconLogout size={16} />}
                 onClick={handleLogout}
-                color={role === 'admin' ? 'red' : 'blue'}
+                color={roleColor}
               >
                 Logout
               </Button>
@@ -359,19 +357,11 @@ export default function Navigation({ children }: NavigationProps) {
               leftSection={<IconLogin size={16} />}
               onClick={() => handleNavigation('/login')}
               color={
-                location.pathname === '/login'
-                  ? role === 'admin'
-                    ? 'red'
-                    : 'blue'
-                  : undefined
+                location.pathname === '/login' ? roleColor : undefined
               }
               style={{
                 backgroundColor:
-                  location.pathname === '/login'
-                    ? role === 'admin'
-                      ? theme.colors.red[6]
-                      : theme.colors.blue[6]
-                    : undefined,
+                  location.pathname === '/login' ? roleColorHex : undefined,
                 color: location.pathname === '/login' ? 'white' : undefined,
                 transition: 'all 0.2s ease',
               }}
@@ -379,7 +369,8 @@ export default function Navigation({ children }: NavigationProps) {
               Login
             </Button>
           )}
-        </Stack>
+          </Stack>
+        </div>
       </Drawer>
 
       <AppShell.Main>{children}</AppShell.Main>

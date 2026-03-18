@@ -20,6 +20,25 @@ const communityTheme = createTheme({
   },
 });
 
+// Staff theme (orange-based)
+const staffTheme = createTheme({
+  primaryColor: 'orange',
+  colors: {
+    orange: [
+      '#fff4e6',
+      '#ffe8cc',
+      '#ffd8a8',
+      '#ffc078',
+      '#ffa94d',
+      '#ff922b',
+      '#fd7e14',
+      '#f76707',
+      '#e8590c',
+      '#d9480f',
+    ],
+  },
+});
+
 // Admin theme (red-based)
 const adminTheme = createTheme({
   primaryColor: 'red',
@@ -39,8 +58,10 @@ const adminTheme = createTheme({
   },
 });
 
+export type RoleThemeType = 'community' | 'staff' | 'admin';
+
 interface ThemeState {
-  themeType: 'community' | 'admin';
+  themeType: RoleThemeType;
 }
 
 const initialState: ThemeState = {
@@ -51,12 +72,12 @@ const themeSlice = createSlice({
   name: 'theme',
   initialState,
   reducers: {
-    setThemeType: (state, action: PayloadAction<'community' | 'admin'>) => {
+    setThemeType: (state, action: PayloadAction<RoleThemeType>) => {
       state.themeType = action.payload;
     },
   },
 });
 
 export const { setThemeType } = themeSlice.actions;
-export { communityTheme, adminTheme };
+export { communityTheme, staffTheme, adminTheme };
 export default themeSlice.reducer;

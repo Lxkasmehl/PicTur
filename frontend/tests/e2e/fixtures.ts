@@ -4,19 +4,35 @@ import type { Page } from '@playwright/test';
 
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@test.com';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'testpassword123';
+const STAFF_EMAIL = process.env.E2E_STAFF_EMAIL ?? 'staff@test.com';
+const STAFF_PASSWORD = process.env.E2E_STAFF_PASSWORD ?? 'testpassword123';
 const COMMUNITY_EMAIL = process.env.E2E_COMMUNITY_EMAIL ?? 'community@test.com';
 const COMMUNITY_PASSWORD = process.env.E2E_COMMUNITY_PASSWORD ?? 'testpassword123';
 
 /** Opens the mobile menu (burger), if visible. */
 export async function openMobileMenu(page: Page): Promise<void> {
   const burger = page.getByTestId('mobile-menu-button');
-  if (await burger.isVisible()) await burger.click();
+  if (await burger.isVisible()) {
+    // Force click so overlays (e.g. drawer, portal) do not intercept on mobile
+    await burger.click({ force: true });
+  }
 }
 
-/** Clicks a nav link by button label. */
+/** Clicks a nav link by button label. When the mobile menu is opened, waits for the nav drawer and the button (by visible text) to be visible, then clicks to avoid flakiness from accessible-name or timing. */
 export async function navClick(page: Page, label: string): Promise<void> {
-  await openMobileMenu(page);
-  await page.getByRole('button', { name: label }).click();
+  const burger = page.getByTestId('mobile-menu-button');
+  const drawer = page.getByTestId('nav-drawer');
+  if (await burger.isVisible()) {
+    // Only open the drawer if it's not already open (burger toggles; clicking again would close it and detach the button).
+    if (!(await drawer.isVisible())) {
+      await burger.click({ force: true });
+    }
+    await drawer.waitFor({ state: 'visible' });
+    // Single locator chain + getByRole: re-query on each retry to avoid "element was detached" when the drawer re-renders (e.g. Mantine open animation).
+    await drawer.getByRole('button', { name: label }).click();
+  } else {
+    await page.getByRole('button', { name: label }).click();
+  }
 }
 
 /** Login as admin (email/password, waits for home + role badge). */
@@ -42,6 +58,16 @@ export async function loginAsAdmin(page: Page): Promise<void> {
     throw new Error('Login timed out. Run `npm run test:setup` in auth-backend and ensure the server is running.');
   }
   await expect(page.getByTestId('role-badge')).toHaveText(/Admin/);
+}
+
+/** Login as staff user (admin-like, no user management). */
+export async function loginAsStaff(page: Page): Promise<void> {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(STAFF_EMAIL);
+  await page.getByLabel('Password').fill(STAFF_PASSWORD);
+  await page.getByRole('button', { name: 'Sign In' }).click();
+  await page.waitForURL('/', { timeout: 10000 });
+  await expect(page.getByTestId('role-badge')).toHaveText(/Staff/);
 }
 
 /** Login as community user. */

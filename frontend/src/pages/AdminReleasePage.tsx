@@ -21,6 +21,7 @@ import { IconMapPin, IconFlag, IconArrowLeft, IconCircleCheck } from '@tabler/ic
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '../hooks/useUser';
+import { isStaffRole } from '../services/api/auth';
 import { getTurtlesWithFlags, clearReleaseFlag } from '../services/api';
 import { MapWithMarkers } from '../components/MapWithMarkers.tsx';
 import { notifications } from '@mantine/notifications';
@@ -57,14 +58,14 @@ export default function AdminReleasePage() {
 
   useEffect(() => {
     if (!authChecked) return;
-    if (role !== 'admin') {
+    if (!isStaffRole(role)) {
       navigate('/');
       return;
     }
     loadFlags();
   }, [authChecked, role, navigate]);
 
-  if (!authChecked || role !== 'admin') {
+  if (!authChecked || !isStaffRole(role)) {
     return (
       <Center py="xl">
         <Loader size="lg" />

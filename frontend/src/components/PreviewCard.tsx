@@ -237,7 +237,7 @@ export function PreviewCard({
             )}
 
             {/* Collected to lab + physical flag (admin only): first ask if taking to lab, then flag questions */}
-            {role === 'admin' && uploadState === 'idle' && setCollectedToLab && setPhysicalFlag && (
+            {(role === 'staff' || role === 'admin') && uploadState === 'idle' && setCollectedToLab && setPhysicalFlag && (
               <Stack gap='sm'>
                 <Text size='sm' fw={500}>
                   Will you take this turtle to the lab?
@@ -290,7 +290,7 @@ export function PreviewCard({
             )}
 
             {/* Digital flag (when collected to lab) or location hint (optional): community always; admin only when taking to lab */}
-            {(role === 'community' || (role === 'admin' && collectedToLab === 'yes')) && uploadState === 'idle' && (
+            {(role === 'community' || ((role === 'staff' || role === 'admin') && collectedToLab === 'yes')) && uploadState === 'idle' && (
               <Stack gap='sm'>
                 {collectedToLab === 'yes' ? (
                   <Alert color='orange' radius='md'>
@@ -504,7 +504,7 @@ export function PreviewCard({
                     </Text>
                   </Group>
                 )}
-                {!isDuplicate && role === 'admin' && (
+                {!isDuplicate && (role === 'staff' || role === 'admin') && (
                   <Group gap='xs' mt='xs' align='flex-start'>
                     <IconSparkles size={14} style={{ marginTop: 2 }} />
                     <Text size='xs' c='dimmed'>
