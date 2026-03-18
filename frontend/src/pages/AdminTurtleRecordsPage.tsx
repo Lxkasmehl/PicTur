@@ -13,6 +13,7 @@ import {
 import { IconPhoto, IconDatabase } from '@tabler/icons-react';
 import { useMediaQuery } from '@mantine/hooks';
 import { useUser } from '../hooks/useUser';
+import { isStaffRole } from '../services/api/auth';
 import { useAdminTurtleRecords } from '../hooks/useAdminTurtleRecords';
 import { AdminTurtleRecordsProvider } from './AdminTurtleRecords/AdminTurtleRecordsContext';
 import { ReviewQueueTab } from './AdminTurtleRecords/ReviewQueueTab';
@@ -24,7 +25,7 @@ export default function AdminTurtleRecordsPage() {
   const isMobile = useMediaQuery('(max-width: 576px)');
   const hook = useAdminTurtleRecords(role, authChecked);
 
-  if (role !== 'admin') {
+  if (!isStaffRole(role)) {
     return null;
   }
 

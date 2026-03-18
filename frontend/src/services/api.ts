@@ -22,14 +22,19 @@ export {
   verifyEmail,
   resendVerificationEmail,
   promoteToAdmin,
+  getUsers,
+  setUserRole,
+  isStaffRole,
 } from './api/auth';
 export type {
   User,
+  UserRole,
   AuthResponse,
   RegisterRequest,
   LoginRequest,
   InvitationDetails,
   PromoteToAdminResponse,
+  GetUsersResponse,
 } from './api/auth';
 
 export {

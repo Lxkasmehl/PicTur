@@ -20,7 +20,7 @@ type UploadState = 'idle' | 'uploading' | 'success' | 'error';
 interface UsePhotoUploadOptions {
   role?: string;
   onSuccess?: (imageId: string) => void;
-  /** Admin only: sheet name (location) to test against; '' = all locations */
+  /** Admin/Staff: sheet name (location) to test against; '' = all locations */
   matchSheet?: string;
 }
 
@@ -155,16 +155,17 @@ export function usePhotoUpload({
     try {
       // Upload to backend API (location hint is collected explicitly in UI for community)
       // Authentication is optional - anonymous uploads are allowed
-      const userRole: 'admin' | 'community' =
-        (role === 'admin' || role === 'community' ? role : null) ||
-        (user?.role === 'admin' || user?.role === 'community' ? user.role : null) ||
+      const userRole: 'admin' | 'staff' | 'community' =
+        (role === 'admin' || role === 'staff' || role === 'community' ? role : null) ||
+        (user?.role === 'admin' || user?.role === 'staff' || user?.role === 'community' ? user.role : null) ||
         'community';
+      const isAdminFlow = userRole === 'admin' || userRole === 'staff';
       const userEmail = user?.email || 'anonymous@example.com';
 
       const hasFlagData =
         collectedToLab || physicalFlag || (locationHint && collectedToLab === 'yes');
       const flagOptions: UploadFlagOptions | undefined =
-        hasFlagData && (userRole === 'community' || userRole === 'admin')
+        hasFlagData && (userRole === 'community' || userRole === 'admin' || userRole === 'staff')
           ? {
               ...(collectedToLab && { collectedToLab }),
               ...(physicalFlag && { physicalFlag }),
@@ -180,7 +181,7 @@ export function usePhotoUpload({
         userEmail,
         undefined,
         locationHint ?? undefined,
-        userRole === 'admin' ? (matchSheet ?? '') : undefined,
+        isAdminFlow ? (matchSheet ?? '') : undefined,
         flagOptions,
         extraFiles.length > 0 ? extraFiles : undefined
       );
@@ -193,8 +194,8 @@ export function usePhotoUpload({
       setUploadProgress(100);
 
       if (response.success) {
-        // Admin: Always navigate to match page (even if no matches found)
-        if (userRole === 'admin' && response.request_id) {
+        // Admin/Staff: Always navigate to match page (even if no matches found)
+        if (isAdminFlow && response.request_id) {
           // Build find_metadata from upload so match page doesn't ask again for physical/digital flag
           const find_metadata_from_upload: FindMetadata | undefined = hasFlagData
             ? {

@@ -98,26 +98,46 @@ def integration_env(backend_url, auth_url):
     return bool(backend_url and auth_url)
 
 
+def _login_token(auth_url, email, password):
+    """Login to auth-backend and return JWT token."""
+    login_url = f"{auth_url}/auth/login"
+    r = requests.post(
+        login_url,
+        json={"email": email, "password": password},
+        timeout=10,
+    )
+    r.raise_for_status()
+    return r.json().get("token")
+
+
 @pytest.fixture(scope="session")
 def admin_token(auth_url, integration_env):
     """Obtain admin JWT by logging in to auth-backend. Requires Docker services and seeded test user."""
     if not integration_env:
         return None
-    login_url = f"{auth_url}/auth/login"
     try:
-        r = requests.post(
-            login_url,
-            json={
-                "email": os.environ.get("E2E_ADMIN_EMAIL", "admin@test.com"),
-                "password": os.environ.get("E2E_ADMIN_PASSWORD", "testpassword123"),
-            },
-            timeout=10,
+        return _login_token(
+            auth_url,
+            os.environ.get("E2E_ADMIN_EMAIL", "admin@test.com"),
+            os.environ.get("E2E_ADMIN_PASSWORD", "testpassword123"),
         )
-        r.raise_for_status()
-        data = r.json()
-        return data.get("token")
     except Exception as e:
-        pytest.skip(f"Cannot get admin token from auth-backend at {login_url}: {e}")
+        pytest.skip(f"Cannot get admin token from auth-backend at {auth_url}/auth/login: {e}")
+
+
+@pytest.fixture(scope="session")
+def staff_token(auth_url, integration_env):
+    """Obtain staff JWT by logging in to auth-backend. Requires seeded staff test user."""
+    if not integration_env:
+        return None
+    try:
+        return _login_token(
+            auth_url,
+            os.environ.get("E2E_STAFF_EMAIL", "staff@test.com"),
+            os.environ.get("E2E_STAFF_PASSWORD", "testpassword123"),
+        )
+    except Exception as e:
+        pytest.skip(f"Cannot get staff token from auth-backend at {auth_url}/auth/login: {e}")
 
 
 @pytest.fixture(scope="session")

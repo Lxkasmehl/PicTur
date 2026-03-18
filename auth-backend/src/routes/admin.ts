@@ -4,9 +4,11 @@ import db from '../db/database.js';
 import { authenticateToken, AuthRequest, requireEmailVerified } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
 import { sendAdminPromotionEmail } from '../services/email.js';
-import type { User } from '../types/user.js';
+import type { User, UserRole } from '../types/user.js';
 
 const router = express.Router();
+
+const VALID_ROLES: UserRole[] = ['community', 'staff', 'admin'];
 
 // Promote user to admin (admin only); requires verified email
 router.post(
@@ -125,6 +127,77 @@ router.get(
       });
     } catch (error) {
       console.error('Get users error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Set user role (admin only); for promote to staff/admin or demote
+router.patch(
+  '/users/:id/role',
+  authenticateToken,
+  requireEmailVerified,
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    try {
+      const userId = Number(req.params.id);
+      const { role } = req.body as { role?: string };
+
+      if (!Number.isInteger(userId) || userId < 1) {
+        res.status(400).json({ error: 'Invalid user ID' });
+        return;
+      }
+      if (!role || !VALID_ROLES.includes(role as UserRole)) {
+        res.status(400).json({
+          error: `Role must be one of: ${VALID_ROLES.join(', ')}`,
+        });
+        return;
+      }
+
+      const user = db.prepare('SELECT id, email, role FROM users WHERE id = ?').get(userId) as User | undefined;
+      if (!user) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      const newRole = role as UserRole;
+      const oldRole = user.role;
+
+      // Prevent demoting the last admin so admin routes remain reachable.
+      // Compute count in app code: the in-repo JSON db does not support SQL aggregates (COUNT/etc.);
+      // .get() returns the first matching row, so SELECT COUNT(*) would yield undefined and bypass this check.
+      if (oldRole === 'admin' && newRole !== 'admin') {
+        const admins = db.prepare('SELECT id FROM users WHERE role = ?').all('admin') as { id: number }[];
+        const adminCount = admins.length;
+        if (adminCount <= 1) {
+          res.status(400).json({
+            error: 'Cannot demote the last admin. Promote another user to admin first.',
+          });
+          return;
+        }
+      }
+
+      db.prepare('UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newRole, userId);
+
+      // Invalidate existing JWTs when demoting so elevated privileges are revoked immediately
+      const roleRank = (r: UserRole) => (r === 'admin' ? 3 : r === 'staff' ? 2 : 1);
+      if (roleRank(newRole) < roleRank(oldRole)) {
+        db.prepare(
+          'UPDATE users SET tokens_valid_after = CURRENT_TIMESTAMP WHERE id = ?'
+        ).run(userId);
+      }
+
+      res.json({
+        success: true,
+        message: `User role set to ${newRole}`,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: newRole,
+        },
+      });
+    } catch (error) {
+      console.error('Set role error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }

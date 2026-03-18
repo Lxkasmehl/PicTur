@@ -2,10 +2,15 @@
 JWT Authentication utilities and decorators
 """
 
+import json
+import ssl
+import urllib.error
+import urllib.request
+
 import jwt
 from functools import wraps
 from flask import request, jsonify
-from config import JWT_SECRET
+from config import JWT_SECRET, AUTH_URL
 
 
 def verify_jwt_token(token):
@@ -45,6 +50,36 @@ def get_user_from_request():
     return True, payload, None
 
 
+def check_auth_revocation(auth_header):
+    """
+    Call auth service to enforce demotion revocation (tokens_valid_after).
+    Returns (allowed: bool, error_message: str or None).
+    Fails closed when AUTH_URL is unset so demoted staff/admin tokens are not accepted.
+    """
+    if not AUTH_URL:
+        return False, 'AUTH_URL must be set to verify staff/admin tokens (revocation check)'
+    url = f'{AUTH_URL}/auth/validate'
+    try:
+        req = urllib.request.Request(url, method='POST', headers={'Authorization': auth_header})
+        # Optional: don't verify SSL in dev if auth uses self-signed cert
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
+            if resp.status != 200:
+                return False, 'Token validation failed'
+            return True, None
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            try:
+                body = json.loads(e.read().decode())
+                return False, body.get('error', 'Token has been revoked')
+            except (ValueError, AttributeError):
+                pass
+        return False, 'Token has been revoked'
+    except (urllib.error.URLError, OSError, TimeoutError):
+        # Fail closed: if we can't reach auth service, deny access
+        return False, 'Unable to verify token; try again later'
+
+
 def require_auth(f):
     """Decorator to require authentication"""
     @wraps(f)
@@ -78,20 +113,27 @@ def optional_auth(f):
 
 
 def require_admin(f):
-    """Decorator to require admin role"""
+    """Decorator to require staff or admin role (turtle records, release, sheets, review)."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # Allow OPTIONS requests for CORS preflight
         if request.method == 'OPTIONS':
             return jsonify({}), 200
-        
+
         success, user_data, error = get_user_from_request()
         if not success:
             return jsonify({'error': error or 'Authentication required'}), 401
-        
-        if user_data.get('role') != 'admin':
-            return jsonify({'error': 'Admin access required'}), 403
-        
+
+        if user_data.get('role') not in ('staff', 'admin'):
+            return jsonify({'error': 'Staff or admin access required'}), 403
+
+        # Enforce demotion revocation: auth service rejects tokens issued before tokens_valid_after
+        auth_header = request.headers.get('Authorization')
+        if auth_header:
+            allowed, revoke_error = check_auth_revocation(auth_header)
+            if not allowed:
+                return jsonify({'error': revoke_error or 'Token has been revoked'}), 403
+
         # Attach user data to request for use in route
         request.user = user_data
         return f(*args, **kwargs)

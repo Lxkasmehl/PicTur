@@ -10,9 +10,11 @@ import {
   Image,
   Checkbox,
   ScrollArea,
+  Box,
+  List,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconCamera, IconCheck } from '@tabler/icons-react';
+import { IconCamera, IconCheck, IconPhoto } from '@tabler/icons-react';
 import { useState, useRef } from 'react';
 import step1Image from '../assets/step1.jpg';
 import step2Image from '../assets/step2.jpg';
@@ -23,16 +25,25 @@ interface InstructionsModalProps {
   onClose: () => void;
 }
 
+const SECTION_GAP = 'xl';
+const CARD_PX = 'xl';
+const CARD_PY = 'lg';
+const CARD_GAP = 'md';
+
 export function InstructionsModal({ opened, onClose }: InstructionsModalProps) {
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const isMobile = useMediaQuery('(max-width: 576px)');
 
+  // If user already saw instructions before (e.g. reopening as reminder), allow closing freely
+  const isReminderMode =
+    typeof window !== 'undefined' && localStorage.getItem('hasSeenInstructions') === 'true';
+  const canCloseFreely = isReminderMode || (acknowledged && hasScrolledToBottom);
+
   const handleScroll = () => {
     if (viewportRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = viewportRef.current;
-      // Check if scrolled to bottom (with small threshold)
       if (scrollHeight - scrollTop - clientHeight < 10) {
         setHasScrolledToBottom(true);
       }
@@ -42,14 +53,16 @@ export function InstructionsModal({ opened, onClose }: InstructionsModalProps) {
   const handleClose = () => {
     if (acknowledged && hasScrolledToBottom) {
       localStorage.setItem('hasSeenInstructions', 'true');
-      onClose();
     }
+    onClose();
   };
 
   const handleModalClose = () => {
-    // Allow closing if acknowledged and scrolled, otherwise prevent
-    if (acknowledged && hasScrolledToBottom) {
-      handleClose();
+    if (canCloseFreely) {
+      if (!isReminderMode && acknowledged && hasScrolledToBottom) {
+        localStorage.setItem('hasSeenInstructions', 'true');
+      }
+      onClose();
     }
   };
 
@@ -57,128 +70,172 @@ export function InstructionsModal({ opened, onClose }: InstructionsModalProps) {
     <Modal
       opened={opened}
       onClose={handleModalClose}
-      title='Photo Submission Instructions'
-      size={isMobile ? '100%' : '1200px'}
+      title="Photo submission instructions"
+      size={isMobile ? '100%' : 720}
       fullScreen={isMobile}
       centered={!isMobile}
-      closeOnClickOutside={acknowledged && hasScrolledToBottom}
-      closeOnEscape={acknowledged && hasScrolledToBottom}
-      withCloseButton={acknowledged && hasScrolledToBottom}
+      closeOnClickOutside={canCloseFreely}
+      closeOnEscape={canCloseFreely}
+      withCloseButton={canCloseFreely}
       styles={{
-        title: { fontSize: isMobile ? '1.25rem' : '1.75rem', fontWeight: 700 },
-        body: { fontSize: '1rem', padding: 0 },
+        title: {
+          fontSize: isMobile ? '1.25rem' : '1.5rem',
+          fontWeight: 700,
+        },
+        body: {
+          padding: 0,
+          overflow: 'hidden',
+        },
       }}
     >
       <ScrollArea
-        h={isMobile ? '70vh' : 600}
+        h={isMobile ? '70vh' : 560}
         onScrollPositionChange={handleScroll}
         viewportRef={viewportRef}
-        styles={{ viewport: { padding: '0 var(--mantine-spacing-md)' } }}
+        type="scroll"
+        scrollbarSize="sm"
+        styles={{
+          root: { flex: 1 },
+          viewport: {
+            paddingLeft: 'var(--mantine-spacing-md)',
+            paddingRight: 'var(--mantine-spacing-md)',
+            paddingBottom: 'var(--mantine-spacing-md)',
+          },
+        }}
       >
-        <Stack gap='lg' pb='md'>
-          {/* Instructions Section */}
-          <Stack gap='md'>
-            <Group gap='sm'>
-              <IconCamera size={28} />
-              <Text size='1.5rem' fw={700}>
-                How to Photograph a Turtle's Plastron
+        <Stack gap={SECTION_GAP} py="md" pb="xl">
+          {/* Intro + What we need (plastron requirements) */}
+          <Stack gap={CARD_GAP}>
+            <Group gap="sm" wrap="nowrap">
+              <ThemeIcon size={36} radius="md" variant="light" color="teal">
+                <IconCamera size={20} />
+              </ThemeIcon>
+              <Text size="lg" fw={600} style={{ lineHeight: 1.4 }}>
+                How to photograph a turtle&apos;s plastron
               </Text>
             </Group>
-
-            <Text size='lg' style={{ lineHeight: 1.6 }}>
-              The plastron is the bottom shell of a turtle. Follow these guidelines to
-              capture clear, identifiable photos:
+            <Text size="md" c="dimmed" style={{ lineHeight: 1.6 }}>
+              The plastron is the bottom shell. We need one main photo per turtle that
+              shows the full pattern clearly so we can identify the animal.
             </Text>
+
+            <Paper
+              withBorder
+              p={CARD_PY}
+              px={CARD_PX}
+              radius="md"
+              bg="var(--mantine-color-teal-0)"
+              style={{
+                borderLeft: '4px solid var(--mantine-color-teal-6)',
+              }}
+            >
+              <Text size="sm" fw={700} mb="xs" style={{ letterSpacing: '0.02em' }}>
+                Your plastron photo must have:
+              </Text>
+              <List
+                size="sm"
+                spacing="xs"
+                icon={<IconCheck size={14} color="var(--mantine-color-teal-6)" />}
+                styles={{ item: { lineHeight: 1.5 } }}
+              >
+                <List.Item>
+                  <strong>Full plastron in frame</strong> — nothing cut off at the edges
+                </List.Item>
+                <List.Item>
+                  <strong>No light reflections</strong> — avoid flash and harsh light on the shell
+                </List.Item>
+                <List.Item>
+                  <strong>Centered and sharp</strong> — camera straight above, high resolution, in focus
+                </List.Item>
+                <List.Item>
+                  <strong>Clear pattern</strong> — scutes and markings clearly visible for ID
+                </List.Item>
+              </List>
+            </Paper>
           </Stack>
 
           <Divider />
 
-          {/* Step 1 with Photo */}
+          {/* Step 1 */}
           <Paper
             withBorder
-            p='xl'
-            style={{ borderLeftWidth: 4, borderLeftColor: 'var(--mantine-color-teal-6)' }}
+            p={CARD_PY}
+            px={CARD_PX}
+            radius="md"
+            style={{ borderLeft: '4px solid var(--mantine-color-teal-6)' }}
           >
-            <Group align='flex-start' gap='xl'>
-              <ThemeIcon size={60} radius='xl' variant='filled' color='teal'>
-                <Text size='xl' fw={700}>
-                  1
-                </Text>
-              </ThemeIcon>
-              <Stack gap='md' style={{ flex: 1 }}>
-                <Stack gap='sm'>
-                  <Text size='lg' fw={700}>
-                    Positioning
-                  </Text>
-                  <Text size='lg' style={{ lineHeight: 1.6 }}>
-                    Gently turn the turtle over or hold it carefully to expose the
-                    plastron. Ensure the turtle is safe and comfortable during the
-                    process.
+            <Stack gap={CARD_GAP}>
+              <Group align="flex-start" gap="md" wrap="nowrap">
+                <ThemeIcon size={40} radius="md" variant="filled" color="teal">
+                  <Text size="lg" fw={700}>1</Text>
+                </ThemeIcon>
+                <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
+                  <Text size="md" fw={600}>Positioning</Text>
+                  <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
+                    Gently turn the turtle over or hold it so the plastron is fully visible. Keep the animal safe and supported.
                   </Text>
                 </Stack>
+              </Group>
+              <Box mx={0}>
                 <Image
                   src={step1Image}
-                  alt='Step 1: Position the turtle'
-                  radius='md'
-                  maw={300}
-                  fit='contain'
+                  alt="Step 1: Position the turtle"
+                  radius="md"
+                  maw={280}
+                  fit="contain"
                 />
-              </Stack>
-            </Group>
+              </Box>
+            </Stack>
           </Paper>
 
-          {/* Step 2 with Photo */}
+          {/* Step 2 */}
           <Paper
             withBorder
-            p='xl'
-            style={{ borderLeftWidth: 4, borderLeftColor: 'var(--mantine-color-cyan-6)' }}
+            p={CARD_PY}
+            px={CARD_PX}
+            radius="md"
+            style={{ borderLeft: '4px solid var(--mantine-color-cyan-6)' }}
           >
-            <Group align='flex-start' gap='xl'>
-              <ThemeIcon size={60} radius='xl' variant='filled' color='cyan'>
-                <Text size='xl' fw={700}>
-                  2
-                </Text>
-              </ThemeIcon>
-              <Stack gap='md' style={{ flex: 1 }}>
-                <Stack gap='sm'>
-                  <Text size='lg' fw={700}>
-                    Lighting
-                  </Text>
-                  <Text size='lg' style={{ lineHeight: 1.6 }}>
-                    Use natural lighting when possible. Avoid harsh shadows or
-                    reflections. The pattern should be clearly visible.
+            <Stack gap={CARD_GAP}>
+              <Group align="flex-start" gap="md" wrap="nowrap">
+                <ThemeIcon size={40} radius="md" variant="filled" color="cyan">
+                  <Text size="lg" fw={700}>2</Text>
+                </ThemeIcon>
+                <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
+                  <Text size="md" fw={600}>Lighting</Text>
+                  <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
+                    Use natural or even light. Avoid reflections and strong shadows so the pattern is clearly visible.
                   </Text>
                 </Stack>
+              </Group>
+              <Box mx={0}>
                 <Image
                   src={step2Image}
-                  alt='Step 2: Proper lighting'
-                  radius='md'
-                  maw={300}
-                  fit='contain'
+                  alt="Step 2: Proper lighting"
+                  radius="md"
+                  maw={280}
+                  fit="contain"
                 />
-              </Stack>
-            </Group>
+              </Box>
+            </Stack>
           </Paper>
 
           {/* Step 3 */}
           <Paper
             withBorder
-            p='xl'
-            style={{ borderLeftWidth: 4, borderLeftColor: 'var(--mantine-color-teal-6)' }}
+            p={CARD_PY}
+            px={CARD_PX}
+            radius="md"
+            style={{ borderLeft: '4px solid var(--mantine-color-teal-6)' }}
           >
-            <Group align='flex-start' gap='xl'>
-              <ThemeIcon size={60} radius='xl' variant='filled' color='teal'>
-                <Text size='xl' fw={700}>
-                  3
-                </Text>
+            <Group align="flex-start" gap="md" wrap="nowrap">
+              <ThemeIcon size={40} radius="md" variant="filled" color="teal">
+                <Text size="lg" fw={700}>3</Text>
               </ThemeIcon>
-              <Stack gap='sm' style={{ flex: 1 }}>
-                <Text size='lg' fw={700}>
-                  Camera Angle
-                </Text>
-                <Text size='lg' style={{ lineHeight: 1.6 }}>
-                  Position your camera directly above and parallel to the plastron. Keep
-                  the entire shell in frame with minimal distortion.
+              <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
+                <Text size="md" fw={600}>Camera angle</Text>
+                <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
+                  Hold the camera directly above and parallel to the plastron. Keep the entire shell in frame with minimal distortion.
                 </Text>
               </Stack>
             </Group>
@@ -187,140 +244,107 @@ export function InstructionsModal({ opened, onClose }: InstructionsModalProps) {
           {/* Step 4 */}
           <Paper
             withBorder
-            p='xl'
-            style={{ borderLeftWidth: 4, borderLeftColor: 'var(--mantine-color-cyan-6)' }}
+            p={CARD_PY}
+            px={CARD_PX}
+            radius="md"
+            style={{ borderLeft: '4px solid var(--mantine-color-cyan-6)' }}
           >
-            <Group align='flex-start' gap='xl'>
-              <ThemeIcon size={60} radius='xl' variant='filled' color='cyan'>
-                <Text size='xl' fw={700}>
-                  4
-                </Text>
+            <Group align="flex-start" gap="md" wrap="nowrap">
+              <ThemeIcon size={40} radius="md" variant="filled" color="cyan">
+                <Text size="lg" fw={700}>4</Text>
               </ThemeIcon>
-              <Stack gap='sm' style={{ flex: 1 }}>
-                <Text size='lg' fw={700}>
-                  Focus & Clarity
-                </Text>
-                <Text size='lg' style={{ lineHeight: 1.6 }}>
-                  Ensure the photo is sharp and in focus. The scutes (shell plates) and
-                  any unique markings should be clearly visible for identification.
+              <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
+                <Text size="md" fw={600}>Focus & clarity</Text>
+                <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
+                  Make sure the photo is sharp. Scutes and any unique markings must be clear for identification.
                 </Text>
               </Stack>
             </Group>
           </Paper>
 
-          {/* Step 5 with Final Result Photo */}
+          {/* Step 5 – Final result */}
           <Paper
             withBorder
-            p='xl'
-            style={{ borderLeftWidth: 4, borderLeftColor: 'var(--mantine-color-teal-6)' }}
+            p={CARD_PY}
+            px={CARD_PX}
+            radius="md"
+            style={{ borderLeft: '4px solid var(--mantine-color-teal-6)' }}
           >
-            <Group align='flex-start' gap='xl'>
-              <ThemeIcon size={60} radius='xl' variant='filled' color='teal'>
-                <Text size='xl' fw={700}>
-                  5
-                </Text>
-              </ThemeIcon>
-              <Stack gap='md' style={{ flex: 1 }}>
-                <Stack gap='sm'>
-                  <Text size='lg' fw={700}>
-                    Background & Final Result
-                  </Text>
-                  <Text size='lg' style={{ lineHeight: 1.6 }}>
-                    Use a plain, contrasting background to make the turtle stand out.
-                    Avoid busy patterns or similar colors to the shell. Here's what a good
-                    final photo looks like:
+            <Stack gap={CARD_GAP}>
+              <Group align="flex-start" gap="md" wrap="nowrap">
+                <ThemeIcon size={40} radius="md" variant="filled" color="teal">
+                  <Text size="lg" fw={700}>5</Text>
+                </ThemeIcon>
+                <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
+                  <Text size="md" fw={600}>Background & result</Text>
+                  <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
+                    Use a plain, contrasting background so the shell stands out. Example of a good plastron photo:
                   </Text>
                 </Stack>
+              </Group>
+              <Box mx={0}>
                 <Image
                   src={finalResultImage}
-                  alt='Final result: Clear plastron photo'
-                  radius='md'
-                  maw={300}
-                  fit='contain'
+                  alt="Example: clear plastron photo"
+                  radius="md"
+                  maw={280}
+                  fit="contain"
                 />
-              </Stack>
-            </Group>
+                <Text size="xs" c="dimmed" mt="xs" style={{ lineHeight: 1.5 }}>
+                  This is an ideal lab example with perfect lighting and background. Your field photo doesn&apos;t need to look this perfect—just ensure the full plastron is visible, sharp, and without reflections.
+                </Text>
+              </Box>
+            </Stack>
           </Paper>
 
-          {/* Best Practices */}
-          <Stack gap='md' mt='md'>
-            <Group gap='sm'>
-              <IconCheck size={28} color='var(--mantine-color-teal-6)' />
-              <Text size='1.5rem' fw={700}>
-                Best Practices
-              </Text>
+          {/* Optional: Microhabitat & Condition */}
+          <Stack gap="xs">
+            <Group gap="sm" wrap="nowrap">
+              <ThemeIcon size={32} radius="md" variant="light" color="gray">
+                <IconPhoto size={18} />
+              </ThemeIcon>
+              <Text size="md" fw={600}>Optional: extra photos</Text>
             </Group>
-
-            <Paper
-              withBorder
-              p='lg'
-              style={{
-                borderLeftWidth: 4,
-                borderLeftColor: 'var(--mantine-color-teal-6)',
-              }}
-            >
-              <Text size='lg' style={{ lineHeight: 1.8 }}>
-                • Clean the plastron gently if it's dirty to reveal pattern details
-              </Text>
-            </Paper>
-
-            <Paper
-              withBorder
-              p='lg'
-              style={{
-                borderLeftWidth: 4,
-                borderLeftColor: 'var(--mantine-color-cyan-6)',
-              }}
-            >
-              <Text size='lg' style={{ lineHeight: 1.8 }}>
-                • Take multiple photos from slightly different angles
-              </Text>
-            </Paper>
-
-            <Paper
-              withBorder
-              p='lg'
-              style={{
-                borderLeftWidth: 4,
-                borderLeftColor: 'var(--mantine-color-teal-6)',
-              }}
-            >
-              <Text size='lg' style={{ lineHeight: 1.8 }}>
-                • Include a scale reference (like a ruler) if possible
-              </Text>
-            </Paper>
-
-            <Paper
-              withBorder
-              p='lg'
-              style={{
-                borderLeftWidth: 4,
-                borderLeftColor: 'var(--mantine-color-cyan-6)',
-              }}
-            >
-              <Text size='lg' style={{ lineHeight: 1.8 }}>
-                • Handle turtles with care and return them safely to their habitat
-              </Text>
-            </Paper>
+            <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
+              You can add <strong>microhabitat</strong> photos (where the turtle was found) and <strong>condition</strong> photos (e.g. shell condition, injuries). These are optional and can be added after selecting your main plastron image.
+            </Text>
           </Stack>
 
-          {/* Acknowledgment Checkbox */}
+          {/* Best practices – compact */}
+          <Stack gap="xs">
+            <Text size="md" fw={600}>Best practices</Text>
+            <Stack gap="xs">
+              <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
+                • Gently clean the plastron if dirty so the pattern is visible.
+              </Text>
+              <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
+                • Take several shots; pick the sharpest one with the full shell in frame.
+              </Text>
+              <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
+                • Include a scale (e.g. ruler) if possible.
+              </Text>
+              <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
+                • Handle turtles with care and return them safely to their habitat.
+              </Text>
+            </Stack>
+          </Stack>
+
+          {/* Acknowledgment */}
           <Paper
             withBorder
-            p='xl'
+            p={CARD_PY}
+            px={CARD_PX}
+            radius="md"
             style={{
-              borderLeftWidth: 4,
-              borderLeftColor: hasScrolledToBottom
-                ? 'var(--mantine-color-teal-6)'
-                : 'var(--mantine-color-gray-5)',
+              borderLeft: `4px solid ${hasScrolledToBottom ? 'var(--mantine-color-teal-6)' : 'var(--mantine-color-gray-4)'}`,
             }}
           >
-            <Stack gap='md'>
+            <Stack gap="sm">
               <Checkbox
-                size='lg'
+                size="md"
                 label={
-                  <Text size='lg' fw={600} style={{ lineHeight: 1.6 }}>
-                    I have read and understand the photo submission guidelines
+                  <Text size="sm" fw={500} style={{ lineHeight: 1.5 }}>
+                    I have read and understand the photo guidelines
                   </Text>
                 }
                 checked={acknowledged}
@@ -328,8 +352,8 @@ export function InstructionsModal({ opened, onClose }: InstructionsModalProps) {
                 disabled={!hasScrolledToBottom}
               />
               {!hasScrolledToBottom && (
-                <Text size='md' c='dimmed'>
-                  ⬇️ Please scroll to the bottom to continue
+                <Text size="xs" c="dimmed">
+                  Please scroll to the bottom to continue
                 </Text>
               )}
             </Stack>
@@ -337,21 +361,30 @@ export function InstructionsModal({ opened, onClose }: InstructionsModalProps) {
         </Stack>
       </ScrollArea>
 
-      {/* Footer Button */}
-      <Group
-        justify='flex-end'
-        p='md'
-        style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}
+      <Box
+        p="md"
+        style={{
+          borderTop: '1px solid var(--mantine-color-default-border)',
+          backgroundColor: 'var(--mantine-color-body)',
+        }}
       >
-        <Button
-          size='lg'
-          onClick={handleClose}
-          disabled={!acknowledged || !hasScrolledToBottom}
-          leftSection={<IconCheck size={20} />}
-        >
-          Got it! Let's upload
-        </Button>
-      </Group>
+        <Group justify="flex-end">
+          {isReminderMode ? (
+            <Button size="md" variant="default" onClick={() => onClose()}>
+              Close
+            </Button>
+          ) : (
+            <Button
+              size="md"
+              onClick={handleClose}
+              disabled={!acknowledged || !hasScrolledToBottom}
+              leftSection={<IconCheck size={18} />}
+            >
+              Got it — let&apos;s upload
+            </Button>
+          )}
+        </Group>
+      </Box>
     </Modal>
   );
 }

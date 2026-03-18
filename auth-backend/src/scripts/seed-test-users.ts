@@ -9,6 +9,8 @@
  *   E2E_ADMIN_PASSWORD=testpassword123
  *   E2E_COMMUNITY_EMAIL=community@test.com
  *   E2E_COMMUNITY_PASSWORD=testpassword123
+ *   E2E_STAFF_EMAIL=staff@test.com (optional)
+ *   E2E_STAFF_PASSWORD=testpassword123 (optional)
  */
 
 import db from '../db/database.js';
@@ -19,11 +21,17 @@ const adminEmail = process.env.E2E_ADMIN_EMAIL || 'admin@test.com';
 const adminPassword = process.env.E2E_ADMIN_PASSWORD || 'testpassword123';
 const communityEmail = process.env.E2E_COMMUNITY_EMAIL || 'community@test.com';
 const communityPassword = process.env.E2E_COMMUNITY_PASSWORD || 'testpassword123';
+const staffEmail = process.env.E2E_STAFF_EMAIL || 'staff@test.com';
+const staffPassword = process.env.E2E_STAFF_PASSWORD || 'testpassword123';
+const roleTestEmail =
+  process.env.E2E_ROLE_TEST_EMAIL || 'role-test-community@test.com';
+const roleTestPassword =
+  process.env.E2E_ROLE_TEST_PASSWORD || 'testpassword123';
 
 async function createUser(
   email: string,
   password: string,
-  role: 'admin' | 'community',
+  role: 'admin' | 'staff' | 'community',
   name: string | null = null
 ) {
   // Check if user already exists
@@ -68,10 +76,18 @@ async function seedTestUsers() {
     // Create community user
     await createUser(communityEmail, communityPassword, 'community', 'Test Community');
 
+    // Create staff user (same rights as admin except user management)
+    await createUser(staffEmail, staffPassword, 'staff', 'Test Staff');
+
+    // Dedicated user for "change role" E2E test (never use community@test.com so other tests are not affected)
+    await createUser(roleTestEmail, roleTestPassword, 'community', 'Role Test');
+
     console.log('\n✅ Test users seeded successfully!');
     console.log(`   Admin: ${adminEmail}`);
+    console.log(`   Staff: ${staffEmail}`);
     console.log(`   Community: ${communityEmail}`);
-    console.log(`   Password: ${adminPassword} (same for both)\n`);
+    console.log(`   Role test (community): ${roleTestEmail}`);
+    console.log(`   Password: ${adminPassword} (same for all)\n`);
 
     process.exit(0);
   } catch (error) {
