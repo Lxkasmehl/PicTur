@@ -188,7 +188,7 @@ class TurtleManager:
             brain.load_database_to_vram(self.db_index)
 
     # Folders that should never appear in user-facing location dropdowns
-    SYSTEM_FOLDERS = {"Review_Queue", "Community_Uploads", "Incidental_Finds",
+    SYSTEM_FOLDERS = {"Review_Queue", "Community_Uploads",
                       "Incidental Places", "benchmarks"}
 
     def get_all_locations(self):

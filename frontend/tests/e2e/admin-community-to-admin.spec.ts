@@ -65,7 +65,7 @@ test.describe('Admin Community turtle move to admin', () => {
                 {
                   rank: 1,
                   turtle_id: COMMUNITY_MATCH.turtle_id,
-                  score: 85,
+                  confidence: 85,
                   image_path: COMMUNITY_MATCH.file_path,
                 },
               ],
