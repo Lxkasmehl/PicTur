@@ -187,28 +187,46 @@ class TurtleManager:
             print("⚡ Pushing database to Memory Cache...")
             brain.load_database_to_vram(self.db_index)
 
+    # Folders that should never appear in user-facing location dropdowns
+    SYSTEM_FOLDERS = {"Review_Queue", "Community_Uploads", "Incidental_Finds",
+                      "Incidental Places", "benchmarks"}
+
     def get_all_locations(self):
         """
         Scans the data folder to build a list of locations for the GUI Dropdown.
-        Returns state names (e.g. "Kansas") and State/Location paths (e.g. "Kansas/Wichita"), plus "Community_Uploads".
-        State-level folders from sheets are included even when they have no Location subfolders yet.
+
+        Handles two folder patterns:
+          1. State with sub-locations  — Kansas/Lawrence/TurtleID/ref_data/
+          2. StateLocation combo sheet — NebraskaCPBS/TurtleID/ref_data/
+
+        A subfolder is a *turtle folder* (not a location) when it contains a
+        ``ref_data/`` directory.  Those are never listed in the dropdown.
         """
         locations = ["Community_Uploads"]
 
-        if os.path.exists(self.base_dir):
-            for state in sorted(os.listdir(self.base_dir)):
-                state_path = os.path.join(self.base_dir, state)
-                if not os.path.isdir(state_path) or state.startswith('.'):
-                    continue
-                if state in ["Review_Queue", "Community_Uploads"]:
-                    continue
+        if not os.path.exists(self.base_dir):
+            return locations
 
-                # Include state name so sheet-based folders appear in dropdowns even with no subfolders
-                locations.append(state)
+        for entry in sorted(os.listdir(self.base_dir)):
+            entry_path = os.path.join(self.base_dir, entry)
+            if not os.path.isdir(entry_path) or entry.startswith('.'):
+                continue
+            if entry in self.SYSTEM_FOLDERS:
+                continue
 
-                for loc in sorted(os.listdir(state_path)):
-                    if os.path.isdir(os.path.join(state_path, loc)) and not loc.startswith('.'):
-                        locations.append(f"{state}/{loc}")
+            # Always include the top-level name (state or combo-sheet)
+            locations.append(entry)
+
+            # Check children: only list them if they are location folders,
+            # NOT turtle folders (turtle folders contain ref_data/).
+            for sub in sorted(os.listdir(entry_path)):
+                sub_path = os.path.join(entry_path, sub)
+                if not os.path.isdir(sub_path) or sub.startswith('.'):
+                    continue
+                if os.path.isdir(os.path.join(sub_path, "ref_data")):
+                    # This is a turtle folder — skip it
+                    continue
+                locations.append(f"{entry}/{sub}")
 
         return locations
 
@@ -352,10 +370,11 @@ class TurtleManager:
         self.create_review_packet(saved_path, user_info={"finder": finder_name})
 
     # MERGE FIX: Uses your AI candidate generation, but adds partner's 'additional_images' folder.
-    def create_review_packet(self, image_path, user_info=None):
+    def create_review_packet(self, image_path, user_info=None, req_id=None):
         """Creates a pending packet in Review Queue, generates candidates, preps extra dirs."""
         safe_name = os.path.basename(image_path).replace(" ", "_")
-        req_id = f"Req_{int(time.time() * 1000)}_{safe_name}_{uuid.uuid4().hex[:6]}"
+        if req_id is None:
+            req_id = f"Req_{int(time.time() * 1000)}_{safe_name}_{uuid.uuid4().hex[:6]}"
         packet_dir = os.path.join(self.review_queue_dir, req_id)
         os.makedirs(packet_dir, exist_ok=True)
 
@@ -386,7 +405,8 @@ class TurtleManager:
 
             if ref_img_path:
                 ext = os.path.splitext(ref_img_path)[1]
-                cand_filename = f"Rank{rank}_ID{turtle_id}_Score{score}{ext}"
+                conf_int = int(round(match.get('confidence', 0.0) * 100))
+                cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
                 shutil.copy2(ref_img_path, os.path.join(candidates_dir, cand_filename))
 
         # 4. Dump metadata for the frontend
@@ -725,13 +745,13 @@ class TurtleManager:
         t_start = time.time()
         filename = os.path.basename(query_image_path)
 
-        # Build location filter: selected location always includes Community_Uploads + Incidental_Finds
+        # Build location filter: selected location always includes Community_Uploads + Incidental Places
         raw_loc = (location_filter or '').strip() or None
         if raw_loc and raw_loc != 'All Locations':
             if raw_loc == 'Community_Uploads':
                 loc_filter = ['Community_Uploads']
             else:
-                loc_filter = [raw_loc, 'Community_Uploads', 'Incidental_Finds']
+                loc_filter = [raw_loc, 'Community_Uploads', 'Incidental Places']
         else:
             loc_filter = None
 
@@ -739,6 +759,13 @@ class TurtleManager:
         print(f"🔍 Searching {filename} (VRAM Cached Mode){scope}...")
 
         results = brain.match_query_robust_vram(query_image_path, loc_filter)
+
+        # Fallback: if the location-scoped search found fewer than 5 results,
+        # re-run against the entire dataset so the admin always gets candidates.
+        if loc_filter and len(results) < 5:
+            print(f"📢 Only {len(results)} match(es) in scope — expanding to all locations...")
+            results = brain.match_query_robust_vram(query_image_path, None)
+
         t_elapsed = time.time() - t_start
 
         if results:

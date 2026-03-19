@@ -61,7 +61,7 @@ export interface ReviewQueueItem {
   candidates: Array<{
     rank: number;
     turtle_id: string;
-    score: number;
+    confidence: number;
     image_path: string;
   }>;
   status: string;

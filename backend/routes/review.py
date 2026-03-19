@@ -237,15 +237,18 @@ def register_review_routes(app):
             for candidate_file in sorted(os.listdir(candidates_dir)):
                 if candidate_file.lower().endswith(('.jpg', '.png', '.jpeg')):
                     parts = candidate_file.replace('.jpg', '').replace('.png', '').replace('.jpeg', '').split('_')
-                    rank, turtle_id, score = 0, 'Unknown', 0
+                    rank, turtle_id, confidence = 0, 'Unknown', 0
                     for part in parts:
                         if part.startswith('Rank'):
                             rank = int(part.replace('Rank', ''))
                         elif part.startswith('ID'):
                             turtle_id = part.replace('ID', '')
+                        elif part.startswith('Conf'):
+                            confidence = int(part.replace('Conf', ''))
                         elif part.startswith('Score'):
-                            score = int(part.replace('Score', ''))
-                    candidates.append({'rank': rank, 'turtle_id': turtle_id, 'score': score, 'image_path': os.path.join(candidates_dir, candidate_file)})
+                            # Legacy packets used Score; treat as 0 confidence
+                            confidence = 0
+                    candidates.append({'rank': rank, 'turtle_id': turtle_id, 'confidence': confidence, 'image_path': os.path.join(candidates_dir, candidate_file)})
 
         return {
             'request_id': request_id,

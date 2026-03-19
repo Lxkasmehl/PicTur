@@ -249,7 +249,7 @@ export function ReviewQueueTab() {
                             ID:{' '}
                             {candidateOriginalIds[candidate.turtle_id] ??
                               candidate.turtle_id}{' '}
-                            · Score: {candidate.score}
+                            · Confidence: {candidate.confidence}%
                           </Text>
                           <Badge size='sm' variant='light' color='blue'>
                             #{candidate.rank}

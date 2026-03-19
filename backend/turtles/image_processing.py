@@ -197,10 +197,12 @@ class TurtleDeepMatcher:
         results = []
 
         for cand in self.vram_cache:
-            # Apply location filter early to skip unnecessary math
+            # Apply location filter early to skip unnecessary math.
+            # Uses prefix matching so a state like "Kansas" matches
+            # "Kansas/Lawrence", "Kansas/North Topeka", etc.
             if location_filter and location_filter != "All Locations":
-                allowed = set(location_filter) if isinstance(location_filter, list) else {location_filter}
-                if cand['location'] not in allowed:
+                allowed = list(location_filter) if isinstance(location_filter, list) else [location_filter]
+                if not any(cand['location'] == a or cand['location'].startswith(a + '/') for a in allowed):
                     continue
 
             # --- NEW: Bulletproof device alignment check ---

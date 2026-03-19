@@ -8,6 +8,8 @@ import json
 import sys
 import time
 import traceback
+import threading
+import uuid
 from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
@@ -202,12 +204,11 @@ def register_upload_routes(app):
                     if digital_flag_source in ('gps', 'manual'):
                         user_info['digital_flag_source'] = digital_flag_source
 
-                request_id = manager_service.manager.create_review_packet(
-                    temp_path,
-                    user_info=user_info
-                )
+                # Pre-generate request_id so it can be returned immediately
+                safe_name = os.path.basename(temp_path).replace(" ", "_")
+                request_id = f"Req_{int(time.time() * 1000)}_{safe_name}_{uuid.uuid4().hex[:6]}"
 
-                # Process additional files
+                # Save extra files to disk now (must happen inside request context)
                 files_with_types = []
                 for key in list(request.files.keys()):
                     if key.startswith('extra_') and key != 'file':
@@ -224,14 +225,40 @@ def register_upload_routes(app):
                                 f.save(extra_temp)
                                 files_with_types.append({'path': extra_temp, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
 
-                if files_with_types:
-                    manager_service.manager.add_additional_images_to_packet(request_id, files_with_types)
-                    for item in files_with_types:
-                        path = item.get('path')
-                        if path and os.path.isfile(path):
+                # Run matching and packet creation in the background so the
+                # community member is not blocked waiting for AI processing
+                def _build_packet(img_path, u_info, req_id, fwt):
+                    try:
+                        manager_service.manager.create_review_packet(
+                            img_path,
+                            user_info=u_info,
+                            req_id=req_id
+                        )
+                        if fwt:
+                            manager_service.manager.add_additional_images_to_packet(req_id, fwt)
+                            for item in fwt:
+                                path = item.get('path')
+                                if path and os.path.isfile(path):
+                                    try:
+                                        os.remove(path)
+                                    except OSError:
+                                        pass
+                    except Exception as e:
+                        err_trace = traceback.format_exc()
+                        sys.stderr.write(f"[PACKET BUILD ERROR] req_id={req_id} {str(e)}\n{err_trace}")
+                        sys.stderr.flush()
+                    finally:
+                        if os.path.isfile(img_path):
                             try:
-                                os.remove(path)
-                            except OSError: pass
+                                os.remove(img_path)
+                            except OSError:
+                                pass
+
+                threading.Thread(
+                    target=_build_packet,
+                    args=(temp_path, user_info, request_id, files_with_types),
+                    daemon=True
+                ).start()
 
                 return jsonify({
                     'success': True,

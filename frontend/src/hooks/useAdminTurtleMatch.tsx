@@ -70,6 +70,11 @@ export function useAdminTurtleMatch(
   }, [imageId, authChecked, role, navigate]);
 
   const handleSelectMatch = async (turtleId: string) => {
+    // Empty string clears the selection (used by "Back to matches" button)
+    if (!turtleId) {
+      setSelectedMatch(null);
+      return;
+    }
     setSelectedMatch(turtleId);
     setLoadingTurtleData(true);
 

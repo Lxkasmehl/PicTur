@@ -22,7 +22,7 @@ import type {
 export type { UseTurtleSheetsDataFormReturn } from '../components/TurtleSheetsDataForm.types';
 
 /** Backend folder names that are not selectable as turtle location (new-turtle dialog). */
-const LOCATION_SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue', 'Incidental_Finds'];
+const LOCATION_SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue', 'Incidental_Finds', 'Incidental Places', 'benchmarks'];
 
 export function useTurtleSheetsDataForm(
   props: TurtleSheetsDataFormProps,
