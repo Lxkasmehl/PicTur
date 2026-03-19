@@ -61,6 +61,11 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 # JWT Configuration - must match auth-backend JWT_SECRET
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
 
+# Auth service URL (required for staff/admin routes). Staff/admin role checks call the auth
+# service to enforce demotion revocation (tokens_valid_after). If unset, privileged access
+# is denied (fail closed). E.g. http://localhost:3001/api
+AUTH_URL = os.environ.get('AUTH_URL', '').rstrip('/')
+
 if JWT_SECRET == 'your-secret-key-change-in-production':
     try:
         print("⚠️  WARNING: Using default JWT_SECRET. This should match auth-backend JWT_SECRET!")

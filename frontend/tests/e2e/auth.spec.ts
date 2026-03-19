@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin, loginAsCommunity, navClick } from './fixtures';
+import { loginAsAdmin, loginAsStaff, loginAsCommunity, navClick } from './fixtures';
 
 test.describe('Auth', () => {
   test('Login page shows form', async ({ page }) => {
@@ -13,6 +13,12 @@ test.describe('Auth', () => {
     await loginAsAdmin(page);
     await expect(page).toHaveURL('/');
     await expect(page.getByTestId('role-badge')).toHaveText(/Admin/);
+  });
+
+  test('Staff login leads to home with Staff badge', async ({ page }) => {
+    await loginAsStaff(page);
+    await expect(page).toHaveURL('/');
+    await expect(page.getByTestId('role-badge')).toHaveText(/Staff/);
   });
 
   test('Community login leads to home with Community badge', async ({ page }) => {

@@ -47,6 +47,7 @@ services:
       PORT: 5000
       FLASK_DEBUG: 'false'
       JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      AUTH_URL: ${AUTH_URL:-http://auth-backend:3001/api}
       GOOGLE_SHEETS_SPREADSHEET_ID: ${GOOGLE_SHEETS_SPREADSHEET_ID:-}
       GOOGLE_SHEETS_CREDENTIALS_PATH: ${GOOGLE_SHEETS_CREDENTIALS_PATH:-/app/credentials/google-sheets-credentials.json}
     volumes:

@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-(No changes yet.)
+### Added
+
+- **Three-tier user roles**: Roles are now **community**, **staff**, and **admin**. Community unchanged. **Staff** has the same app access as admins (Turtle Records, Release, Sheets, review, create turtle) but cannot manage users. **Admin** can promote/demote users and access User Management (GET users, PATCH user role, promote to admin/invite). Auth backend: `requireStaff` for operational routes, `requireAdmin` only for user management; new `PATCH /admin/users/:id/role`. Frontend: `isStaffRole(role)`, User Management page shows all users with role dropdown; only admins see the User Management nav link and page. Python backend `require_admin` allows both staff and admin. E2E: `loginAsStaff`, seed scripts create staff@test.com.
+- **CI/E2E**: Staff test user credentials (`E2E_STAFF_EMAIL`, `E2E_STAFF_PASSWORD`) are passed in backend-integration and Playwright workflows and used by seed-test-users. Frontend E2E adds Staff login test; photo upload treats staff like admin for match sheet and post-upload navigation.
+- **Auth**: Last-admin protection—demoting the last admin is blocked with a 400 error. New POST /auth/validate for token validation (signature and revocation). Flask backend optional AUTH_URL; when set, staff/admin routes call the auth service so demotion revocation (tokens_valid_after) is enforced.
+
+### Changed
+
+- **Upload instructions (frontend)**: Redesigned photo submission instructions modal with clearer layout, spacing, and alignment; prominent “plastron must have” checklist (full frame, no reflections, centered/sharp, clear pattern). Added note that the example image is an ideal lab photo and field photos need not match it. When reopening instructions after first visit (reminder), modal can be closed via X or click-outside without scrolling or checkbox. Optional hint for microhabitat/condition photos. Home page header simplified to centered title, subtitle, and “View instructions” button below.
+
+## Fixed
+
+- **E2E**: Stabilize flaky tests: scope sex dropdown option to listbox and wait before click (fixes WebKit failure in admin-turtle-id-auto-generate); increase timeout for "From this upload" on turtle match page (Chromium/Mobile Chrome); wait for review queue content before branching and add timeouts for "No pending reviews" (Mobile Safari).
+- **Auth**: When an admin demotes a user (e.g. admin→staff or staff→community), existing JWTs are invalidated so elevated privileges are revoked immediately. Auth backend stores `tokens_valid_after` per user and rejects tokens issued before that time.
+- **E2E**: Staff/community test stability: dedicated role-test-community@test.com user for the “change role” test so community@test.com is never mutated and Community badge tests stay correct. Role-update test accepts either “Role updated” toast or row showing Staff (10s timeout). Mobile menu opens with force-click when overlays intercept the burger. Review Queue test waits for “No pending reviews” or “X matches” (15s) before branching. CI seeds the role-test user.
+- **Auth backend**: Last-admin demotion check now uses `SELECT id ... .all('admin')` and counts length; `COUNT(*)` with `.get()` was unreliable with the in-repo JSON/SQLite setup.
+- **Backend**: Staff/admin photo upload enforces token revocation (`check_auth_revocation`); temp file is removed on 403. `check_auth_revocation` exported from `auth` for use in upload route.
+- **E2E**: More reliable nav and staff tests: `data-testid="nav-drawer"` on mobile drawer; `navClick` scopes button to drawer and waits for it to avoid detach; Staff "Turtle Records" test uses wide viewport (1400×800) so header nav is used. Playwright webServer uses `cwd` and `127.0.0.1`; Vite `strictPort: true`. Unused `loginAsCommunity` import removed from staff-and-user-management spec.
+- **Admin match page**: `useEffect` dependency for loading turtle images fixed to `selectedMatchData` instead of `selectedMatchData?.location`.
 
 ---
 
@@ -18,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Location hierarchy (sheet + location)**: New turtles and community uploads use a two-level selection (e.g. sheet Kansas → location Wichita). Backend paths: `data/<sheet>/<location>/<turtle_id>/`. New locations can be added under an existing sheet without a new Google Sheet tab. Resolves #96.
 - **Post-confirmation automation**: After confirming an upload (match or new turtle), the backend relabels photos with the confirmed turtle ID and syncs to a community-facing Google Spreadsheet. Configure `GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID` in backend `.env`. Resolves #73.
 - **Email verification & password policy**: New users (email/password) must verify their email via signup link (`POST /auth/verify-email`, `POST /auth/resend-verification`). Google OAuth users count as verified; admin routes require verified email. Registration and change-password enforce policy via `validatePassword`; new endpoint `POST /auth/change-password` (authenticated). Shared email helpers for verification, admin promotion, and invitations; sender configurable via `SMTP_FROM`.
-- **Docker**: Frontend port configurable via `FRONTEND_PORT` (default 80). For port 80 conflicts use `FRONTEND_PORT=8080` and `FRONTEND_URL=http://localhost:8080`. See `.env.docker.example`.
+- **Docker**: Frontend port configurable via `FRONTEND_PORT` (default 80). For port 80 conflicts use `FRONTEND_PORT=8080` and `FRONTEND_URL=http://localhost:8080`. See `.env.docker.example` and comments in `docker-compose.yml`.
 - **Review queue & community sheets**: Badges for "Admin upload" vs "Community upload"; sheet/location dropdown respects `sheetSource`. API: `GET /api/sheets/community-sheets`; sheets/turtle endpoints accept `target_spreadsheet: 'community'`. Option "+ Create New Sheet" for community turtles (creates tab and `data/Community_Uploads/<name>`). Backend layout: `data/<admin sheet>`, `data/Community_Uploads/<community sheet>`.
 - **Community turtle → admin**: When matching a community turtle to the research spreadsheet, flow selects admin sheet + location, creates turtle row, moves folder to `data/<State>/<Location>/`, and removes from community sheet. Match search includes selected location, all community turtles, and incidental finds.
 - **Flash-drive ingest**: Configurable ingest routing maps drive folder names to backend destinations (`State/Location`) without renaming source folders. Supports flat and hierarchical layouts; explicit state-level folder handling for `data/<State>/...` imports.
@@ -35,11 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Google Sheets**: Single RLock for all Sheets API use and reinit to avoid concurrent SSL errors and segfaults (e.g. DECRYPTION_FAILED_OR_BAD_RECORD_MAC, exit 139).
+- **Google Sheets**: Single RLock for all Sheets API use and reinit to avoid concurrent SSL/connection errors (e.g. DECRYPTION_FAILED_OR_BAD_RECORD_MAC, record layer failure) and process segfaults (exit 139). Route that reads sheet values for validation now holds the same lock.
 - **Create New Turtle E2E**: ID field now populates on WebKit/Firefox (request biology ID when sex selected; test mocks `/api/locations` and waits for generate-id).
-- **E2E flakiness**: Sex dropdown scoped to listbox; longer timeout for "From this upload"; review queue content and "No pending reviews" timeouts (WebKit, Mobile Safari).
 - **Community sheet creation**: "Create New Sheet" for community turtles no longer creates the tab in the research spreadsheet; generate-id and update-turtle accept `target_spreadsheet`; frontend passes it when `sheetSource` is community.
-- **E2E and test setup**: Test user seed scripts always update password and role for existing users so E2E credentials work regardless of prior state. Playwright webServer uses `path`/`cwd` and `127.0.0.1`; Vite `strictPort: true`. Login fixtures use `noWaitAfter`, detect login errors, and throw clear messages suggesting `npm run test:setup`. Selectors: `getByRole('textbox')` for Sheet/Location, regex for General Location; ID field always disabled; sheet option selection uses exact match (Kansas vs Kansas/Wichita).
+- **E2E and test setup**: Test user seed scripts always update password and role for existing users so E2E credentials work regardless of prior state. Login fixtures use `noWaitAfter`, detect login errors, and throw clear messages suggesting `npm run test:setup`. Selectors: `getByRole('textbox')` for Sheet/Location, regex for General Location; ID field always disabled; sheet option selection uses exact match (Kansas vs Kansas/Wichita).
 - **New turtle create UX**: In-progress/success notification updates and short post-success delay before redirect so completion feedback remains visible. Removed duplicate primary-ID generation path in frontend create/confirm flow to reduce round-trips.
 
 ### Testing

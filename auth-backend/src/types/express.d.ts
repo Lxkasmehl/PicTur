@@ -8,7 +8,7 @@ declare global {
     interface User {
       id: number;
       email: string;
-      role: 'community' | 'admin';
+      role: 'community' | 'staff' | 'admin';
       email_verified?: boolean;
     }
     interface Request {

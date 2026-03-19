@@ -9,12 +9,20 @@ import {
   removeToken,
 } from './config';
 
+/** community (default) | staff (admin-like, no user management) | admin (full) */
+export type UserRole = 'community' | 'staff' | 'admin';
+
 export interface User {
   id: number;
   email: string;
   name: string | null;
-  role: 'community' | 'admin';
+  role: UserRole;
   email_verified?: boolean;
+}
+
+/** True if user can access turtle records, release, sheets, review (staff or admin). */
+export function isStaffRole(role: string | undefined): role is UserRole {
+  return role === 'staff' || role === 'admin';
 }
 
 export interface AuthResponse {
@@ -218,6 +226,41 @@ export const promoteToAdmin = async (
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to promote user to admin');
+  }
+
+  return await response.json();
+};
+
+// Get all users (admin only)
+export interface GetUsersResponse {
+  success: boolean;
+  users: Array<{ id: number; email: string; name: string | null; role: UserRole; created_at: string }>;
+}
+
+export const getUsers = async (): Promise<GetUsersResponse> => {
+  const response = await apiRequest('/admin/users', { method: 'GET' });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to load users');
+  }
+  return await response.json();
+};
+
+// Set user role (admin only); for promote to staff or demote
+export type SetRoleBody = { role: UserRole };
+
+export const setUserRole = async (
+  userId: number,
+  role: UserRole,
+): Promise<{ success: boolean; message: string; user: { id: number; email: string; role: UserRole } }> => {
+  const response = await apiRequest(`/admin/users/${userId}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to set user role');
   }
 
   return await response.json();

@@ -5,7 +5,6 @@ import {
   Text,
   Group,
   Stack,
-  Center,
   Button,
   Select,
   Loader,
@@ -26,6 +25,7 @@ import { useRef, useState, useEffect, useMemo } from 'react';
 import { validateFile } from '../utils/fileValidation';
 import { useUser } from '../hooks/useUser';
 import { usePhotoUpload } from '../hooks/usePhotoUpload';
+import { isStaffRole } from '../services/api/auth';
 import { PreviewCard } from '../components/PreviewCard';
 import { InstructionsModal } from '../components/InstructionsModal';
 import { getLocations } from '../services/api';
@@ -35,6 +35,7 @@ const SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue', 'Incidental_Finds',
 
 export default function HomePage() {
   const { role } = useUser();
+  const isStaff = isStaffRole(role);
   const isMobile = useMediaQuery('(max-width: 768px)');
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -52,9 +53,9 @@ export default function HomePage() {
     }
   }, []);
 
-  // Admin: load backend locations (state and state/location) for match dropdown
+  // Staff/Admin: load backend locations (state and state/location) for match dropdown
   useEffect(() => {
-    if (role !== 'admin') return;
+    if (!isStaff) return;
     setLocationsLoading(true);
     getLocations()
       .then((res) => {
@@ -82,16 +83,16 @@ export default function HomePage() {
       })
       .catch(() => setAvailableLocations([]))
       .finally(() => setLocationsLoading(false));
-  }, [role]);
+  }, [isStaff]);
   useEffect(() => {
-    if (role === 'admin' && availableLocations.length > 0) {
+    if (isStaff && availableLocations.length > 0) {
       const firstLocation = availableLocations.find((p) => p.startsWith('Kansas/'));
       const defaultSelection = firstLocation || availableLocations[0];
       setSelectedMatchSheet((prev) =>
         prev === MATCH_ALL_VALUE ? defaultSelection : prev,
       );
     }
-  }, [role, availableLocations]);
+  }, [isStaff, availableLocations]);
 
   const matchScopeOptions = useMemo(() => {
     const byState = new Map<string, Set<string>>();
@@ -134,12 +135,11 @@ export default function HomePage() {
     return options;
   }, [availableLocations]);
 
-  const matchSheetForUpload =
-    role === 'admin'
-      ? selectedMatchSheet === MATCH_ALL_VALUE
-        ? ''
-        : selectedMatchSheet
-      : undefined;
+  const matchSheetForUpload = isStaff
+    ? selectedMatchSheet === MATCH_ALL_VALUE
+      ? ''
+      : selectedMatchSheet
+    : undefined;
 
   const {
     files,
@@ -242,47 +242,26 @@ export default function HomePage() {
     <Container size='sm' py={{ base: 'md', sm: 'xl' }} px={{ base: 'xs', sm: 'md' }}>
       <Paper shadow='sm' p={{ base: 'md', sm: 'xl' }} radius='md' withBorder>
         <Stack gap='lg'>
-          <Center>
-            <Stack gap='xs' align='center' style={{ width: '100%' }}>
-              {isMobile ? (
-                <Stack gap='xs' align='center' style={{ width: '100%' }}>
-                  <Title order={1} ta='center'>
-                    Photo Upload
-                  </Title>
-                  <Button
-                    variant='light'
-                    size='sm'
-                    leftSection={<IconInfoCircle size={16} />}
-                    onClick={() => setInstructionsOpened(true)}
-                    fullWidth
-                  >
-                    View Instructions
-                  </Button>
-                </Stack>
-              ) : (
-                <Group justify='space-between' style={{ width: '100%' }}>
-                  <div style={{ flex: 1 }} />
-                  <Title order={1}>Photo Upload</Title>
-                  <Group style={{ flex: 1 }} justify='flex-end'>
-                    <Button
-                      variant='light'
-                      size='sm'
-                      leftSection={<IconInfoCircle size={16} />}
-                      onClick={() => setInstructionsOpened(true)}
-                    >
-                      View Instructions
-                    </Button>
-                  </Group>
-                </Group>
-              )}
-              <Text size='sm' c='dimmed' ta='center'>
-                Upload a photo to save it in the backend
-              </Text>
-            </Stack>
-          </Center>
+          <Stack gap="xs" align="center">
+            <Title order={1} ta="center">
+              Photo Upload
+            </Title>
+            <Text size="sm" c="dimmed" ta="center">
+              Upload a photo to save it in the backend
+            </Text>
+            <Button
+              variant="subtle"
+              size="sm"
+              c="dimmed"
+              leftSection={<IconInfoCircle size={16} />}
+              onClick={() => setInstructionsOpened(true)}
+            >
+              View instructions
+            </Button>
+          </Stack>
 
-          {/* Admin: select which location (backend folder / state) to test against */}
-          {role === 'admin' && (
+          {/* Staff/Admin: select which location (backend folder / state) to test against */}
+          {isStaff && (
             <Stack gap='xs'>
               <Text size='sm' fw={500}>
                 Which location to test against?

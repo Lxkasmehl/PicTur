@@ -17,12 +17,13 @@ import VerifyEmailPage from './pages/VerifyEmailPage';
 import EmailVerificationGuard from './components/EmailVerificationGuard';
 import { store } from './store';
 import { useAppSelector } from './store/hooks';
-import { communityTheme, adminTheme } from './store/slices/themeSlice';
+import { communityTheme, staffTheme, adminTheme } from './store/slices/themeSlice';
 import AuthProvider from './components/AuthProvider';
 
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { role } = useAppSelector((state) => state.user);
-  const currentTheme = role === 'admin' ? adminTheme : communityTheme;
+  const currentTheme =
+    role === 'admin' ? adminTheme : role === 'staff' ? staffTheme : communityTheme;
 
   return <MantineProvider theme={currentTheme}>{children}</MantineProvider>;
 }

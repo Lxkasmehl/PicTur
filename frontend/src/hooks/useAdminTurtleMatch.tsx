@@ -44,7 +44,7 @@ export function useAdminTurtleMatch(
 
   useEffect(() => {
     if (!authChecked) return;
-    if (role !== 'admin') {
+    if (role !== 'staff' && role !== 'admin') {
       navigate('/');
       return;
     }

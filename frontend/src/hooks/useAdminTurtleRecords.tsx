@@ -60,7 +60,7 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
 
   useEffect(() => {
     if (!authChecked) return;
-    if (role !== 'admin') {
+    if (role !== 'staff' && role !== 'admin') {
       navigate('/');
       return;
     }

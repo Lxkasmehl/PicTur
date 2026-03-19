@@ -113,7 +113,7 @@ export default function LoginPage({
         id: 0, // Will be fetched from API
         email: emailParam,
         name: nameParam || null,
-        role: roleParam as 'community' | 'admin',
+        role: roleParam as 'community' | 'staff' | 'admin',
       });
 
       // Fetch full user data
@@ -176,7 +176,9 @@ export default function LoginPage({
         const roleMessage =
           response.user.role === 'admin'
             ? 'Your admin account has been created successfully!'
-            : 'Account created successfully!';
+            : response.user.role === 'staff'
+              ? 'Your staff account has been created successfully!'
+              : 'Account created successfully!';
         notifications.show({
           title: roleMessage,
           message: response.user.email_verified

@@ -60,8 +60,12 @@ jobs:
         run: |
           docker compose exec -T -e E2E_ADMIN_EMAIL=admin@test.com \
             -e E2E_ADMIN_PASSWORD=testpassword123 \
+            -e E2E_STAFF_EMAIL=staff@test.com \
+            -e E2E_STAFF_PASSWORD=testpassword123 \
             -e E2E_COMMUNITY_EMAIL=community@test.com \
             -e E2E_COMMUNITY_PASSWORD=testpassword123 \
+            -e E2E_ROLE_TEST_EMAIL=role-test-community@test.com \
+            -e E2E_ROLE_TEST_PASSWORD=testpassword123 \
             auth-backend node dist/scripts/seed-test-users.js
 
       - uses: actions/setup-node@v4
@@ -84,6 +88,8 @@ jobs:
           PLAYWRIGHT_BASE_URL: http://localhost
           E2E_ADMIN_EMAIL: admin@test.com
           E2E_ADMIN_PASSWORD: testpassword123
+          E2E_STAFF_EMAIL: staff@test.com
+          E2E_STAFF_PASSWORD: testpassword123
           E2E_COMMUNITY_EMAIL: community@test.com
           E2E_COMMUNITY_PASSWORD: testpassword123
         run: npm test
