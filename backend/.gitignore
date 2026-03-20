@@ -38,3 +38,5 @@ credentials/
 **/db.sqlite3
 turtles/db.sqlite3
 backend/turtles/db.sqlite3
+
+general_locations.json
