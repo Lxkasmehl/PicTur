@@ -49,18 +49,28 @@ def register_general_location_routes(app):
         except ValueError as exc:
             return jsonify({'success': False, 'error': str(exc)}), 400
 
-        synced = False
+        sheets_updated = 0
         sync_error = None
+        service = None
         try:
             service = get_sheets_service()
             if service:
-                sheet_management.sync_general_location_validations(service)
-                synced = True
+                sheets_updated = sheet_management.sync_general_location_validations(service)
         except Exception as exc:  # pragma: no cover - best effort sync
             sync_error = str(exc)
 
+        # True only when at least one tab received updated validation (not merely "API client exists")
+        synced = bool(service) and sheets_updated > 0 and sync_error is None
+
         response = {'success': True, **_serialize_catalog(catalog), 'synced': synced}
+        if service is not None:
+            response['sheets_updated'] = sheets_updated
         if sync_error:
             response['sync_error'] = sync_error
+        elif service and sheets_updated == 0:
+            response['sync_warning'] = (
+                'Google Sheets General Location dropdown was not updated on any tab. '
+                'Ensure each state tab has a "General Location" header in row 1, or re-save a turtle on that tab.'
+            )
         return jsonify(response)
 

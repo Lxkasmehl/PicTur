@@ -159,7 +159,10 @@ export interface AddGeneralLocationRequest {
 
 export interface AddGeneralLocationResponse extends GeneralLocationCatalogResponse {
   synced?: boolean;
+  sheets_updated?: number;
   sync_error?: string;
+  /** Present when Sheets API ran but no tab was updated (e.g. missing header). */
+  sync_warning?: string;
   message?: string;
 }
 

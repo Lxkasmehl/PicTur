@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Replaced the free-text General Location field with a state-dependent dropdown and add-new flow in the admin turtle forms.
-- Added shared general-location catalog support with sheet-specific auto-fill rules for fixed mappings like `Nebraska CPBS`.
+- Added shared general-location catalog support with sheet-specific auto-fill rules for fixed mappings (e.g. `NebraskaCPBS`, `IowaHawkeye`).
 - Applied Google Sheets validation for General Location so new sheets use the same allowed options.
+
+### Fixed
+
+- **General location catalog**: Normalization no longer merges placeholder example states into an existing `general_locations.json`, so POST add-location does not persist fake keys; in-repo defaults match `general_locations.json` for first-run seeding.
+- **Google Sheets General Location dropdown**: `POST /api/general-locations` now applies validation using the real Sheets API client (`GoogleSheetsService.service`); previously sync silently updated 0 tabs, so new locations stayed invalid in Sheets. Research turtle create/update also re-syncs validation for the affected tab.
 
 ### Changed
 

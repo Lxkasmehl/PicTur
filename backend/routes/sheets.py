@@ -12,6 +12,7 @@ from flask import request, jsonify
 from auth import require_admin
 from services.manager_service import get_sheets_service, get_community_sheets_service
 from general_locations_catalog import resolve_general_location_from_sheet_and_value
+from sheets import sheet_management
 
 # Timeout for single attempt to find sheet + get turtle data (avoids hanging on SSL/slow API)
 SHEETS_TURTLE_DATA_TIMEOUT_SEC = 25
@@ -19,6 +20,18 @@ SHEETS_TURTLE_DATA_TIMEOUT_SEC = 25
 # Lock for list_turtle_names so concurrent requests don't trigger SSL errors (WRONG_VERSION_NUMBER)
 # when making many Google API calls in parallel.
 _turtle_names_lock = threading.Lock()
+
+
+def _refresh_general_location_validation_for_sheet(service, sheet_name: str) -> None:
+    """Best-effort: push catalog-based General Location dropdown to this tab (research spreadsheet)."""
+    if not sheet_name:
+        return
+    try:
+        updated = sheet_management.sync_general_location_validations(service, [sheet_name])
+        if updated:
+            print(f"✅ General Location validation synced for sheet '{sheet_name}'")
+    except Exception as e:
+        print(f"⚠️ General Location validation sync skipped for '{sheet_name}': {e}")
 
 
 def _is_ssl_or_connection_error(e):
@@ -309,6 +322,8 @@ def register_sheets_routes(app):
 
             if created_id:
                 print(f"✅ Successfully created turtle in sheets with Primary ID: {created_id}")
+                if target_spreadsheet != 'community':
+                    _refresh_general_location_validation_for_sheet(service, sheet_name)
                 return jsonify({
                     'success': True,
                     'primary_id': created_id,
@@ -403,6 +418,8 @@ def register_sheets_routes(app):
 
                 created_id = service.create_turtle_data(turtle_data_clean, sheet_name, state, location)
                 if created_id:
+                    if target_spreadsheet != 'community':
+                        _refresh_general_location_validation_for_sheet(service, sheet_name)
                     return jsonify({
                         'success': True,
                         'message': f'Turtle moved from "{current_sheet}" to "{sheet_name}" successfully',
@@ -417,6 +434,8 @@ def register_sheets_routes(app):
                 turtle_data_clean = {k: v for k, v in turtle_data.items() if k != 'sheet_name'}
                 success = service.update_turtle_data(primary_id, turtle_data_clean, sheet_name, state, location)
                 if success:
+                    if target_spreadsheet != 'community':
+                        _refresh_general_location_validation_for_sheet(service, sheet_name)
                     return jsonify({
                         'success': True,
                         'message': 'Turtle data updated successfully',
@@ -438,6 +457,8 @@ def register_sheets_routes(app):
                     turtle_data_clean['id'] = service.generate_biology_id(gender, sheet_name)
                 created_id = service.create_turtle_data(turtle_data_clean, sheet_name, state, location)
                 if created_id:
+                    if target_spreadsheet != 'community':
+                        _refresh_general_location_validation_for_sheet(service, sheet_name)
                     return jsonify({
                         'success': True,
                         'message': 'Turtle data created successfully',

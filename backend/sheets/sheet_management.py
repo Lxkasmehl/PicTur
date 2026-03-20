@@ -13,6 +13,20 @@ GENERAL_LOCATION_VALIDATION_START_ROW = 1  # Row 2 in Sheets UI
 GENERAL_LOCATION_VALIDATION_END_ROW = 100000
 
 
+def _sheets_v4_client_and_id(service_or_wrapper):
+    """
+    Return (raw googleapiclient sheets v4 resource, spreadsheet_id).
+
+    Routes pass GoogleSheetsService, which stores the discovery client on .service
+    and the id on .spreadsheet_id. Other functions in this module use the raw client.
+    """
+    api = getattr(service_or_wrapper, 'service', None)
+    spreadsheet_id = getattr(service_or_wrapper, 'spreadsheet_id', None)
+    if api is not None and spreadsheet_id:
+        return api, spreadsheet_id
+    return None, None
+
+
 def _get_sheet_id(service, spreadsheet_id: str, sheet_name: str) -> Optional[int]:
     """Return the sheet ID for a tab name."""
     spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
@@ -36,7 +50,8 @@ def _get_general_location_column_index(service, spreadsheet_id: str, sheet_name:
             return None
         headers = values[0]
         for idx, header in enumerate(headers):
-            if (header or '').strip() == 'General Location':
+            h = ' '.join((header or '').strip().split())
+            if h.casefold() == 'general location':
                 return idx
     except Exception:
         return None
@@ -115,6 +130,14 @@ def _apply_general_location_validation(
 
 def sync_general_location_validations(service, sheet_names: Optional[List[str]] = None) -> int:
     """Sync General Location dropdown validation across one or more sheets."""
+    api, spreadsheet_id = _sheets_v4_client_and_id(service)
+    if api is None or not spreadsheet_id:
+        print(
+            'ERROR: sync_general_location_validations requires GoogleSheetsService '
+            '(with .service and .spreadsheet_id)'
+        )
+        return 0
+
     if sheet_names is None:
         try:
             sheet_names = service.list_sheets()
@@ -123,7 +146,7 @@ def sync_general_location_validations(service, sheet_names: Optional[List[str]] 
 
     processed = 0
     try:
-        spreadsheet = service.spreadsheets().get(spreadsheetId=service.spreadsheet_id).execute()
+        spreadsheet = api.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         title_to_id = {
             sheet.get('properties', {}).get('title'): sheet.get('properties', {}).get('sheetId')
             for sheet in spreadsheet.get('sheets', [])
@@ -134,7 +157,7 @@ def sync_general_location_validations(service, sheet_names: Optional[List[str]] 
             sheet_id = title_to_id.get(sheet_name)
             if sheet_id is None:
                 continue
-            if _apply_general_location_validation(service, service.spreadsheet_id, sheet_name, sheet_id):
+            if _apply_general_location_validation(api, spreadsheet_id, sheet_name, sheet_id):
                 processed += 1
     except Exception as e:
         print(f"Error syncing General Location validation: {e}")

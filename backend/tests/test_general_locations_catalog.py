@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 import general_locations_catalog as glc
@@ -19,8 +21,20 @@ def test_default_catalog_includes_seed_values(isolated_catalog):
         'North Topeka',
         'Valencia',
     ]
-    assert catalog['sheet_defaults']['Nebraska CPBS']['general_location'] == 'CPBS'
+    assert catalog['sheet_defaults']['NebraskaCPBS']['general_location'] == 'CPBS'
     assert isolated_catalog.exists()
+
+
+def test_save_after_add_does_not_write_placeholder_states(isolated_catalog):
+    """Regression: merged-in code defaults must not be persisted when JSON already has real data."""
+    isolated_catalog.write_text(
+        json.dumps({'states': {'Kansas': ['Lawrence']}, 'sheet_defaults': {}}),
+        encoding='utf-8',
+    )
+    glc.add_general_location('Kansas', 'Wichita')
+    data = json.loads(isolated_catalog.read_text(encoding='utf-8'))
+    assert 'Example State A' not in data.get('states', {})
+    assert 'Wichita' in data['states']['Kansas']
 
 
 def test_add_general_location_is_case_insensitive(isolated_catalog):
@@ -35,7 +49,7 @@ def test_add_general_location_is_case_insensitive(isolated_catalog):
 def test_resolve_general_location_from_sheet_and_value(isolated_catalog):
     glc.add_general_location('Kansas', 'Wichita')
 
-    assert glc.get_general_location_options_for_sheet('Nebraska CPBS')['locations'] == ['CPBS']
+    assert glc.get_general_location_options_for_sheet('NebraskaCPBS')['locations'] == ['CPBS']
     assert glc.get_general_location_options_for_sheet('Kansas')['locations'] == [
         'Karlyle Woods',
         'Lawrence',
@@ -43,7 +57,7 @@ def test_resolve_general_location_from_sheet_and_value(isolated_catalog):
         'Valencia',
         'Wichita',
     ]
-    assert glc.resolve_general_location_from_sheet_and_value('Nebraska CPBS', 'Anything') == 'CPBS'
+    assert glc.resolve_general_location_from_sheet_and_value('NebraskaCPBS', 'Anything') == 'CPBS'
     assert glc.resolve_general_location_from_sheet_and_value('Kansas', 'wichita') == 'Wichita'
 
     with pytest.raises(ValueError):

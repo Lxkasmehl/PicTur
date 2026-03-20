@@ -508,11 +508,26 @@ export function useTurtleSheetsDataForm(
       });
       setShowCreateGeneralLocationModal(false);
       setNewGeneralLocationName('');
+      let syncMessage = '';
+      if (response.synced && response.sheets_updated !== undefined) {
+        syncMessage = ` and ${response.sheets_updated} Google Sheet${response.sheets_updated === 1 ? '' : 's'} updated`;
+      } else if (response.sync_error) {
+        syncMessage = ` (Google Sheets sync failed: ${response.sync_error})`;
+      } else if (!response.synced) {
+        syncMessage = ' (Google Sheets sync skipped)';
+      }
       notifications.show({
         title: 'Success',
-        message: `General Location "${value}" added for ${state}`,
+        message: `General Location "${value}" added for ${state}${syncMessage}`,
         color: 'green',
       });
+      if (response.sync_warning) {
+        notifications.show({
+          title: 'Google Sheets',
+          message: response.sync_warning,
+          color: 'yellow',
+        });
+      }
     } catch (error) {
       notifications.show({
         title: 'Error',

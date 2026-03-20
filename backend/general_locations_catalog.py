@@ -18,25 +18,36 @@ from typing import Any, Dict, List, Optional
 _CATALOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'general_locations.json')
 _CATALOG_LOCK = threading.RLock()
 
+# Seed used only when general_locations.json is missing or has no states/sheet_defaults yet.
+# Keep aligned with the committed general_locations.json so first-run writes match repo defaults.
 _DEFAULT_CATALOG: Dict[str, Any] = {
     'states': {
-        'Example State A': [
-            'Location One',
-            'Location Two',
+        'Kansas': [
+            'Karlyle Woods',
+            'Lawrence',
+            'North Topeka',
+            'Valencia',
         ],
-        'Example State B': [
-            'Location Alpha',
+        'Nebraska': [
+            'CPBS',
+            'Crescent Lake',
         ],
-        'Example State C': [],
+        'Iowa': [
+            'Hawkeye',
+        ],
     },
     'sheet_defaults': {
-        'Example Sheet A': {
-            'state': 'Example State A',
-            'general_location': 'Location One',
+        'NebraskaCPBS': {
+            'state': 'Nebraska',
+            'general_location': 'CPBS',
         },
-        'Example Sheet B': {
-            'state': 'Example State B',
-            'general_location': 'Location Alpha',
+        'NebraskaCL': {
+            'state': 'Nebraska',
+            'general_location': 'Crescent Lake',
+        },
+        'IowaHawkeye': {
+            'state': 'Iowa',
+            'general_location': 'Hawkeye',
         },
     },
 }
@@ -47,10 +58,16 @@ def _normalize_text(value: str) -> str:
 
 
 def _normalize_catalog(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    catalog = deepcopy(_DEFAULT_CATALOG)
     raw = raw or {}
-
     states = raw.get('states') if isinstance(raw.get('states'), dict) else {}
+    sheet_defaults_in = raw.get('sheet_defaults') if isinstance(raw.get('sheet_defaults'), dict) else {}
+    # If the JSON file already defines any state or sheet rule, build only from that file.
+    # Merging into generic/example defaults previously caused placeholder keys to be saved back to disk.
+    has_persistent_data = bool(states or sheet_defaults_in)
+    catalog: Dict[str, Any] = (
+        {'states': {}, 'sheet_defaults': {}} if has_persistent_data else deepcopy(_DEFAULT_CATALOG)
+    )
+
     for state_name, locations in states.items():
         state = _normalize_text(str(state_name))
         if not state:
@@ -67,8 +84,7 @@ def _normalize_catalog(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
                     existing.append(loc)
         existing[:] = sorted(existing, key=lambda item: item.lower())
 
-    sheet_defaults = raw.get('sheet_defaults') if isinstance(raw.get('sheet_defaults'), dict) else {}
-    for sheet_name, rule in sheet_defaults.items():
+    for sheet_name, rule in sheet_defaults_in.items():
         sheet = _normalize_text(str(sheet_name))
         if not sheet or not isinstance(rule, dict):
             continue
