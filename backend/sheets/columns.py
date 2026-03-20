@@ -30,6 +30,15 @@ COLUMN_MAPPING = {
     'Transmitter lifespan': 'transmitter_lifespan',
     'Radio Replace Date': 'radio_replace_date',
     'OLD Frequencies': 'old_frequencies',
+    # Optional mass and morphometrics
+    'Mass (g)': 'mass_g',
+    'Curved carapace length (mm)': 'curved_carapace_length_mm',
+    'Straight carapace length (mm)': 'straight_carapace_length_mm',
+    'Carapace width (mm)': 'carapace_width_mm',
+    'Curved plastron length (mm)': 'curved_plastron_length_mm',
+    'Straight plastron length (mm)': 'straight_plastron_length_mm',
+    'Plastron width (mm)': 'plastron_width_mm',
+    'Dome height (mm)': 'dome_height_mm',
 }
 
 # Reverse mapping: internal field names to Google Sheets column headers

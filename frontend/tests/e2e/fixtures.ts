@@ -200,6 +200,7 @@ export async function selectSheetInCreateTurtleDialog(
   // exact: true so "Kansas" does not match "Kansas/Wichita" (strict mode)
   const option = page.getByRole('listbox', { name: SHEET_SELECT_LABEL }).getByRole('option', { name: sheetName, exact: true });
   await option.waitFor({ state: 'visible', timeout: SHEET_DROPDOWN_TIMEOUT });
+  await option.scrollIntoViewIfNeeded();
   await option.click();
 }
 

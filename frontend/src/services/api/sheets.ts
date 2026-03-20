@@ -32,6 +32,15 @@ export interface TurtleSheetsData {
   transmitter_lifespan?: string;
   radio_replace_date?: string;
   old_frequencies?: string;
+  // Optional mass and morphometrics
+  mass_g?: string;
+  curved_carapace_length_mm?: string;
+  straight_carapace_length_mm?: string;
+  carapace_width_mm?: string;
+  curved_plastron_length_mm?: string;
+  straight_plastron_length_mm?: string;
+  plastron_width_mm?: string;
+  dome_height_mm?: string;
 }
 
 export interface GetTurtleSheetsDataResponse {
