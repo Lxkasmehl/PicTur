@@ -139,7 +139,7 @@ export default function GamePersistence(): null {
     if (isEmailVerified(user)) {
       dispatch(grantVerifiedObserverBadge());
     }
-  }, [authChecked, user?.id, user?.email_verified, dispatch]);
+  }, [authChecked, user, dispatch]);
 
   useEffect(() => {
     if (!authChecked || !game.hydrated) return;
@@ -166,24 +166,7 @@ export default function GamePersistence(): null {
         });
     }, 450);
     return () => clearTimeout(t);
-  }, [
-    authChecked,
-    userId,
-    game.hydrated,
-    game.totalXp,
-    game.lifetimeSightings,
-    game.questWeekKey,
-    game.weeklySightings,
-    game.weeklyGpsSightings,
-    game.weeklyExtraSightings,
-    game.weeksWithUpload,
-    game.gpsHintTotal,
-    game.manualHintTotal,
-    game.sightingsWithExtraPhotos,
-    game.trainingCompleted,
-    game.badges,
-    game.completedWeeklyQuestIds,
-  ]);
+  }, [authChecked, userId, game]);
 
   return null;
 }
