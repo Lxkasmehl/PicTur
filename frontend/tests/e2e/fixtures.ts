@@ -204,17 +204,43 @@ export async function selectSheetInCreateTurtleDialog(
   await option.click();
 }
 
+const GENERAL_LOCATION_LABEL = /General Location/;
+const GENERAL_LOCATION_DROPDOWN_TIMEOUT = 15_000;
+
 /**
- * Fills the General Location field in Create New Turtle dialog (required for admin backend path).
+ * Selects a General Location in Create New Turtle dialog (Mantine Select or native select element).
  */
+export async function selectGeneralLocationInCreateTurtleDialog(
+  page: Page,
+  dialog: ReturnType<Page['getByRole']>,
+  locationName: string,
+): Promise<void> {
+  const field = dialog.getByLabel(GENERAL_LOCATION_LABEL);
+  await field.waitFor({ state: 'visible', timeout: GENERAL_LOCATION_DROPDOWN_TIMEOUT });
+
+  const isNativeSelect = await field.evaluate((el) => el.tagName === 'SELECT');
+  if (isNativeSelect) {
+    await field.selectOption(locationName);
+    return;
+  }
+
+  await field.click();
+  // Mantine may not set listbox accessible name; single open listbox in this dialog.
+  const listbox = page.getByRole('listbox');
+  await listbox.waitFor({ state: 'visible', timeout: GENERAL_LOCATION_DROPDOWN_TIMEOUT });
+  const option = listbox.getByRole('option', { name: locationName, exact: true });
+  await option.waitFor({ state: 'visible', timeout: GENERAL_LOCATION_DROPDOWN_TIMEOUT });
+  await option.scrollIntoViewIfNeeded();
+  await option.click();
+  await listbox.waitFor({ state: 'hidden', timeout: GENERAL_LOCATION_DROPDOWN_TIMEOUT }).catch(() => {});
+}
+
+/** General Location is a dropdown; delegates to selectGeneralLocationInCreateTurtleDialog. */
 export async function fillGeneralLocationInCreateTurtleDialog(
   dialog: ReturnType<Page['getByRole']>,
   value: string,
 ): Promise<void> {
-  // Required fields get " *" appended by Mantine, so avoid exact match on the label.
-  const field = dialog.getByLabel(/General Location/);
-  await field.waitFor({ state: 'visible', timeout: 5000 });
-  await field.fill(value);
+  await selectGeneralLocationInCreateTurtleDialog(dialog.page(), dialog, value);
 }
 
 const SEX_SELECT_LABEL = 'Sex';
