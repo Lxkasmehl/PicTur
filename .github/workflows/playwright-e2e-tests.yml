@@ -6,91 +6,79 @@ on:
   pull_request:
     branches: [main, master, develop]
 
+# Pattern aligned with Playwright CI guidance: quick smoke, then parallel shards over the full suite
+# (each shard runs the full project matrix from playwright.config.ts). Shared Docker + install:
+# .github/actions/e2e-playwright-prepare
+#
+# To add capacity, extend matrix.shard to [1, 2, 3] and set PW_SHARD_TOTAL to 3.
+
+env:
+  PLAYWRIGHT_BASE_URL: http://localhost
+  E2E_ADMIN_EMAIL: admin@test.com
+  E2E_ADMIN_PASSWORD: testpassword123
+  E2E_STAFF_EMAIL: staff@test.com
+  E2E_STAFF_PASSWORD: testpassword123
+  E2E_COMMUNITY_EMAIL: community@test.com
+  E2E_COMMUNITY_PASSWORD: testpassword123
+  PW_SHARD_TOTAL: 2
+
 jobs:
-  test:
-    timeout-minutes: 120
+  e2e-smoke:
+    timeout-minutes: 90
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Create .env for Docker Compose
-        run: |
-          echo "JWT_SECRET=$(openssl rand -hex 32)" >> .env
-          echo "SESSION_SECRET=$(openssl rand -hex 32)" >> .env
-          echo "FRONTEND_URL=http://localhost" >> .env
-
-      - name: Build and start services with Docker Compose
-        run: docker compose up -d --build
-
-      - name: Wait for auth backend
-        run: |
-          n=0
-          until [ $n -ge 60 ]; do
-            if curl -sf http://localhost:3001/api/health > /dev/null; then break; fi
-            n=$((n+1)); sleep 1
-          done
-          [ $n -lt 60 ] || (echo "Auth backend did not become ready"; exit 1)
-
-      - name: Wait for Flask backend
-        run: |
-          n=0
-          until [ $n -ge 120 ]; do
-            if curl -sf http://localhost:5000/api/health > /dev/null; then break; fi
-            n=$((n+1)); sleep 1
-          done
-          [ $n -lt 120 ] || (echo "Flask backend did not become ready"; exit 1)
-
-      - name: Wait for frontend
-        run: |
-          n=0
-          until [ $n -ge 30 ]; do
-            if curl -sf http://localhost:80 > /dev/null; then break; fi
-            n=$((n+1)); sleep 1
-          done
-          [ $n -lt 30 ] || (echo "Frontend did not become ready"; exit 1)
-
-      - name: Seed test users in auth backend
-        run: |
-          docker compose exec -T -e E2E_ADMIN_EMAIL=admin@test.com \
-            -e E2E_ADMIN_PASSWORD=testpassword123 \
-            -e E2E_STAFF_EMAIL=staff@test.com \
-            -e E2E_STAFF_PASSWORD=testpassword123 \
-            -e E2E_COMMUNITY_EMAIL=community@test.com \
-            -e E2E_COMMUNITY_PASSWORD=testpassword123 \
-            -e E2E_ROLE_TEST_EMAIL=role-test-community@test.com \
-            -e E2E_ROLE_TEST_PASSWORD=testpassword123 \
-            auth-backend node dist/scripts/seed-test-users.js
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
+      - uses: ./.github/actions/e2e-playwright-prepare
+      - name: Run Playwright (smoke)
         working-directory: ./frontend
-        run: npm ci
-
-      - name: Install Playwright Browsers
-        working-directory: ./frontend
-        run: npx playwright install --with-deps
-
-      - name: Run Playwright tests
-        working-directory: ./frontend
-        env:
-          PLAYWRIGHT_BASE_URL: http://localhost
-          E2E_ADMIN_EMAIL: admin@test.com
-          E2E_ADMIN_PASSWORD: testpassword123
-          E2E_STAFF_EMAIL: staff@test.com
-          E2E_STAFF_PASSWORD: testpassword123
-          E2E_COMMUNITY_EMAIL: community@test.com
-          E2E_COMMUNITY_PASSWORD: testpassword123
-        run: npm test
-
-      - name: Upload test results
+        run: >-
+          npx playwright test
+          tests/e2e/auth.spec.ts
+          tests/e2e/navigation.spec.ts
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-smoke
+          path: frontend/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  e2e-shard:
+    needs: e2e-smoke
+    timeout-minutes: 150
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/e2e-playwright-prepare
+      - name: Run Playwright (shard ${{ matrix.shard }}/${{ env.PW_SHARD_TOTAL }})
+        working-directory: ./frontend
+        run: npx playwright test tests/e2e --shard=${{ matrix.shard }}/${{ env.PW_SHARD_TOTAL }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-shard-${{ matrix.shard }}
           path: frontend/playwright-report/
           retention-days: 30
+          if-no-files-found: ignore
+
+  e2e-success:
+    name: E2E (all required jobs passed)
+    needs: [e2e-smoke, e2e-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce green smoke + shards
+        run: |
+          if [ "${{ needs.e2e-smoke.result }}" != "success" ]; then
+            echo "e2e-smoke did not succeed (${{ needs.e2e-smoke.result }})"
+            exit 1
+          fi
+          if [ "${{ needs.e2e-shard.result }}" != "success" ]; then
+            echo "e2e-shard did not succeed (${{ needs.e2e-shard.result }})"
+            exit 1
+          fi
+          echo "Playwright smoke and all shards passed."
