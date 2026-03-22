@@ -14,15 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Auth**: Authenticated requests fail with 403 when the user row no longer exists (e.g. after admin deletion); a valid JWT signature alone is not enough. Legacy `auth.json` import treats a missing `email_verified` field as verified and backfills `email_verified_at` from existing timestamps.
+- **Community game (frontend)**: When syncing to the server fails after load or on debounced save, progress is written to local storage via `writePersistedGame` so offline or error paths do not silently drop state; local cache is cleared only after a successful server round-trip.
 - **General location catalog**: Normalization no longer merges placeholder example states into an existing `general_locations.json`, so POST add-location does not persist fake keys; in-repo defaults match `general_locations.json` for first-run seeding.
 - **Google Sheets General Location dropdown**: `POST /api/general-locations` now applies validation using the real Sheets API client (`GoogleSheetsService.service`); previously sync silently updated 0 tabs, so new locations stayed invalid in Sheets. Research turtle create/update also re-syncs validation for the affected tab.
 
 ### Changed
 
+- **Email verification (frontend)**: Unverified logged-in users may open `/observer` (still redirected from other app areas until verified). After hydrating community game state, the verified observer badge is granted when the account is verified.
 - **Admin turtle form**: Changing Sheet/Location clears General Location, then sheet default rules re-apply; General Location `Select` remounts on sheet change so Mantine does not show a stale label.
 - **Staff photo upload (Home)**: Match-scope `Select` always keeps a value that exists in its option list (required, no deselect); avoids an empty-looking control when the stored value is not in `data`. (This is separate from the admin turtle form General Location field.)
 - **Upload instructions (frontend)**: Redesigned photo submission instructions modal with clearer layout, spacing, and alignment; prominent “plastron must have” checklist (full frame, no reflections, centered/sharp, clear pattern). Added note that the example image is an ideal lab photo and field photos need not match it. When reopening instructions after first visit (reminder), modal can be closed via X or click-outside without scrolling or checkbox. Optional hint for microhabitat/condition photos. Home page header simplified to centered title, subtitle, and “View instructions” button below.
 - **CI (Playwright E2E)**: Workflow uses a smoke job, parallel `--shard` matrix over `tests/e2e` (full browser matrix unchanged), shared `.github/actions/e2e-playwright-prepare` for Docker Compose + Playwright install, and an `e2e-success` job to aggregate status; HTML reports uploaded per smoke/shard.
+
+### Testing
+
+- **Integration (admin role)**: `test_patch_user_role_as_admin_success` targets the seeded role-test community user (`E2E_ROLE_TEST_EMAIL`, default `role-test-community@test.com`) so role demotion does not revoke JWTs used by other tests.
 
 ---
 

@@ -246,6 +246,8 @@ router.delete(
         }
       }
 
+      // JWTs for this user fail on the next request: authenticateToken requires a users row
+      // (signature alone is not enough after deletion).
       db.prepare('DELETE FROM users WHERE id = ?').run(userId);
 
       res.json({

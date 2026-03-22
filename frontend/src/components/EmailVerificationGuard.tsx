@@ -10,11 +10,12 @@ const ALLOWED_WITHOUT_VERIFICATION = [
   '/register',
   '/about',
   '/contact',
+  '/observer',
 ];
 
 /**
  * Redirects logged-in users with unverified email to /verify-email.
- * They can only access login, register, verify-email, about, contact until verified.
+ * They can only access login, register, verify-email, about, contact, observer until verified.
  */
 export default function EmailVerificationGuard({
   children,

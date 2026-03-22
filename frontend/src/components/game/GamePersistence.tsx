@@ -7,7 +7,7 @@ import {
   resetCommunityGame,
 } from '../../store/slices/communityGameSlice';
 import type { CommunityGamePersistedState } from '../../store/slices/communityGameSlice';
-import { readPersistedGame, storageKeyForUser } from '../../gamification/persistence';
+import { readPersistedGame, storageKeyForUser, writePersistedGame } from '../../gamification/persistence';
 import { fetchCommunityGameState, saveCommunityGameState } from '../../services/api/communityGame';
 import { isEmailVerified } from '../../utils/emailVerified';
 import { store } from '../../store';
@@ -93,8 +93,10 @@ export default function GamePersistence(): null {
       }
 
       let serverData: CommunityGamePersistedState | null = null;
+      let loadedFromServer = false;
       try {
         serverData = await fetchCommunityGameState();
+        loadedFromServer = true;
       } catch {
         serverData = readPersistedGame(storageKeyForUser(userId));
       }
@@ -105,17 +107,25 @@ export default function GamePersistence(): null {
       const payload = serverData ?? fallback ?? {};
       dispatch(hydrateGame(payload));
 
+      const u = store.getState().user.user;
+      if (u != null && isEmailVerified(u)) {
+        dispatch(grantVerifiedObserverBadge());
+      }
+
       const persisted = pickPersisted(store.getState().communityGame);
       const serverJson = serverData != null ? JSON.stringify(serverData) : null;
+      let initialSaveFailed = false;
       if (serverJson !== JSON.stringify(persisted)) {
         try {
           await saveCommunityGameState(persisted);
         } catch {
-          /* offline — next debounced save may succeed */
+          initialSaveFailed = true;
         }
       }
 
-      if (serverData != null) {
+      if (initialSaveFailed) {
+        writePersistedGame(storageKeyForUser(userId), persisted);
+      } else if (loadedFromServer) {
         try {
           localStorage.removeItem(storageKeyForUser(userId));
         } catch {
@@ -162,7 +172,7 @@ export default function GamePersistence(): null {
           }
         })
         .catch(() => {
-          /* offline */
+          writePersistedGame(storageKeyForUser(uid), snapshot);
         });
     }, 450);
     return () => clearTimeout(t);

@@ -149,6 +149,11 @@ function maybeMigrateLegacyJson(database: Database): void {
   const migrate = database.transaction(() => {
     let maxUser = 0;
     for (const u of j.users ?? []) {
+      // Pre–verification-feature auth.json omitted email_verified; treat absent as verified (same as legacy JSON backfill).
+      const migratedVerified = u.email_verified !== false;
+      const migratedVerifiedAt = migratedVerified
+        ? (u.email_verified_at ?? u.updated_at ?? u.created_at)
+        : null;
       database
         .prepare(
           `INSERT INTO users (id, email, password_hash, name, google_id, role, created_at, updated_at, email_verified, email_verified_at, tokens_valid_after)
@@ -163,8 +168,8 @@ function maybeMigrateLegacyJson(database: Database): void {
           u.role,
           u.created_at,
           u.updated_at,
-          u.email_verified ? 1 : 0,
-          u.email_verified_at ?? null,
+          migratedVerified ? 1 : 0,
+          migratedVerifiedAt,
           u.tokens_valid_after ?? null
         );
       maxUser = Math.max(maxUser, u.id);

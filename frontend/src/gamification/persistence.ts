@@ -20,3 +20,11 @@ export function readPersistedGame(key: string): CommunityGamePersistedState | nu
     return null;
   }
 }
+
+export function writePersistedGame(key: string, state: CommunityGamePersistedState): void {
+  try {
+    localStorage.setItem(key, JSON.stringify({ v: GAME_STORAGE_VERSION, state }));
+  } catch {
+    /* quota / private mode */
+  }
+}
