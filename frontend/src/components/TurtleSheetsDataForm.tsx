@@ -22,6 +22,7 @@ import {
   SheetSelectionRow,
   UnlockConfirmModal,
   CreateSheetModal,
+  CreateGeneralLocationModal,
 } from './TurtleSheetsDataFormSections';
 import { TurtleSheetsDataFormFields } from './TurtleSheetsDataFormFields';
 import type { TurtleSheetsDataFormProps, TurtleSheetsDataFormRef } from './TurtleSheetsDataForm.types';
@@ -172,6 +173,16 @@ export const TurtleSheetsDataForm = forwardRef<
                 !(useBackendLocations && hook.selectedSheetName.includes('/'))
               }
               requireNewSheetForCommunityMatch={requireNewSheetForCommunityMatch}
+              generalLocationOptions={hook.generalLocationOptions}
+              generalLocationLoading={hook.generalLocationLoading}
+              generalLocationLocked={hook.generalLocationLocked}
+              generalLocationStateLabel={sheetSource === 'community' ? '' : hook.selectedGeneralLocationState}
+              onCreateGeneralLocation={
+                sheetSource === 'community' && !useBackendLocations
+                  ? undefined
+                  : () => hook.setShowCreateGeneralLocationModal(true)
+              }
+              generalLocationSelectRemountKey={hook.selectedSheetName}
             />
           </Grid>
 
@@ -214,6 +225,19 @@ export const TurtleSheetsDataForm = forwardRef<
         setNewSheetName={hook.setNewSheetName}
         creatingSheet={hook.creatingSheet}
         onCreate={hook.handleCreateNewSheet}
+      />
+
+      <CreateGeneralLocationModal
+        opened={hook.showCreateGeneralLocationModal}
+        onClose={() => {
+          hook.setShowCreateGeneralLocationModal(false);
+          hook.setNewGeneralLocationName('');
+        }}
+        selectedState={hook.selectedGeneralLocationState}
+        newGeneralLocationName={hook.newGeneralLocationName}
+        setNewGeneralLocationName={hook.setNewGeneralLocationName}
+        creatingGeneralLocation={hook.creatingGeneralLocation}
+        onCreate={hook.handleCreateGeneralLocation}
       />
     </Paper>
   );

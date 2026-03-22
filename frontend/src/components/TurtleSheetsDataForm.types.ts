@@ -3,6 +3,7 @@
  */
 
 import type { TurtleSheetsData } from '../services/api';
+import type { GeneralLocationCatalog } from '../services/api';
 
 export interface TurtleSheetsDataFormProps {
   initialData?: TurtleSheetsData;
@@ -60,6 +61,13 @@ export interface TurtleSheetsDataFormFieldsProps {
   requireGeneralLocationForPath?: boolean;
   /** When true, sheet and general_location are always editable (no unlock); used on Match page for community→admin. */
   requireNewSheetForCommunityMatch?: boolean;
+  generalLocationOptions?: { value: string; label: string }[];
+  generalLocationLoading?: boolean;
+  generalLocationLocked?: boolean;
+  generalLocationStateLabel?: string;
+  onCreateGeneralLocation?: () => void;
+  /** Remount General Location select when sheet changes (Mantine Select can show stale label otherwise). */
+  generalLocationSelectRemountKey?: string;
 }
 
 /** Return type of useTurtleSheetsDataForm hook */
@@ -70,12 +78,23 @@ export interface UseTurtleSheetsDataFormReturn {
   availableSheets: string[];
   selectedSheetName: string;
   setSelectedSheetName: (v: string) => void;
+  generalLocationCatalog: GeneralLocationCatalog | null;
+  selectedGeneralLocationState: string;
+  selectedGeneralLocationDefault: string;
+  generalLocationOptions: { value: string; label: string }[];
+  generalLocationLoading: boolean;
+  generalLocationLocked: boolean;
   loadingSheets: boolean;
   showCreateSheetModal: boolean;
   setShowCreateSheetModal: (v: boolean) => void;
   newSheetName: string;
   setNewSheetName: (v: string) => void;
   creatingSheet: boolean;
+  showCreateGeneralLocationModal: boolean;
+  setShowCreateGeneralLocationModal: (v: boolean) => void;
+  newGeneralLocationName: string;
+  setNewGeneralLocationName: (v: string) => void;
+  creatingGeneralLocation: boolean;
   additionalNotes: string;
   setAdditionalNotes: (v: string) => void;
   additionalDatesRefound: string;
@@ -88,6 +107,7 @@ export interface UseTurtleSheetsDataFormReturn {
   confirmUnlock: () => void;
   handleChange: (field: keyof TurtleSheetsData, value: string) => void;
   handleCreateNewSheet: (sheetName: string) => Promise<void>;
+  handleCreateGeneralLocation: (generalLocation: string) => Promise<void>;
   handleSubmit: () => Promise<void>;
   /** In create mode, true until existing turtle names have been loaded (for duplicate check). */
   loadingTurtleNames: boolean;

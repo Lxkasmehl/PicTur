@@ -2,7 +2,7 @@
  * Form field columns for TurtleSheetsDataForm (fragment of Grid.Col; parent provides Grid)
  */
 
-import { Grid, TextInput, Textarea } from '@mantine/core';
+import { Grid, TextInput, Textarea, Button } from '@mantine/core';
 import type { TurtleSheetsData } from '../services/api';
 import { TurtleFormField } from './TurtleFormField';
 import { TURTLE_SHEETS_FORM_FIELDS } from './turtleSheetsDataFormFieldsConfig';
@@ -74,6 +74,12 @@ export function TurtleSheetsDataFormFields({
   mode,
   requireGeneralLocationForPath = false,
   requireNewSheetForCommunityMatch = false,
+  generalLocationOptions = [],
+  generalLocationLoading = false,
+  generalLocationLocked = false,
+  generalLocationStateLabel = '',
+  onCreateGeneralLocation,
+  generalLocationSelectRemountKey,
 }: TurtleSheetsDataFormFieldsProps) {
   // When moving community turtle to admin, sheet and general_location must be editable without unlock
   const effectiveRestrictedForField = (field: keyof TurtleSheetsData) =>
@@ -176,6 +182,15 @@ export function TurtleSheetsDataFormFields({
 
         const span = toSpan(config.span);
         const value = formData[config.key] ?? '';
+        const isGeneralLocationField = config.key === 'general_location';
+        const generalLocationDescription =
+          isGeneralLocationField && generalLocationStateLabel
+            ? generalLocationLocked
+              ? `Auto-filled from the sheet rule for ${generalLocationStateLabel}.`
+              : `Select a General Location for ${generalLocationStateLabel}, or add a new one.`
+            : config.key === 'general_location' && requireGeneralLocationForPath
+              ? 'Required for backend path (State/Location).'
+              : config.description;
 
         return (
           <Grid.Col key={config.key} span={span}>
@@ -186,21 +201,34 @@ export function TurtleSheetsDataFormFields({
               description={
                 config.key === 'id' && mode === 'create'
                   ? 'Auto-generated from sex + sequence for this sheet (e.g. M1, F2)'
-                  : config.key === 'general_location' && requireGeneralLocationForPath
-                    ? 'Required for backend path (State/Location).'
-                    : config.description
+                  : generalLocationDescription
               }
               infoTooltip={config.infoTooltip}
               value={value}
               onChange={(v) => handleChange(config.key, v)}
-              type={config.type}
-              selectData={config.selectData}
+              type={isGeneralLocationField ? 'select' : config.type}
+              selectData={isGeneralLocationField ? generalLocationOptions : config.selectData}
               isFieldModeRestricted={effectiveRestrictedForField(config.key)}
               isFieldUnlocked={isFieldUnlocked}
               requestUnlock={requestUnlock}
-              disabled={config.key === 'id'}
+              disabled={config.key === 'id' || (isGeneralLocationField && (generalLocationLocked || generalLocationLoading))}
               error={errors?.[config.key]}
               required={config.key === 'general_location' ? requireGeneralLocationForPath : undefined}
+              searchable={isGeneralLocationField}
+              selectRemountKey={isGeneralLocationField ? generalLocationSelectRemountKey : undefined}
+              afterInput={
+                isGeneralLocationField && onCreateGeneralLocation && !generalLocationLocked ? (
+                  <Button
+                    variant='subtle'
+                    size='compact-xs'
+                    mt='xs'
+                    onClick={onCreateGeneralLocation}
+                    disabled={generalLocationLoading}
+                  >
+                    + Add new General Location
+                  </Button>
+                ) : undefined
+              }
             />
           </Grid.Col>
         );

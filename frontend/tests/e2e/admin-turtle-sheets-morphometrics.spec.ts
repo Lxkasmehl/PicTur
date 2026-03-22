@@ -4,7 +4,8 @@ import {
   grantLocationPermission,
   getTestImageBuffer,
   clickUploadPhotoButton,
-  fillGeneralLocationInCreateTurtleDialog,
+  registerKansasGeneralLocationsCatalogMock,
+  pickKansasGeneralLocationInCreateTurtleDialog,
   selectSheetInCreateTurtleDialog,
   selectSexInCreateTurtleDialog,
 } from './fixtures';
@@ -17,6 +18,7 @@ import {
 
 test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
   test.beforeEach(async ({ page }) => {
+    await registerKansasGeneralLocationsCatalogMock(page);
     await page.goto('/');
     await grantLocationPermission(page);
   });
@@ -70,6 +72,7 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
 
     const createBtn = page.getByRole('button', { name: 'Create New Turtle' });
     await expect(createBtn).toBeVisible({ timeout: 15_000 });
+    await registerKansasGeneralLocationsCatalogMock(page);
     await createBtn.click();
 
     const dialog = page.getByRole('dialog');
@@ -164,6 +167,8 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
       }
     });
 
+    await registerKansasGeneralLocationsCatalogMock(page);
+
     await loginAsAdmin(page);
     const fileInput = page.locator('input[type="file"]:not([capture])').first();
     await fileInput.setInputFiles({
@@ -175,13 +180,14 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
     await clickUploadPhotoButton(page);
     await expect(page).toHaveURL(/\/admin\/turtle-match\/[^/]+/, { timeout: 30_000 });
 
+    await registerKansasGeneralLocationsCatalogMock(page);
     await page.getByRole('button', { name: 'Create New Turtle' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
 
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
     await selectSexInCreateTurtleDialog(page, dialog, 'F');
-    await fillGeneralLocationInCreateTurtleDialog(dialog, 'Wichita');
+    await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
 
     await dialog.getByLabel('Name', { exact: true }).fill('E2E Morph Turtle');
     const massInput = dialog.getByLabel('Mass (g)', { exact: true });

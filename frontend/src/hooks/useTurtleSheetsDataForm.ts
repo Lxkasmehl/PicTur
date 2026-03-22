@@ -5,7 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconX } from '@tabler/icons-react';
-import type { TurtleSheetsData } from '../services/api';
+import type { TurtleSheetsData, GeneralLocationCatalog } from '../services/api';
 import {
   listSheets,
   listCommunitySheets,
@@ -13,6 +13,8 @@ import {
   createSheet,
   getTurtleNames,
   generateTurtleId,
+  getGeneralLocationCatalog,
+  addGeneralLocation,
 } from '../services/api';
 import type {
   TurtleSheetsDataFormProps,
@@ -23,6 +25,8 @@ export type { UseTurtleSheetsDataFormReturn } from '../components/TurtleSheetsDa
 
 /** Backend folder names that are not selectable as turtle location (new-turtle dialog). */
 const LOCATION_SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue', 'Incidental_Finds'];
+
+const normalizeValue = (value: string) => (value || '').trim().replace(/\s+/g, ' ');
 
 export function useTurtleSheetsDataForm(
   props: TurtleSheetsDataFormProps,
@@ -53,6 +57,11 @@ export function useTurtleSheetsDataForm(
   const [showCreateSheetModal, setShowCreateSheetModal] = useState(false);
   const [newSheetName, setNewSheetName] = useState('');
   const [creatingSheet, setCreatingSheet] = useState(false);
+  const [generalLocationCatalog, setGeneralLocationCatalog] = useState<GeneralLocationCatalog | null>(null);
+  const [loadingGeneralLocations, setLoadingGeneralLocations] = useState(false);
+  const [showCreateGeneralLocationModal, setShowCreateGeneralLocationModal] = useState(false);
+  const [newGeneralLocationName, setNewGeneralLocationName] = useState('');
+  const [creatingGeneralLocation, setCreatingGeneralLocation] = useState(false);
   const [unlockedFields, setUnlockedFields] = useState<Set<keyof TurtleSheetsData>>(
     new Set(),
   );
@@ -89,6 +98,33 @@ export function useTurtleSheetsDataForm(
     }
   }, [initialData, initialSheetName]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingGeneralLocations(true);
+    getGeneralLocationCatalog()
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.catalog) {
+          setGeneralLocationCatalog(res.catalog);
+        } else {
+          setGeneralLocationCatalog({ states: {}, sheet_defaults: {} });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGeneralLocationCatalog({ states: {}, sheet_defaults: {} });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingGeneralLocations(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // In create mode, fetch turtle names for duplicate-name validation (across all sheets)
   useEffect(() => {
     if (mode !== 'create') return;
@@ -118,6 +154,107 @@ export function useTurtleSheetsDataForm(
       setErrors((prev) => ({ ...prev, name: duplicateNameMessage }));
     }
   }, [mode, existingTurtleNames, formData.name, duplicateNameMessage]);
+
+  const selectedSheetDefaultGeneralLocation = React.useMemo(() => {
+    const sheet = normalizeValue(selectedSheetName);
+    if (!sheet || !generalLocationCatalog) return '';
+    return normalizeValue(generalLocationCatalog.sheet_defaults[sheet]?.general_location || '');
+  }, [generalLocationCatalog, selectedSheetName]);
+
+  const selectedPathGeneralLocation = React.useMemo(() => {
+    if (!useBackendLocations || !selectedSheetName.includes('/')) return '';
+    const parts = selectedSheetName.split('/').map((p) => normalizeValue(p)).filter(Boolean);
+    return parts.length > 1 ? parts.slice(1).join('/') : '';
+  }, [selectedSheetName, useBackendLocations]);
+
+  const selectedGeneralLocationState = React.useMemo(() => {
+    const sheet = normalizeValue(selectedSheetName);
+    if (!sheet) return '';
+    if (generalLocationCatalog?.sheet_defaults[sheet]?.state) {
+      return normalizeValue(generalLocationCatalog.sheet_defaults[sheet].state);
+    }
+    if (selectedPathGeneralLocation && sheet.includes('/')) {
+      return normalizeValue(sheet.split('/')[0] || '');
+    }
+    if (sheet.includes('/')) {
+      return normalizeValue(sheet.split('/')[0] || '');
+    }
+    return sheet;
+  }, [generalLocationCatalog, selectedPathGeneralLocation, selectedSheetName]);
+
+  const selectedGeneralLocationDefault = selectedSheetDefaultGeneralLocation || selectedPathGeneralLocation;
+  const selectedGeneralLocationLocked = Boolean(selectedSheetDefaultGeneralLocation);
+
+  const generalLocationOptions = React.useMemo(() => {
+    const options = new Map<string, string>();
+    const currentValue = normalizeValue(formData.general_location || '');
+    const fixedValue = normalizeValue(selectedGeneralLocationDefault || '');
+    const stateOptions = selectedGeneralLocationState
+      ? generalLocationCatalog?.states[selectedGeneralLocationState] || []
+      : [];
+    for (const option of stateOptions) {
+      const normalized = normalizeValue(option);
+      if (normalized) options.set(normalized.toLowerCase(), normalized);
+    }
+    if (fixedValue) {
+      options.set(fixedValue.toLowerCase(), fixedValue);
+    }
+    if (currentValue) {
+      options.set(currentValue.toLowerCase(), currentValue);
+    }
+    return Array.from(options.values()).map((value) => ({ value, label: value }));
+  }, [
+    formData.general_location,
+    generalLocationCatalog,
+    selectedGeneralLocationDefault,
+    selectedGeneralLocationState,
+  ]);
+
+  useEffect(() => {
+    if (!selectedSheetName) return;
+    const resolved = normalizeValue(selectedGeneralLocationDefault || '');
+    if (resolved) {
+      setFormData((prev) => {
+        const prevNormalized = normalizeValue(prev.general_location || '');
+        if (prevNormalized === resolved) return prev;
+        return { ...prev, general_location: resolved };
+      });
+      setErrors((prev) => {
+        if (!prev.general_location) return prev;
+        const next = { ...prev };
+        delete next.general_location;
+        return next;
+      });
+      return;
+    }
+
+    if (selectedPathGeneralLocation) {
+      setFormData((prev) => {
+        const prevNormalized = normalizeValue(prev.general_location || '');
+        const pathNormalized = normalizeValue(selectedPathGeneralLocation);
+        if (prevNormalized === pathNormalized) return prev;
+        return { ...prev, general_location: selectedPathGeneralLocation };
+      });
+    }
+  }, [selectedGeneralLocationDefault, selectedPathGeneralLocation, selectedSheetName]);
+
+  useEffect(() => {
+    if (!selectedGeneralLocationState || !generalLocationCatalog || selectedGeneralLocationLocked) return;
+    const current = normalizeValue(formData.general_location || '');
+    if (!current) return;
+    const validLocations = generalLocationCatalog.states[selectedGeneralLocationState] || [];
+    const isValid = validLocations.some((location) => normalizeValue(location).toLowerCase() === current.toLowerCase());
+    const matchesPath = normalizeValue(selectedPathGeneralLocation || '').toLowerCase() === current.toLowerCase();
+    if (isValid || matchesPath) return;
+    setFormData((prev) => ({ ...prev, general_location: '' }));
+  }, [
+    formData.general_location,
+    generalLocationCatalog,
+    selectedGeneralLocationLocked,
+    selectedGeneralLocationState,
+    selectedPathGeneralLocation,
+    selectedSheetName,
+  ]);
 
   // In create mode, when sheet and sex are set, generate biology ID and set id field.
   // Use a request ref so we only apply the latest response (avoids stale updates with Strict Mode or rapid re-runs).
@@ -243,6 +380,43 @@ export function useTurtleSheetsDataForm(
     };
   }, [initialSheetName, initialAvailableSheets, useBackendLocations, sheetSource, requireNewSheetForCommunityMatch]);
 
+  const clearGeneralLocationFieldError = () => {
+    setErrors((prev) => {
+      if (!prev.general_location) return prev;
+      const next = { ...prev };
+      delete next.general_location;
+      return next;
+    });
+  };
+
+  /** User changed Sheet/Location: reset general_location so a value from the previous tab (e.g. Hawkeye) is not left visible; catalog effect then applies fixed defaults if any. */
+  const applySelectedSheetChange = (value: string) => {
+    setSelectedSheetName(value);
+    const parts = value
+      .split('/')
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    if (useBackendLocations) {
+      if (parts.length > 1) {
+        const loc = parts.slice(1).join('/');
+        setFormData((prev) => ({ ...prev, general_location: loc }));
+        clearGeneralLocationFieldError();
+        return;
+      }
+      setFormData((prev) => ({ ...prev, general_location: '' }));
+      clearGeneralLocationFieldError();
+      return;
+    }
+
+    setFormData((prev) => ({ ...prev, general_location: '' }));
+    clearGeneralLocationFieldError();
+  };
+
+  const handleSelectedSheetNameChange = (value: string) => {
+    applySelectedSheetChange(value);
+  };
+
   const handleCreateNewSheet = async (sheetName: string) => {
     if (!sheetName?.trim()) {
       notifications.show({
@@ -272,7 +446,7 @@ export function useTurtleSheetsDataForm(
             setAvailableSheets(sheetsResponse.sheets);
           }
         }
-        setSelectedSheetName(sheetName.trim());
+        applySelectedSheetChange(sheetName.trim());
         setShowCreateSheetModal(false);
         setNewSheetName('');
         notifications.show({
@@ -292,6 +466,76 @@ export function useTurtleSheetsDataForm(
       });
     } finally {
       setCreatingSheet(false);
+    }
+  };
+
+  const handleCreateGeneralLocation = async (generalLocation: string) => {
+    const state = normalizeValue(selectedGeneralLocationState);
+    const value = normalizeValue(generalLocation);
+    if (!state) {
+      notifications.show({
+        title: 'Error',
+        message: 'Please select a sheet or state before adding a General Location',
+        color: 'red',
+      });
+      return;
+    }
+    if (!value) {
+      notifications.show({
+        title: 'Error',
+        message: 'Please enter a General Location name',
+        color: 'red',
+      });
+      return;
+    }
+
+    setCreatingGeneralLocation(true);
+    try {
+      const response = await addGeneralLocation({
+        state,
+        general_location: value,
+      });
+      if (!response.success || !response.catalog) {
+        throw new Error(response.error || 'Failed to add general location');
+      }
+      setGeneralLocationCatalog(response.catalog);
+      setFormData((prev) => ({ ...prev, general_location: value }));
+      setErrors((prev) => {
+        if (!prev.general_location) return prev;
+        const next = { ...prev };
+        delete next.general_location;
+        return next;
+      });
+      setShowCreateGeneralLocationModal(false);
+      setNewGeneralLocationName('');
+      let syncMessage = '';
+      if (response.synced && response.sheets_updated !== undefined) {
+        syncMessage = ` and ${response.sheets_updated} Google Sheet${response.sheets_updated === 1 ? '' : 's'} updated`;
+      } else if (response.sync_error) {
+        syncMessage = ` (Google Sheets sync failed: ${response.sync_error})`;
+      } else if (!response.synced) {
+        syncMessage = ' (Google Sheets sync skipped)';
+      }
+      notifications.show({
+        title: 'Success',
+        message: `General Location "${value}" added for ${state}${syncMessage}`,
+        color: 'green',
+      });
+      if (response.sync_warning) {
+        notifications.show({
+          title: 'Google Sheets',
+          message: response.sync_warning,
+          color: 'yellow',
+        });
+      }
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to add general location',
+        color: 'red',
+      });
+    } finally {
+      setCreatingGeneralLocation(false);
     }
   };
 
@@ -356,15 +600,34 @@ export function useTurtleSheetsDataForm(
       newErrors.name = duplicateNameMessage;
     }
     const selectedHasLocation = useBackendLocations && selectedSheetName.includes('/');
+    const resolvedGeneralLocation =
+      normalizeValue(selectedGeneralLocationDefault || formData.general_location || '');
     // Admin backend path is data/State/Location/PrimaryID; Location comes from General Location
     // unless a location-level selector option was chosen (e.g. Kansas/North Topeka).
     if (
       (useBackendLocations || sheetSource === 'admin') &&
       (mode === 'create' || requireNewSheetForCommunityMatch) &&
       !selectedHasLocation &&
-      !formData.general_location?.trim()
+      !resolvedGeneralLocation
     ) {
       newErrors.general_location = 'General location is required (used for backend path State/Location)';
+    }
+    if (
+      (sheetSource === 'admin' || useBackendLocations) &&
+      selectedGeneralLocationState &&
+      !selectedGeneralLocationLocked &&
+      resolvedGeneralLocation &&
+      generalLocationCatalog
+    ) {
+      const validLocations = generalLocationCatalog.states[selectedGeneralLocationState] || [];
+      const isValid = validLocations.some(
+        (location) => normalizeValue(location).toLowerCase() === resolvedGeneralLocation.toLowerCase(),
+      );
+      const matchesPath =
+        normalizeValue(selectedPathGeneralLocation || '').toLowerCase() === resolvedGeneralLocation.toLowerCase();
+      if (!isValid && !matchesPath) {
+        newErrors.general_location = `General location must be one of the configured options for ${selectedGeneralLocationState}`;
+      }
     }
     if (requireNewSheetForCommunityMatch && !selectedSheetName?.trim()) {
       newErrors.sheet_name = 'Select an admin sheet where this turtle will be stored (moving from community to research).';
@@ -423,11 +686,15 @@ export function useTurtleSheetsDataForm(
       const selectedState = selectedPathParts[0] || selectedSheetName;
       const selectedLocationFromPath =
         selectedPathParts.length > 1 ? selectedPathParts.slice(1).join('/') : '';
+      const resolvedGeneralLocation =
+        normalizeValue(selectedGeneralLocationDefault || dataToSave.general_location || '');
 
       // If a location-level option was chosen in selector (e.g. Kansas/North Topeka),
       // keep sheets tab as state (Kansas) and mirror location into general_location.
-      if (useBackendLocations && selectedLocationFromPath && !dataToSave.general_location?.trim()) {
+      if (useBackendLocations && selectedLocationFromPath) {
         dataToSave = { ...dataToSave, general_location: selectedLocationFromPath };
+      } else if (resolvedGeneralLocation) {
+        dataToSave = { ...dataToSave, general_location: resolvedGeneralLocation };
       }
 
       // Backend path: data/State/Location/PrimaryID where Location = general_location.
@@ -468,25 +735,6 @@ export function useTurtleSheetsDataForm(
     }
   };
 
-  const handleSelectedSheetNameChange = (value: string) => {
-    setSelectedSheetName(value);
-    if (!useBackendLocations) return;
-    const parts = value
-      .split('/')
-      .map((p) => p.trim())
-      .filter(Boolean);
-    if (parts.length > 1) {
-      const loc = parts.slice(1).join('/');
-      setFormData((prev) => ({ ...prev, general_location: prev.general_location?.trim() ? prev.general_location : loc }));
-      setErrors((prev) => {
-        if (!prev.general_location) return prev;
-        const next = { ...prev };
-        delete next.general_location;
-        return next;
-      });
-    }
-  };
-
   return {
     formData,
     loading,
@@ -494,12 +742,23 @@ export function useTurtleSheetsDataForm(
     availableSheets,
     selectedSheetName,
     setSelectedSheetName: handleSelectedSheetNameChange,
+    generalLocationCatalog,
+    selectedGeneralLocationState,
+    selectedGeneralLocationDefault,
+    generalLocationOptions,
+    generalLocationLoading: loadingGeneralLocations,
+    generalLocationLocked: selectedGeneralLocationLocked,
     loadingSheets,
     showCreateSheetModal,
     setShowCreateSheetModal,
     newSheetName,
     setNewSheetName,
     creatingSheet,
+    showCreateGeneralLocationModal,
+    setShowCreateGeneralLocationModal,
+    newGeneralLocationName,
+    setNewGeneralLocationName,
+    creatingGeneralLocation,
     additionalNotes,
     setAdditionalNotes,
     additionalDatesRefound,
@@ -512,6 +771,7 @@ export function useTurtleSheetsDataForm(
     confirmUnlock,
     handleChange,
     handleCreateNewSheet,
+    handleCreateGeneralLocation,
     handleSubmit,
     loadingTurtleNames,
   };

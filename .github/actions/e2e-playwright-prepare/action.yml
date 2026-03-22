@@ -1,0 +1,74 @@
+name: E2E Playwright prepare
+description: Docker Compose stack, health waits, auth seed, npm ci, Playwright browsers
+runs:
+  using: composite
+  steps:
+    - name: Create .env for Docker Compose
+      shell: bash
+      run: |
+        echo "JWT_SECRET=$(openssl rand -hex 32)" >> .env
+        echo "SESSION_SECRET=$(openssl rand -hex 32)" >> .env
+        echo "FRONTEND_URL=http://localhost" >> .env
+
+    - name: Build and start services with Docker Compose
+      shell: bash
+      run: docker compose up -d --build
+
+    - name: Wait for auth backend
+      shell: bash
+      run: |
+        n=0
+        until [ $n -ge 60 ]; do
+          if curl -sf http://localhost:3001/api/health > /dev/null; then break; fi
+          n=$((n+1)); sleep 1
+        done
+        [ $n -lt 60 ] || (echo "Auth backend did not become ready"; exit 1)
+
+    - name: Wait for Flask backend
+      shell: bash
+      run: |
+        n=0
+        until [ $n -ge 120 ]; do
+          if curl -sf http://localhost:5000/api/health > /dev/null; then break; fi
+          n=$((n+1)); sleep 1
+        done
+        [ $n -lt 120 ] || (echo "Flask backend did not become ready"; exit 1)
+
+    - name: Wait for frontend
+      shell: bash
+      run: |
+        n=0
+        until [ $n -ge 30 ]; do
+          if curl -sf http://localhost:80 > /dev/null; then break; fi
+          n=$((n+1)); sleep 1
+        done
+        [ $n -lt 30 ] || (echo "Frontend did not become ready"; exit 1)
+
+    - name: Seed test users in auth backend
+      shell: bash
+      run: |
+        docker compose exec -T -e E2E_ADMIN_EMAIL=admin@test.com \
+          -e E2E_ADMIN_PASSWORD=testpassword123 \
+          -e E2E_STAFF_EMAIL=staff@test.com \
+          -e E2E_STAFF_PASSWORD=testpassword123 \
+          -e E2E_COMMUNITY_EMAIL=community@test.com \
+          -e E2E_COMMUNITY_PASSWORD=testpassword123 \
+          -e E2E_ROLE_TEST_EMAIL=role-test-community@test.com \
+          -e E2E_ROLE_TEST_PASSWORD=testpassword123 \
+          auth-backend node dist/scripts/seed-test-users.js
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: lts/*
+        cache: npm
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install frontend dependencies
+      shell: bash
+      working-directory: frontend
+      run: npm ci
+
+    - name: Install Playwright Browsers
+      shell: bash
+      working-directory: frontend
+      run: npx playwright install --with-deps

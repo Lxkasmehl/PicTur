@@ -279,3 +279,56 @@ export function CreateSheetModal({
     </Modal>
   );
 }
+
+export function CreateGeneralLocationModal({
+  opened,
+  onClose,
+  selectedState,
+  newGeneralLocationName,
+  setNewGeneralLocationName,
+  creatingGeneralLocation,
+  onCreate,
+}: {
+  opened: boolean;
+  onClose: () => void;
+  selectedState: string;
+  newGeneralLocationName: string;
+  setNewGeneralLocationName: (v: string) => void;
+  creatingGeneralLocation: boolean;
+  onCreate: (name: string) => void;
+}) {
+  return (
+    <Modal opened={opened} onClose={onClose} title='Add General Location'>
+      <Stack gap='md'>
+        <Text size='sm' c='dimmed'>
+          Add a new General Location option for the currently selected state.
+        </Text>
+        <TextInput
+          label='State'
+          value={selectedState}
+          disabled
+          description='The new location will be added to this state-specific dropdown.'
+        />
+        <TextInput
+          label='General Location'
+          placeholder='Enter a new general location'
+          value={newGeneralLocationName}
+          onChange={(e) => setNewGeneralLocationName(e.target.value)}
+          required
+        />
+        <Group justify='flex-end' gap='md'>
+          <Button variant='subtle' onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => onCreate(newGeneralLocationName)}
+            loading={creatingGeneralLocation}
+            disabled={!selectedState.trim() || !newGeneralLocationName.trim() || creatingGeneralLocation}
+          >
+            Add Location
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}

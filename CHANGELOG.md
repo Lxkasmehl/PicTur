@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Replaced the free-text General Location field with a state-dependent dropdown and add-new flow in the admin turtle forms.
+- Added shared general-location catalog support with sheet-specific auto-fill rules for fixed mappings (e.g. `NebraskaCPBS`, `IowaHawkeye`).
+- Applied Google Sheets validation for General Location so new sheets use the same allowed options.
+
+### Fixed
+
+- **General location catalog**: Normalization no longer merges placeholder example states into an existing `general_locations.json`, so POST add-location does not persist fake keys; in-repo defaults match `general_locations.json` for first-run seeding.
+- **Google Sheets General Location dropdown**: `POST /api/general-locations` now applies validation using the real Sheets API client (`GoogleSheetsService.service`); previously sync silently updated 0 tabs, so new locations stayed invalid in Sheets. Research turtle create/update also re-syncs validation for the affected tab.
+
+### Changed
+
+- **Admin turtle form**: Changing Sheet/Location clears General Location, then sheet default rules re-apply; General Location `Select` remounts on sheet change so Mantine does not show a stale label.
+- **Staff photo upload (Home)**: Match-scope `Select` always keeps a value that exists in its option list (required, no deselect); avoids an empty-looking control when the stored value is not in `data`. (This is separate from the admin turtle form General Location field.)
+- **Upload instructions (frontend)**: Redesigned photo submission instructions modal with clearer layout, spacing, and alignment; prominent “plastron must have” checklist (full frame, no reflections, centered/sharp, clear pattern). Added note that the example image is an ideal lab photo and field photos need not match it. When reopening instructions after first visit (reminder), modal can be closed via X or click-outside without scrolling or checkbox. Optional hint for microhabitat/condition photos. Home page header simplified to centered title, subtitle, and “View instructions” button below.
+- **CI (Playwright E2E)**: Workflow uses a smoke job, parallel `--shard` matrix over `tests/e2e` (full browser matrix unchanged), shared `.github/actions/e2e-playwright-prepare` for Docker Compose + Playwright install, and an `e2e-success` job to aggregate status; HTML reports uploaded per smoke/shard.
+
+---
+
+## [0.2.0] - 2026-03-14
+
+### Added
 
 - **Three-tier user roles**: Roles are now **community**, **staff**, and **admin**. Community unchanged. **Staff** has the same app access as admins (Turtle Records, Release, Sheets, review, create turtle) but cannot manage users. **Admin** can promote/demote users and access User Management (GET users, PATCH user role, promote to admin/invite). Auth backend: `requireStaff` for operational routes, `requireAdmin` only for user management; new `PATCH /admin/users/:id/role`. Frontend: `isStaffRole(role)`, User Management page shows all users with role dropdown; only admins see the User Management nav link and page. Python backend `require_admin` allows both staff and admin. E2E: `loginAsStaff`, seed scripts create staff@test.com.
 - **CI/E2E**: Staff test user credentials (`E2E_STAFF_EMAIL`, `E2E_STAFF_PASSWORD`) are passed in backend-integration and Playwright workflows and used by seed-test-users. Frontend E2E adds Staff login test; photo upload treats staff like admin for match sheet and post-upload navigation.
