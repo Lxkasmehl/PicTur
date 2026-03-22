@@ -20,6 +20,7 @@ def test_default_catalog_includes_seed_values(isolated_catalog):
         'Lawrence',
         'North Topeka',
         'Valencia',
+        'Wichita',
     ]
     assert catalog['sheet_defaults']['NebraskaCPBS']['general_location'] == 'CPBS'
     assert isolated_catalog.exists()

@@ -27,6 +27,7 @@ _DEFAULT_CATALOG: Dict[str, Any] = {
             'Lawrence',
             'North Topeka',
             'Valencia',
+            'Wichita',
         ],
         'Nebraska': [
             'CPBS',

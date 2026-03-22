@@ -1,6 +1,6 @@
 import { Buffer } from 'buffer';
 import { expect } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@test.com';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'testpassword123';
@@ -258,6 +258,67 @@ export async function fillGeneralLocationInCreateTurtleDialog(
   value: string,
 ): Promise<void> {
   await selectGeneralLocationInCreateTurtleDialog(dialog.page(), dialog, value);
+}
+
+/**
+ * Kansas option for Create New Turtle E2E — must exist in {@link registerKansasGeneralLocationsCatalogMock}.
+ * Prefer this over "Wichita": CI/minimal catalogs often omit Wichita (options come from GET /api/general-locations).
+ */
+export const E2E_KANSAS_GENERAL_LOCATION = 'Lawrence';
+
+const E2E_MOCK_KANSAS_GENERAL_LOCATIONS = [
+  'Karlyle Woods',
+  'Lawrence',
+  'North Topeka',
+  'Valencia',
+  'Wichita',
+] as const;
+
+/**
+ * Stub GET /api/general-locations for Kansas tests. Uses glob plus pathname match so Docker/nginx URLs still hit the mock.
+ * Re-register after other `page.route` calls (Playwright matches last-registered routes first).
+ */
+export async function registerKansasGeneralLocationsCatalogMock(page: Page): Promise<void> {
+  const locations = [...E2E_MOCK_KANSAS_GENERAL_LOCATIONS];
+  const body = JSON.stringify({
+    success: true,
+    catalog: {
+      states: { Kansas: locations },
+      sheet_defaults: {},
+    },
+    states: [{ state: 'Kansas', locations }],
+    sheet_defaults: [],
+  });
+
+  const handler = async (route: Route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body,
+      });
+    } else {
+      await route.continue();
+    }
+  };
+
+  await page.route('**/api/general-locations**', handler);
+  await page.route('**/general-locations**', handler);
+  await page.route(
+    (url) => url.pathname.toLowerCase().includes('general-locations'),
+    handler,
+  );
+  // Some CI/proxy setups use full URLs Playwright’s glob misses; RegExp matches the request string.
+  await page.route(/\/general-locations(\?|$|\/)/i, handler);
+}
+
+/** Re-applies catalog mock then selects {@link E2E_KANSAS_GENERAL_LOCATION} in the dialog. */
+export async function pickKansasGeneralLocationInCreateTurtleDialog(
+  page: Page,
+  dialog: ReturnType<Page['getByRole']>,
+): Promise<void> {
+  await registerKansasGeneralLocationsCatalogMock(page);
+  await fillGeneralLocationInCreateTurtleDialog(dialog, E2E_KANSAS_GENERAL_LOCATION);
 }
 
 const SEX_SELECT_LABEL = 'Sex';
