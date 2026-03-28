@@ -4,12 +4,10 @@ Clears ALL data from the backend:
 - Database (all Turtle and TurtleImage records)
 - Official turtle data (State/Location folders)
 - Uploaded data (Review Queue, Community Uploads)
-- Training data (.npz files)
-- Model files (vocabulary, indexes)
+- Legacy VLAD/FAISS artifacts (optional fallback files)
 
-Important: All index/vocab files in backend/turtles/ are removed together. That avoids
-the "unfitted vocab + old index" state which used to cause 500 on photo upload when
-data/ was cleared but only vlad_vocab.pkl was deleted (old turtles.index remained).
+Important: Legacy index/vocab files in backend/turtles/ are removed together so the
+deprecated VLAD/FAISS fallback state stays consistent when experimenting.
 """
 
 import os
@@ -203,13 +201,13 @@ def clear_uploaded_data():
 
 
 def clear_training_data():
-    """Delete all .npz files and model files"""
-    print("\n🧠 Clearing training data and models...")
+    """Delete deprecated VLAD/FAISS artifacts."""
+    print("\n🧠 Clearing deprecated VLAD/FAISS artifacts...")
     
     data_dir = os.path.join(base_dir, 'data')
     turtles_dir_path = os.path.join(base_dir, 'turtles')
     
-    # Delete .npz files
+    # Delete legacy .npz files (deprecated path only)
     npz_count = 0
     if os.path.exists(data_dir):
         for root, dirs, files in os.walk(data_dir):
@@ -224,7 +222,7 @@ def clear_training_data():
     
     print(f"   ✅ Deleted {npz_count} .npz files")
     
-    # Delete all index/vocab files together (avoids "unfitted vocab + old index" → 500 on upload)
+    # Delete all deprecated index/vocab files together.
     model_files = [
         os.path.join(turtles_dir_path, 'vlad_vocab.pkl'),
         os.path.join(turtles_dir_path, 'turtles.index'),
@@ -337,8 +335,7 @@ def reset_complete_backend():
     print("  ❌ All database records (Turtles, TurtleImages)")
     print("  ❌ All official turtle data (State/Location folders)")
     print("  ❌ All uploaded data (Review Queue, Community Uploads)")
-    print("  ❌ All training data (.npz files)")
-    print("  ❌ All model files (vocabulary, indexes)")
+    print("  ❌ All deprecated VLAD/FAISS artifacts (if present)")
     print("\n" + "=" * 60)
     
     confirmation = input("\n⚠️  Type 'RESET' (all caps) to confirm: ")

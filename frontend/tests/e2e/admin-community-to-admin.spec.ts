@@ -67,7 +67,7 @@ test.describe('Admin Community turtle move to admin', () => {
                 {
                   rank: 1,
                   turtle_id: COMMUNITY_MATCH.turtle_id,
-                  score: 85,
+                  confidence: 85,
                   image_path: COMMUNITY_MATCH.file_path,
                 },
               ],
@@ -196,15 +196,14 @@ test.describe('Admin Community turtle move to admin', () => {
       .getByRole('textbox', { name: 'Sheet / Location' })
       .or(page.getByRole('combobox', { name: 'Sheet / Location' }));
     await expect(sheetLocationInput).toBeVisible({ timeout: 15_000 });
-    // Scope to the match column so getByLabel does not see the portaled Mantine listbox (strict / wrong control on desktop).
-    const sheetsPanel = page
-      .locator('div.mantine-Grid-col')
-      .filter({ has: page.getByRole('button', { name: 'Save to Sheets & Confirm Match' }) });
-    const generalLocationInput = sheetsPanel
+    // Form fields live in a Paper above the action bar; Save is in a sibling Paper (no shared Grid.Col).
+    const sheetsFormCard = page.locator('.mantine-Paper-root').filter({
+      has: page.getByRole('heading', { name: /Turtle Data - Google Sheets/ }),
+    });
+    const generalLocationInput = sheetsFormCard
       .getByRole('textbox', { name: /General Location/ })
-      .or(sheetsPanel.getByRole('combobox', { name: /General Location/ }))
-      .or(sheetsPanel.getByLabel(/General Location/));
-    await expect(generalLocationInput).toBeVisible({ timeout: 5000 });
+      .or(sheetsFormCard.getByRole('combobox', { name: /General Location/ }));
+    await expect(generalLocationInput).toBeVisible({ timeout: 15_000 });
 
     const isNativeSelect = await sheetLocationInput.evaluate((el) => (el as HTMLElement).tagName === 'SELECT');
     if (isNativeSelect) {

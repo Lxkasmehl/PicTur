@@ -145,7 +145,6 @@ export function SheetSelectionRow({
       allowDeselect={false}
       description='Select the Google Sheets tab where this turtle data should be stored'
       error={!selectedSheetName ? 'Sheet selection is required' : undefined}
-      searchable
       comboboxProps={{ keepMounted: true }}
     />
   );

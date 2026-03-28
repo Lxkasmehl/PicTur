@@ -28,7 +28,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate Linux Docker launcher script
+        run: |
+          bash -n scripts/docker-up.sh
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck scripts/docker-up.sh
+
       - uses: ./.github/actions/e2e-playwright-prepare
+
       - name: Run Playwright (smoke)
         working-directory: ./frontend
         run: >-

@@ -40,7 +40,7 @@ import { ObserverHomeSummary } from '../components/game/ObserverHomeSummary';
 import { ObserverGamificationTeaser } from '../components/game/ObserverGamificationTeaser';
 
 const MATCH_ALL_VALUE = '__all__';
-const SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue', 'Incidental_Finds'];
+const SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue', 'Incidental_Finds', 'Incidental Places', 'benchmarks'];
 
 export default function HomePage() {
   const dispatch = useAppDispatch();
@@ -120,13 +120,16 @@ export default function HomePage() {
     const options: { value: string; label: string }[] = [];
 
     for (const state of orderedStates) {
+      const stateLocations = Array.from(byState.get(state) ?? []).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' }),
+      );
       options.push({ value: state, label: state });
-      if (state === 'Kansas') {
-        const stateLocations = Array.from(byState.get(state) ?? []).sort((a, b) =>
-          a.localeCompare(b, undefined, { sensitivity: 'base' }),
-        );
+      // Only expand sub-locations when a state has multiple locations.
+      // Single-location states (e.g. NebraskaCPBS with just CPBS) don't
+      // need a redundant child entry — the state-level prefix match covers it.
+      if (stateLocations.length > 1) {
         for (const loc of stateLocations) {
-          options.push({ value: loc, label: loc });
+          options.push({ value: loc, label: `  ${loc.split('/').slice(1).join('/')}` });
         }
       }
     }

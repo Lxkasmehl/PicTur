@@ -8,7 +8,7 @@ function mockQueueItem(requestId: string, overrides: Partial<{ uploaded_image: s
     uploaded_image: `Review_Queue/${requestId}/query.jpg`,
     metadata: { finder: 'E2E Test', state: '', location: '' },
     additional_images: [],
-    candidates: [{ rank: 1, turtle_id: 'T1', score: 85, image_path: `Review_Queue/${requestId}/candidate_matches/rank1.jpg` }],
+    candidates: [{ rank: 1, turtle_id: 'T1', confidence: 85, image_path: `Review_Queue/${requestId}/candidate_matches/rank1.jpg` }],
     status: 'pending',
     ...overrides,
   };

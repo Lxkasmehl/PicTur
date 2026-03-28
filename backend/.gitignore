@@ -1,6 +1,9 @@
 data/
 turtles/media
 
+# 🐢 Turtle Data & AI Tensors
+Temp Data/
+
 # Python cache files
 __pycache__/
 *.pyc
@@ -30,7 +33,10 @@ venv/
 
 # Credentials and sensitive files
 credentials/
+credentials/*.json
 
+# Keep room for committed test fixtures
+!tests/fixtures/**
 # Database files
 *.sqlite
 *.sqlite3

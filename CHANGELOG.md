@@ -9,7 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **General Location**: Admin turtle forms use a state-dependent dropdown and add-new flow (replacing free text), backed by a shared catalog with sheet-specific auto-fill (e.g. `NebraskaCPBS`, `IowaHawkeye`); new sheets get matching Google Sheets validation.
 - **Observer gamification**: Observer Hub, XP, weekly quests, badges, and reward flows on upload/home for **any logged-in role** (community, staff, admin). Progress is stored **per user id** in SQLite (`community_game`) and survives role promotion/demotion; guests see a sign-up teaser only (no anonymous progress). Client: Redux (`communityGameSlice`), local fallback when sync fails, debounced `GET`/`PUT /auth/community-game`. Navigation includes Observer HQ for staff/admin; staff match uploads can update progress before navigating to the match page. Backend validates payload bounds.
 - **Auth backend**: `npm run delete-user` script (by email, refuses last admin; `CASCADE` cleans related rows).
 
@@ -17,15 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Auth**: Authenticated requests fail with 403 when the user row no longer exists (e.g. after admin deletion); a valid JWT signature alone is not enough. Legacy `auth.json` import treats a missing `email_verified` field as verified and backfills `email_verified_at` from existing timestamps.
 - **Community game (frontend)**: When syncing to the server fails after load or on debounced save, progress is written to local storage via `writePersistedGame` so offline or error paths do not silently drop state; local cache is cleared only after a successful server round-trip.
-- **General location catalog**: Normalization no longer merges placeholder example states into an existing `general_locations.json`, so POST add-location does not persist fake keys; in-repo defaults match `general_locations.json` for first-run seeding.
-- **Google Sheets General Location dropdown**: `POST /api/general-locations` now applies validation using the real Sheets API client (`GoogleSheetsService.service`); previously sync silently updated 0 tabs, so new locations stayed invalid in Sheets. Research turtle create/update also re-syncs validation for the affected tab.
 
 ### Changed
 
 - **Email verification (frontend)**: Unverified logged-in users may open `/observer` (still redirected from other app areas until verified). After hydrating community game state, the verified observer badge is granted when the account is verified.
-- **Admin turtle form**: Changing Sheet/Location clears General Location, then sheet default rules re-apply; General Location `Select` remounts on sheet change so Mantine does not show a stale label.
-- **Staff photo upload (Home)**: Match-scope `Select` always keeps a value that exists in its option list (required, no deselect); avoids an empty-looking control when the stored value is not in `data`. (This is separate from the admin turtle form General Location field.)
-- **CI (Playwright E2E)**: Workflow uses a smoke job, parallel `--shard` matrix over `tests/e2e` (full browser matrix unchanged), shared `.github/actions/e2e-playwright-prepare` for Docker Compose + Playwright install, and an `e2e-success` job to aggregate status; HTML reports uploaded per smoke/shard.
 - **Auth backend**: Primary store is SQLite (`auth.sqlite`, `better-sqlite3`) instead of `auth.json`; one-time import from legacy `auth.json` when the DB is empty; WAL/foreign keys; `email_verifications.used_at` added for existing DBs when missing.
 - **Google OAuth / signup**: New Google users get explicit verification timestamps on insert; duplicate-account path handles SQLite `UNIQUE` constraint errors (and removes the old post-insert delay).
 
@@ -33,6 +27,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Integration (admin role)**: `test_patch_user_role_as_admin_success` targets the seeded role-test community user (`E2E_ROLE_TEST_EMAIL`, default `role-test-community@test.com`) so role demotion does not revoke JWTs used by other tests.
 - **Observer / auth**: Playwright E2E for Observer HQ (`observer-hub.spec.ts`: guest teaser, community hub, staff nav, mobile “Learn more”) and gamification (`observer-hq-gamification.spec.ts`: community upload → rewards modal +XP, `PUT /auth/community-game`, quests/badges on `/observer`; serial suite for shared seed user). Backend integration: `test_community_game_api.py` (401/400, roundtrip, user isolation) and `community_token` fixture in `conftest.py`.
+
+## [1.0.0] - 2026-03-23
+
+Version 1.0.0 is the milestone where the updated, properly functioning backend logic is merged and integrated with the latest frontend, so the stack finally works together end-to-end as one coherent application.
+
+### Added
+
+- **General locations**: State-dependent catalog in admin turtle forms (dropdown + add-new), sheet-specific defaults, and Google Sheets validation on new tabs.
+- **Docker**: `docker-compose.gpu.yml` and `scripts/docker-up.ps1` / `docker-up.sh` (prefer GPU, fall back to CPU).
+
+### Fixed
+
+- **Catalog & Sheets**: Safer `general_locations.json` handling (no placeholder injection; POST add-location does not persist fake keys; first-run seed matches repo); `POST /api/general-locations` applies dropdown rules via the real Sheets client; research turtle create/update re-syncs the affected tab.
+- **Search & staff upload**: Normalized location filters aligned with the cached index; match-scope select always shows a valid option when stored values are missing from loaded data.
+
+### Changed
+
+- **Matching**: SuperPoint/LightGlue outputs (`score`, `confidence`) consistent across backend, admin, and GUI; LightGlue pinned to `v0.2`; SIFT paths removed; VLAD/FAISS left as deprecated compatibility-only.
+- **Admin & uploads**: Sheet/location changes clear and remount General Location to avoid stale Mantine labels; clearer upload instructions (layout, plastron checklist, lab vs field note, closable reminder, “View instructions” header).
+- **Review queue**: Safer packet IDs and staged reference-image replacement so failed feature extraction does not wipe existing reference data.
+- **CI (Playwright E2E)**: Smoke run, parallel `--shard` matrix on `tests/e2e`, shared `e2e-playwright-prepare` action, `e2e-success` gate, HTML reports per smoke/shard (browser matrix unchanged); `bash -n` and `shellcheck` on Docker launchers (Linux).
+
+### Removed
+
+- Unused root `package.json` (frontend remains the npm entry point).
 
 ---
 
@@ -91,6 +110,7 @@ First release of TurtleTracker: a community-driven web platform for turtle popul
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/TurtleProject/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/TurtleProject/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Lxkasmehl/TurtleProject/releases/tag/v1.0.0
 [0.2.0]: https://github.com/Lxkasmehl/TurtleProject/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Lxkasmehl/TurtleProject/releases/tag/v0.1.0

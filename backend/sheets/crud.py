@@ -40,8 +40,12 @@ def get_turtle_data(service, spreadsheet_id: str, primary_id: str, sheet_name: s
         # Ensure Primary ID column exists
         ensure_primary_id_column_func(sheet_name)
         
-        # Find the row using Primary ID column
+        # Find the row using Primary ID column first, then fall back to ID column
+        # (biology ID like F001/M1). This handles the case where the AI match
+        # system passes a folder name (biology ID) instead of the actual Primary ID.
         row_idx = find_row_by_primary_id_func(sheet_name, primary_id, 'Primary ID')
+        if not row_idx:
+            row_idx = find_row_by_primary_id_func(sheet_name, primary_id, 'ID')
         if not row_idx:
             return None
         
@@ -70,7 +74,9 @@ def get_turtle_data(service, spreadsheet_id: str, primary_id: str, sheet_name: s
                 value = row_data[col_idx] if col_idx < len(row_data) else ''
                 turtle_data[field_name] = value.strip() if value else ''
         
-        turtle_data['primary_id'] = primary_id
+        # Use the actual Primary ID from the row data if available (the caller may
+        # have passed a biology ID like F001 which found the row via the ID column).
+        turtle_data['primary_id'] = turtle_data.get('primary_id') or primary_id
         turtle_data['sheet_name'] = sheet_name
         turtle_data['row_index'] = row_idx
         
@@ -347,8 +353,14 @@ def find_turtle_sheet(service, spreadsheet_id: str, primary_id: str, list_sheets
     """
     try:
         all_sheets = list_sheets_func()  # Already excludes backup sheets
+        # Search by Primary ID column first
         for sheet_name in all_sheets:
             row_idx = find_row_by_primary_id_func(sheet_name, primary_id, 'Primary ID')
+            if row_idx:
+                return sheet_name
+        # Fallback: search by biology ID column (folder name like F001/M1)
+        for sheet_name in all_sheets:
+            row_idx = find_row_by_primary_id_func(sheet_name, primary_id, 'ID')
             if row_idx:
                 return sheet_name
         return None

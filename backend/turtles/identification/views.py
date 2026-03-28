@@ -12,7 +12,7 @@ class UploadAndIdentifyView(GenericAPIView):
     """
     Step 1: User uploads an image.
     - Image is saved to a temporary/unidentified turtle.
-    - Image is processed (Original + Mirror).
+    - Image is processed (Original + Mirror) using SuperPoint features.
     - Returns top 5 near matches to the frontend.
     """
     parser_classes = (MultiPartParser, FormParser)
@@ -43,8 +43,7 @@ class UploadAndIdentifyView(GenericAPIView):
             image=file_obj
         )
 
-        # 3. Process the Image (SIFT/VLAD + Mirror Generation)
-        # Note: Ensure you have the utils imports at the top of the file
+        # 3. Process the Image (SuperPoint feature extraction + Mirror Generation)
         success = process_turtle_image(turtle_image)
         if not success:
             return Response({"message": "Processing failed"}, status=500)

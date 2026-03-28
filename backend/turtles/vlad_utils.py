@@ -1,5 +1,7 @@
 import numpy as np
 from sklearn.cluster import KMeans
+
+# Deprecated compatibility module: retained for optional VLAD/FAISS experiments.
 def build_vocabulary(all_descriptors, num_clusters=64):
     kmeans = KMeans(n_clusters=num_clusters,random_state=2)
     kmeans.fit(all_descriptors)
