@@ -7,6 +7,7 @@ import {
   resetCommunityGame,
 } from '../../store/slices/communityGameSlice';
 import type { CommunityGamePersistedState } from '../../store/slices/communityGameSlice';
+import { mergeCommunityGameForHydrate } from '../../gamification/mergeCommunityGameForHydrate';
 import { readPersistedGame, storageKeyForUser, writePersistedGame } from '../../gamification/persistence';
 import { fetchCommunityGameState, saveCommunityGameState } from '../../services/api/communityGame';
 import { isEmailVerified } from '../../utils/emailVerified';
@@ -104,7 +105,7 @@ export default function GamePersistence(): null {
       if (cancelled) return;
 
       const fallback = readPersistedGame(storageKeyForUser(userId));
-      const payload = serverData ?? fallback ?? {};
+      const payload = mergeCommunityGameForHydrate(serverData, fallback);
       dispatch(hydrateGame(payload));
 
       const u = store.getState().user.user;
