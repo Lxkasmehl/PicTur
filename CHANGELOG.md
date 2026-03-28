@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Community turtles**: General Location is optional free text in the community spreadsheet flow (review queue / new turtle); the catalog dropdown stays for research paths (admin sheets, backend locations, and matching community turtles into admin).
+
+### Fixed
+
+- **Forms**: Community general location no longer behaves as a catalog dropdown or gets cleared by catalog validation when the sheet is not part of the research location catalog.
+
+
 ## [1.0.0] - 2026-03-23
 
 Version 1.0.0 is the milestone where the updated, properly functioning backend logic is merged and integrated with the latest frontend, so the stack finally works together end-to-end as one coherent application.

@@ -218,6 +218,22 @@ export async function selectGeneralLocationInCreateTurtleDialog(
   dialog: ReturnType<Page['getByRole']>,
   locationName: string,
 ): Promise<void> {
+  const labeled = dialog.getByLabel(GENERAL_LOCATION_LABEL);
+  await labeled.waitFor({ state: 'visible', timeout: GENERAL_LOCATION_DROPDOWN_TIMEOUT });
+  const tag = await labeled.evaluate((el) => el.tagName.toUpperCase());
+  if (tag === 'SELECT') {
+    await labeled.selectOption({ label: locationName });
+    return;
+  }
+  if (tag === 'INPUT') {
+    const role = await labeled.getAttribute('role');
+    // Mantine Select uses an input with role="combobox"; plain TextInput is free-text General Location (community).
+    if (role !== 'combobox') {
+      await labeled.fill(locationName);
+      return;
+    }
+  }
+
   // Portaled Mantine listboxes are outside `dialog`, so dialog-scoped getByLabel hits only the control
   // (avoids strict mode). NativeSelect <select> is not always exposed as textbox; combobox + label cover mobile/WebKit.
   const field = dialog
