@@ -97,8 +97,8 @@ def clear_all_uploads():
     print(f"   Total items deleted: {deleted_count + community_count + temp_count}")
     print("\n💡 Note: This does NOT delete:")
     print("   - Official turtle data (State/Location folders)")
-    print("   - FAISS indexes and vocabulary")
-    print("   - Trained models")
+    print("   - Deprecated VLAD/FAISS fallback indexes and vocabulary")
+    print("   - Existing reference tensors/models")
 
 
 def clear_review_queue_only():

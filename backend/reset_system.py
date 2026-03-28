@@ -8,7 +8,7 @@ def reset_turtle_vision_data():
 
     turtles_dir = os.path.join(base_dir, 'turtles')
 
-    # Files to delete (The Brains)
+    # Deprecated VLAD/FAISS fallback files
     model_files = [
         os.path.join(turtles_dir, 'vlad_vocab.pkl'),
         os.path.join(turtles_dir, 'turtles.index'),
@@ -20,7 +20,7 @@ def reset_turtle_vision_data():
     print(f"Scanning: {data_dir}")
     print(f"Scanning Models: {turtles_dir}")
 
-    # 2. Delete .npz Files (The Feature Data)
+    # 2. Delete legacy .npz files (deprecated fallback data)
     npz_deleted_count = 0
     if os.path.exists(data_dir):
         for root, dirs, files in os.walk(data_dir):
@@ -40,8 +40,8 @@ def reset_turtle_vision_data():
 
     print(f"✅ Removed {npz_deleted_count} old .npz files.")
 
-    # 3. Delete Model Files (The Knowledge)
-    print("Removing trained models...")
+    # 3. Delete deprecated index/vocabulary files
+    print("Removing deprecated VLAD/FAISS files...")
     for model_path in model_files:
         if os.path.exists(model_path):
             try:

@@ -4,7 +4,10 @@ from identification.utils import process_turtle_image
 
 
 class Command(BaseCommand):
-    help = 'Reprocesses all images in the database (generates SIFT/VLAD data).'
+    help = (
+        "Reprocesses all images in the legacy Django database "
+        "(generates SuperPoint .pt feature tensors)."
+    )
 
     def handle(self, *args, **options):
         images = TurtleImage.objects.all()

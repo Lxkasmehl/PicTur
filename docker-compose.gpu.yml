@@ -1,0 +1,8 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.cuda
+    gpus: all
+    environment:
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-all}

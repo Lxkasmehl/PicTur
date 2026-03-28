@@ -11,6 +11,7 @@ from werkzeug.utils import secure_filename
 from auth import require_admin
 from services import manager_service
 from services.manager_service import get_sheets_service, get_community_sheets_service
+from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from general_locations_catalog import resolve_general_location_from_sheet_and_value
 
 # Metadata keys to strip when syncing turtle data to community spreadsheet
@@ -68,7 +69,6 @@ def _sync_confirmed_to_community(data, sheets_data, service, new_location, new_t
     else:
         comm.create_turtle_data(turtle_data, sheet_name, state, location)
         print(f"✅ Community spreadsheet: added turtle {primary_id} to sheet '{sheet_name}'")
-from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 
 
 def register_review_routes(app):
@@ -238,15 +238,18 @@ def register_review_routes(app):
             for candidate_file in sorted(os.listdir(candidates_dir)):
                 if candidate_file.lower().endswith(('.jpg', '.png', '.jpeg')):
                     parts = candidate_file.replace('.jpg', '').replace('.png', '').replace('.jpeg', '').split('_')
-                    rank, turtle_id, score = 0, 'Unknown', 0
+                    rank, turtle_id, confidence = 0, 'Unknown', 0
                     for part in parts:
                         if part.startswith('Rank'):
                             rank = int(part.replace('Rank', ''))
                         elif part.startswith('ID'):
                             turtle_id = part.replace('ID', '')
+                        elif part.startswith('Conf'):
+                            confidence = int(part.replace('Conf', ''))
                         elif part.startswith('Score'):
-                            score = int(part.replace('Score', ''))
-                    candidates.append({'rank': rank, 'turtle_id': turtle_id, 'score': score, 'image_path': os.path.join(candidates_dir, candidate_file)})
+                            # Legacy packets used Score; treat as 0 confidence
+                            confidence = 0
+                    candidates.append({'rank': rank, 'turtle_id': turtle_id, 'confidence': confidence, 'image_path': os.path.join(candidates_dir, candidate_file)})
 
         return {
             'request_id': request_id,

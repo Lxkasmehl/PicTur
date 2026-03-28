@@ -28,13 +28,42 @@ You need **Docker** and **Docker Compose** installed.
 
 2. (Optional) For Google Sheets: create `backend/credentials/`, place your **Google Service Account** JSON there (e.g. `google-sheets-credentials.json`), and set `GOOGLE_SHEETS_SPREADSHEET_ID` in `.env`. If the file has another name, set `GOOGLE_SHEETS_CREDENTIALS_PATH=/app/credentials/your-filename.json` in `.env` (path is inside the container; the folder `backend/credentials/` is mounted into the container).
 
-3. Build and start all services:
+3. Build and start all services (CPU default):
 
    ```bash
    docker compose up --build
    ```
 
+   GPU-capable startup options:
+
+   ```powershell
+   # Windows/PowerShell: auto-select GPU when NVIDIA runtime is available; fallback to CPU
+   ./scripts/docker-up.ps1
+
+   # Force CPU mode
+   ./scripts/docker-up.ps1 -CpuOnly
+   ```
+
+   ```bash
+   # Linux/macOS: make launcher executable once
+   chmod +x ./scripts/docker-up.sh
+
+   # Auto-select GPU when NVIDIA runtime is available; fallback to CPU
+   ./scripts/docker-up.sh
+
+   # Force CPU mode
+   ./scripts/docker-up.sh --cpu-only
+   ```
+
+   ```bash
+   # Manual GPU override (Linux/macOS/CI)
+   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+   ```
+
 4. Open **http://localhost** in your browser (frontend). Auth API: **http://localhost:3001**, Turtle API: **http://localhost:5000**.
+
+GPU mode uses `backend/Dockerfile.cuda` and requires the NVIDIA Container Toolkit/runtime.
+If GPU runtime is unavailable, use CPU default (`docker compose up --build`) or the platform launcher fallback script.
 
 5. **Promote the first user to admin** (so you can use admin features like Turtle Records and photo matching). After signing up or logging in once, run this once (replace with your email and a password):
 
@@ -220,8 +249,8 @@ echo "VITE_API_URL=http://localhost:5000/api" >> .env
 
 - Flask server with CORS for frontend communication
 - Uses `turtle_manager.py` for main logic
-- SIFT/VLAD for image processing
-- FAISS for fast similarity search
+- SuperPoint + LightGlue for feature extraction and matching
+- In-memory tensor cache for fast repeated matching
 
 ### Frontend Development
 

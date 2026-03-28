@@ -38,7 +38,8 @@ class IdentificationQueueTests(TestCase):
                 'biology_id': 'F1',
                 'gender': 'F',
                 'location': 'Lawrence, Kansas',
-                'distance': 0.1,
+                'score': 42,
+                'confidence': 0.91,
                 'image_url': '/media/test.jpg'
             }
         ]

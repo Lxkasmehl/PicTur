@@ -251,7 +251,8 @@ classDiagram
     class TurtleMatch {
         +turtle_id: string
         +location: string
-        +distance: number
+        +score: number
+        +confidence: number
         +file_path: string
         +filename: string
     }

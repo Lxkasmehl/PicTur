@@ -8,7 +8,7 @@ import type { TurtleSheetsData } from './sheets';
 export interface TurtleMatch {
   turtle_id: string;
   location: string;
-  distance: number;
+  confidence: number;
   file_path: string;
   filename: string;
 }
@@ -60,7 +60,7 @@ export interface ReviewQueueItem {
   candidates: Array<{
     rank: number;
     turtle_id: string;
-    score: number;
+    confidence: number;
     image_path: string;
   }>;
   status: string;

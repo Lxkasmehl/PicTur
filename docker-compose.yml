@@ -58,7 +58,7 @@ services:
       - ./backups:/app/backups
       # Mount Google credentials from host (create backend/credentials/ and add JSON)
       - ./backend/credentials:/app/credentials:ro
-    # Backend may take a while to load vocabulary/index
+    # Backend may take a while to warm SuperPoint tensor cache
     healthcheck:
       test:
         [

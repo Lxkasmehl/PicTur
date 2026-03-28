@@ -8,18 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **General Location**: Admin turtle forms use a state-dependent dropdown and add-new flow (replacing free text), backed by a shared catalog with sheet-specific auto-fill (e.g. `NebraskaCPBS`, `IowaHawkeye`); new sheets get matching Google Sheets validation.
+
 - **Backup (Google Sheets)**: Export admin and community spreadsheets to CSV and JSON for backup and history. Run `python -m backup.run` from backend; output under `BACKUP_OUTPUT_DIR/sheets/YYYY-MM-DD/` (one CSV per sheet plus optional JSON per spreadsheet). `BACKUP_OUTPUT_DIR` configurable via env (default `./backups`). Docker Compose mounts `./backups` on the host so backups survive container/volume removal. Strategy and retention in `docs/BACKUP.md`; backend README and env.template updated. `.gitignore` excludes `backups/`. `.env.docker.example` documents `GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID` for Docker.
 
+## [1.0.0] - 2026-03-23
+
+Version 1.0.0 is the milestone where the updated, properly functioning backend logic is merged and integrated with the latest frontend, so the stack finally works together end-to-end as one coherent application.
+
+### Added
+
+- **General locations**: State-dependent catalog in admin turtle forms (dropdown + add-new), sheet-specific defaults, and Google Sheets validation on new tabs.
+- **Docker**: `docker-compose.gpu.yml` and `scripts/docker-up.ps1` / `docker-up.sh` (prefer GPU, fall back to CPU).
+
 ### Fixed
-- **General location catalog**: Normalization no longer injects placeholder states into existing `general_locations.json`; POST add-location won't persist fake keys; first-run seed matches repo defaults.
-- **Sheets validation**: `POST /api/general-locations` applies dropdown rules via the real Sheets client (fixes silent “0 tabs” sync); research turtle create/update re-syncs the affected tab.
+
+- **Catalog & Sheets**: Safer `general_locations.json` handling (no placeholder injection; POST add-location does not persist fake keys; first-run seed matches repo); `POST /api/general-locations` applies dropdown rules via the real Sheets client; research turtle create/update re-syncs the affected tab.
+- **Search & staff upload**: Normalized location filters aligned with the cached index; match-scope select always shows a valid option when stored values are missing from loaded data.
 
 ### Changed
-- **Admin turtle form**: Sheet/location changes clear General Location, re-apply defaults, and remount the Select to avoid stale Mantine labels.
-- **Home (staff upload)**: Match-scope Select always reflects a valid option (no empty control when the stored value is missing from loaded data).
-- **Upload instructions**: Clearer modal layout and plastron checklist; lab vs field photo note; reminder view closable without scroll/checkbox; simpler header with “View instructions”.
-- **CI (Playwright E2E)**: Smoke run, parallel `--shard` matrix on `tests/e2e`, shared `e2e-playwright-prepare` action, `e2e-success` gate, HTML reports per smoke/shard (browser matrix unchanged).
+
+- **Matching**: SuperPoint/LightGlue outputs (`score`, `confidence`) consistent across backend, admin, and GUI; LightGlue pinned to `v0.2`; SIFT paths removed; VLAD/FAISS left as deprecated compatibility-only.
+- **Admin & uploads**: Sheet/location changes clear and remount General Location to avoid stale Mantine labels; clearer upload instructions (layout, plastron checklist, lab vs field note, closable reminder, “View instructions” header).
+- **Review queue**: Safer packet IDs and staged reference-image replacement so failed feature extraction does not wipe existing reference data.
+- **CI**: Playwright smoke run, sharded `tests/e2e` matrix, shared `e2e-playwright-prepare`, `e2e-success` gate, HTML reports per smoke/shard; `bash -n` and `shellcheck` on Docker launchers (Linux).
+
+### Removed
+
+- Unused root `package.json` (frontend remains the npm entry point).
 
 ---
 
@@ -78,6 +93,7 @@ First release of TurtleTracker: a community-driven web platform for turtle popul
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/TurtleProject/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/TurtleProject/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Lxkasmehl/TurtleProject/releases/tag/v1.0.0
 [0.2.0]: https://github.com/Lxkasmehl/TurtleProject/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Lxkasmehl/TurtleProject/releases/tag/v0.1.0

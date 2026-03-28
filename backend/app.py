@@ -10,8 +10,19 @@ import sys
 import config
 
 # Import Flask and CORS
-from flask import Flask
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
+from werkzeug.serving import make_server
+
+# Fix Unicode encoding issues on Windows
+if sys.platform == 'win32':
+    try:
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8')
+        if hasattr(sys.stderr, 'reconfigure'):
+            sys.stderr.reconfigure(encoding='utf-8')
+    except (AttributeError, ValueError, OSError):
+        pass
 
 # Import services
 from services import manager_service
@@ -28,18 +39,17 @@ from routes.general_locations import register_general_location_routes
 
 # Create Flask app
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})  # Enable CORS for frontend
+CORS(app, resources={r"/api/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})
 
 # Add after_request handler to ensure CORS headers are always set
 @app.after_request
 def after_request(response):
-    # Add CORS headers to all responses
     response.headers.add('Access-Control-Allow-Origin', '*')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
     return response
 
-# Register all routes
+# Register all routes (Delegates logic to the /routes folder)
 register_health_routes(app)
 register_upload_routes(app)
 register_review_routes(app)
@@ -48,7 +58,6 @@ register_sheets_routes(app)
 register_turtle_routes(app)
 register_locations_routes(app)
 register_general_location_routes(app)
-
 
 @app.errorhandler(Exception)
 def handle_exception(err):
@@ -69,11 +78,9 @@ def handle_exception(err):
     )
 
 if __name__ == '__main__':
-    # Determine if debug mode should be enabled
-    # Disable debug mode for tests to avoid reload issues
     debug_mode = os.environ.get('FLASK_DEBUG', 'true').lower() == 'true'
     port = int(os.environ.get('PORT', '5000'))
-    
+
     try:
         print("🐢 Starting Turtle API Server...", flush=True)
         print(f"🌐 Server will be available at http://localhost:{port}", flush=True)
@@ -83,13 +90,9 @@ if __name__ == '__main__':
     except UnicodeEncodeError:
         print("[TURTLE] Starting Turtle API Server...", flush=True)
         print(f"[NET] Server will be available at http://localhost:{port}", flush=True)
-        if manager_service.manager is not None:
-            print(f"[DIR] Data directory: {manager_service.manager.base_dir}", flush=True)
         sys.stdout.flush()
-    
+
     try:
-        # Use Werkzeug's development server which prints when ready
-        # This ensures we can see when the server actually starts
         app.run(debug=debug_mode, host='0.0.0.0', port=port, use_reloader=False)
     except Exception as e:
         print(f"[ERROR] Exception during app.run(): {str(e)}", flush=True)

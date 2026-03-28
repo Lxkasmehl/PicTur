@@ -1,3 +1,5 @@
+CLAUDE.md
+
 # IDE and Editor files
 .idea/
 .vscode/
@@ -11,6 +13,9 @@
 Thumbs.db
 
 .env
+.env.*
+!.env.example
+!.env.docker.example
 
 # Local backup output (see docs/BACKUP.md)
 backups/

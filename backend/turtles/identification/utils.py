@@ -1,5 +1,6 @@
 import os
 import sys
+import warnings
 from django.conf import settings
 from .models import Turtle
 
@@ -17,22 +18,28 @@ def get_abs_path(django_file_field):
 
 def process_turtle_image(turtle_image_instance):
     """
-    Generates SIFT .npz for the uploaded image AND its mirror.
+    Deprecated Django compatibility path.
+    Generates SuperPoint .pt feature tensors for uploaded image fields.
     """
     try:
-        # 1. Process Original
+        warnings.warn(
+            "identification.utils.process_turtle_image is deprecated. "
+            "Use Flask /api/upload and review endpoints for production flows.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         original_path = get_abs_path(turtle_image_instance.image)
-        npz_path = os.path.splitext(original_path)[0] + ".npz"
-        os.makedirs(os.path.dirname(npz_path), exist_ok=True)
+        pt_path = os.path.splitext(original_path)[0] + ".pt"
+        os.makedirs(os.path.dirname(pt_path), exist_ok=True)
 
-        success, _ = image_processing.process_image_through_SIFT(original_path, npz_path)
+        success, _ = image_processing.extract_and_store_features(original_path, pt_path)
 
-        # 2. Process Mirror (if exists)
         if turtle_image_instance.mirror_image:
             mirror_path = get_abs_path(turtle_image_instance.mirror_image)
-            mirror_npz_path = os.path.splitext(mirror_path)[0] + ".npz"
-            os.makedirs(os.path.dirname(mirror_npz_path), exist_ok=True)
-            image_processing.process_image_through_SIFT(mirror_path, mirror_npz_path)
+            mirror_pt_path = os.path.splitext(mirror_path)[0] + ".pt"
+            os.makedirs(os.path.dirname(mirror_pt_path), exist_ok=True)
+            image_processing.extract_and_store_features(mirror_path, mirror_pt_path)
 
         if success:
             turtle_image_instance.is_processed = True
@@ -45,43 +52,36 @@ def process_turtle_image(turtle_image_instance):
 
 def find_near_matches(turtle_image_instance, top_k=5):
     """
-    Strategy: Search Original -> RANSAC -> If score < 15 -> Search Mirror -> Return Best.
+    Deprecated Django compatibility path.
+    Returns top matches using SuperPoint/LightGlue score+confidence payloads.
     """
-    MATCH_THRESHOLD = 15
-
-    # Initialize Engine if needed
-    if not image_processing.GLOBAL_RESOURCES['vocab']:
-        data_dir = os.path.dirname(image_processing.DEFAULT_VOCAB_PATH)
-        image_processing.load_or_generate_persistent_data(data_dir)
-
-    # --- PASS 1: Original ---
+    warnings.warn(
+        "identification.utils.find_near_matches is deprecated. "
+        "Use Flask /api/upload and review endpoints for production flows.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     query_path = get_abs_path(turtle_image_instance.image)
-    candidates = image_processing.smart_search(query_path, k_results=20)
-    results_normal = []
+    results = image_processing.brain.match_query_robust(query_path, _build_db_index())
+    return _format_results(results[:top_k])
 
-    if candidates:
-        results_normal = image_processing.rerank_results_with_spatial_verification(query_path, candidates)
 
-    best_score = results_normal[0].get('spatial_score', 0) if results_normal else 0
-
-    if best_score >= MATCH_THRESHOLD:
-        return _format_results(results_normal[:top_k])
-
-    # --- PASS 2: Mirror ---
-    if turtle_image_instance.mirror_image:
-        mirror_path = get_abs_path(turtle_image_instance.mirror_image)
-        candidates_mirror = image_processing.smart_search(mirror_path, k_results=20)
-        results_mirror = []
-
-        if candidates_mirror:
-            results_mirror = image_processing.rerank_results_with_spatial_verification(mirror_path, candidates_mirror)
-
-        mirror_score = results_mirror[0].get('spatial_score', 0) if results_mirror else 0
-
-        if mirror_score > best_score:
-            return _format_results(results_mirror[:top_k], is_mirrored=True)
-
-    return _format_results(results_normal[:top_k])
+def _build_db_index():
+    """Build (pt_path, turtle_id, location) entries from Django model records."""
+    db_index = []
+    for turtle in Turtle.objects.all():
+        turtle_id = turtle.biology_id
+        location = "/".join(
+            part for part in [turtle.location_state or "", turtle.location_specific or ""] if part
+        ) or "Unknown"
+        for image in turtle.images.all():
+            if not image.image:
+                continue
+            image_path = get_abs_path(image.image)
+            pt_path = os.path.splitext(image_path)[0] + ".pt"
+            if os.path.exists(pt_path):
+                db_index.append((pt_path, turtle_id, location))
+    return db_index
 
 
 def _format_results(results_list, is_mirrored=False):
@@ -111,7 +111,8 @@ def _format_results(results_list, is_mirrored=False):
             "biology_id": raw_id,
             "gender": turtle_obj.gender if turtle_obj else "?",
             "location": res.get('location', 'Unknown'),
-            "match_score": res.get('spatial_score', 0),
+            "score": res.get('score', 0),
+            "confidence": res.get('confidence', 0.0),
             "image_url": img_url,
             "preview_image": img_url,
             "is_mirrored_match": is_mirrored

@@ -3,7 +3,19 @@ from scipy.spatial.distance import cdist
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import NearestNeighbors
 from typing import Tuple, List, Optional
-import faiss
+import warnings
+
+try:
+    import faiss
+except ImportError:  # pragma: no cover - optional legacy dependency
+    faiss = None
+
+warnings.warn(
+    "backend.search_utils is a deprecated VLAD/FAISS compatibility module. "
+    "Default runtime matching uses SuperPoint/LightGlue.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 def run_initial_dbscan(vlad_vectors: np.ndarray, eps: float, min_samples: int) -> np.ndarray:
     """
@@ -34,6 +46,8 @@ def run_initial_dbscan(vlad_vectors: np.ndarray, eps: float, min_samples: int) -
 # --- 2. Global Search (FAISS HNSW) ---
 
 def add_new_turtle_image_to_index(faiss_index: 'faiss.Index', new_vlad_vector: np.ndarray) -> bool:
+    if faiss is None:
+        raise RuntimeError("FAISS is not installed. Deprecated VLAD/FAISS path is unavailable.")
     """
     Adds a new VLAD vector (representing a new or verified turtle) to the live FAISS index.
     This function is called by register_new_turtle (or similar confirmation endpoint).
@@ -58,6 +72,8 @@ def add_new_turtle_image_to_index(faiss_index: 'faiss.Index', new_vlad_vector: n
 
 
 def initialize_faiss_index(database_vectors: np.ndarray) -> 'faiss.Index':
+    if faiss is None:
+        raise RuntimeError("FAISS is not installed. Deprecated VLAD/FAISS path is unavailable.")
     database_vectors = np.ascontiguousarray(database_vectors.astype('float32'))
     dim = database_vectors.shape[1]
     # HNSW parameters for speed/accuracy balance
@@ -72,6 +88,8 @@ def initialize_faiss_index(database_vectors: np.ndarray) -> 'faiss.Index':
 
 def faiss_search_k_neighbors(faiss_index: 'faiss.Index', query_vector: np.ndarray, k: int = 5) -> Tuple[
     np.ndarray, np.ndarray]:
+    if faiss is None:
+        raise RuntimeError("FAISS is not installed. Deprecated VLAD/FAISS path is unavailable.")
     query_vector = np.ascontiguousarray(query_vector.reshape(1, -1).astype('float32'))
     if hasattr(faiss_index, 'hnsw'):
         faiss_index.hnsw.efSearch = 64
@@ -82,6 +100,8 @@ def faiss_search_k_neighbors(faiss_index: 'faiss.Index', query_vector: np.ndarra
 # --- 3. Filtered Search (Location Specific) ---
 def filtered_faiss_search(query_vector: np.ndarray, subset_vectors: np.ndarray,
                           subset_indices: np.ndarray, n_results: int = 5) -> Tuple[List[int], np.ndarray]:
+    if faiss is None:
+        raise RuntimeError("FAISS is not installed. Deprecated VLAD/FAISS path is unavailable.")
     if subset_vectors.shape[0] == 0: return [], np.array([])
 
     subset_vectors = np.ascontiguousarray(subset_vectors.astype('float32'))
