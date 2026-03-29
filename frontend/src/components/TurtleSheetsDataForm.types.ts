@@ -61,6 +61,8 @@ export interface TurtleSheetsDataFormFieldsProps {
   requireGeneralLocationForPath?: boolean;
   /** When true, sheet and general_location are always editable (no unlock); used on Match page for community→admin. */
   requireNewSheetForCommunityMatch?: boolean;
+  /** When false, General Location is a plain text field (community spreadsheet; no backend State/Location path). */
+  generalLocationUseCatalog: boolean;
   generalLocationOptions?: { value: string; label: string }[];
   generalLocationLoading?: boolean;
   generalLocationLocked?: boolean;
@@ -82,6 +84,8 @@ export interface UseTurtleSheetsDataFormReturn {
   selectedGeneralLocationState: string;
   selectedGeneralLocationDefault: string;
   generalLocationOptions: { value: string; label: string }[];
+  /** When false, General Location is free text (community sheet); hook and fields stay in sync. */
+  generalLocationUseCatalog: boolean;
   generalLocationLoading: boolean;
   generalLocationLocked: boolean;
   loadingSheets: boolean;

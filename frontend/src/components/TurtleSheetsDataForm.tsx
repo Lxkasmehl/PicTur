@@ -186,6 +186,7 @@ export const TurtleSheetsDataForm = forwardRef<
                 !(useBackendLocations && hook.selectedSheetName.includes('/'))
               }
               requireNewSheetForCommunityMatch={requireNewSheetForCommunityMatch}
+              generalLocationUseCatalog={hook.generalLocationUseCatalog}
               generalLocationOptions={hook.generalLocationOptions}
               generalLocationLoading={hook.generalLocationLoading}
               generalLocationLocked={hook.generalLocationLocked}
