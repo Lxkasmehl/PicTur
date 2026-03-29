@@ -23,6 +23,8 @@ import finalResultImage from '../assets/finalresult.jpg';
 interface InstructionsModalProps {
   opened: boolean;
   onClose: () => void;
+  /** Fired when the user completes the full checklist (not reminder-only close). */
+  onTrainingCompleted?: () => void;
 }
 
 const SECTION_GAP = 'xl';
@@ -30,7 +32,7 @@ const CARD_PX = 'xl';
 const CARD_PY = 'lg';
 const CARD_GAP = 'md';
 
-export function InstructionsModal({ opened, onClose }: InstructionsModalProps) {
+export function InstructionsModal({ opened, onClose, onTrainingCompleted }: InstructionsModalProps) {
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -53,6 +55,7 @@ export function InstructionsModal({ opened, onClose }: InstructionsModalProps) {
   const handleClose = () => {
     if (acknowledged && hasScrolledToBottom) {
       localStorage.setItem('hasSeenInstructions', 'true');
+      onTrainingCompleted?.();
     }
     onClose();
   };
@@ -61,6 +64,7 @@ export function InstructionsModal({ opened, onClose }: InstructionsModalProps) {
     if (canCloseFreely) {
       if (!isReminderMode && acknowledged && hasScrolledToBottom) {
         localStorage.setItem('hasSeenInstructions', 'true');
+        onTrainingCompleted?.();
       }
       onClose();
     }

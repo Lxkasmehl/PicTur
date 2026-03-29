@@ -141,6 +141,21 @@ def staff_token(auth_url, integration_env):
 
 
 @pytest.fixture(scope="session")
+def community_token(auth_url, integration_env):
+    """Obtain community JWT by logging in to auth-backend. Requires seeded community test user."""
+    if not integration_env:
+        return None
+    try:
+        return _login_token(
+            auth_url,
+            os.environ.get("E2E_COMMUNITY_EMAIL", "community@test.com"),
+            os.environ.get("E2E_COMMUNITY_PASSWORD", "testpassword123"),
+        )
+    except Exception as e:
+        pytest.skip(f"Cannot get community token from auth-backend at {auth_url}/auth/login: {e}")
+
+
+@pytest.fixture(scope="session")
 def api_client(backend_url, admin_token, integration_env):
     """HTTP client for backend API with admin auth. Skip integration tests if BACKEND_URL/AUTH_URL not set."""
     if not integration_env or not admin_token:

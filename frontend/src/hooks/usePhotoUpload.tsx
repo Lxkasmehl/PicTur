@@ -17,9 +17,17 @@ import type { FileWithPath } from '../types/file';
 
 type UploadState = 'idle' | 'uploading' | 'success' | 'error';
 
+export interface CommunitySightMeta {
+  hasGps: boolean;
+  hasManual: boolean;
+  extraPhotoCount: number;
+}
+
 interface UsePhotoUploadOptions {
   role?: string;
   onSuccess?: (imageId: string) => void;
+  /** After a successful upload: community flow always; staff/admin match flow before navigating away. */
+  onCommunitySightRecorded?: (meta: CommunitySightMeta) => void;
   /** Admin/Staff: sheet name (location) to test against; '' = all locations */
   matchSheet?: string;
 }
@@ -57,6 +65,7 @@ interface UsePhotoUploadReturn {
 export function usePhotoUpload({
   role,
   onSuccess,
+  onCommunitySightRecorded,
   matchSheet,
 }: UsePhotoUploadOptions = {}): UsePhotoUploadReturn {
   const navigate = useNavigate();
@@ -196,6 +205,11 @@ export function usePhotoUpload({
       if (response.success) {
         // Admin/Staff: Always navigate to match page (even if no matches found)
         if (isAdminFlow && response.request_id) {
+          onCommunitySightRecorded?.({
+            hasGps: locationHint?.source === 'gps',
+            hasManual: locationHint?.source === 'manual',
+            extraPhotoCount: extraFiles.length,
+          });
           // Build find_metadata from upload so match page doesn't ask again for physical/digital flag
           const find_metadata_from_upload: FindMetadata | undefined = hasFlagData
             ? {
@@ -241,6 +255,12 @@ export function usePhotoUpload({
           color: 'green',
           icon: <IconCheck size={18} />,
           autoClose: 5000,
+        });
+
+        onCommunitySightRecorded?.({
+          hasGps: locationHint?.source === 'gps',
+          hasManual: locationHint?.source === 'manual',
+          extraPhotoCount: extraFiles.length,
         });
       } else {
         throw new Error(response.message || 'Upload failed');

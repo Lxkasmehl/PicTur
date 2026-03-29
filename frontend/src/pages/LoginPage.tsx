@@ -33,6 +33,7 @@ import {
 import { useUser } from '../hooks/useUser';
 import { PasswordStrengthIndicator } from '../components/PasswordStrengthIndicator';
 import { meetsAllRequirements } from '../utils/passwordStrength';
+import { isEmailVerified } from '../utils/emailVerified';
 
 interface LoginPageProps {
   initialMode?: 'login' | 'signup';
@@ -181,7 +182,7 @@ export default function LoginPage({
               : 'Account created successfully!';
         notifications.show({
           title: roleMessage,
-          message: response.user.email_verified
+          message: isEmailVerified(response.user)
             ? `Welcome, ${response.user.name || response.user.email}!`
             : 'Please check your email to verify your account.',
           color: 'green',
@@ -191,12 +192,12 @@ export default function LoginPage({
         if (invitationToken) {
           window.history.replaceState({}, '', '/login');
         }
-        navigate(response.user.email_verified !== false ? '/' : '/verify-email');
+        navigate(isEmailVerified(response.user) ? '/' : '/verify-email');
       } else {
         // Login
         const response = await apiLogin({ email, password });
         setUserLogin(response.user);
-        const needsVerification = response.user.email_verified === false;
+        const needsVerification = !isEmailVerified(response.user);
         notifications.show({
           title: 'Successfully logged in!',
           message: needsVerification

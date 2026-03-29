@@ -1,8 +1,5 @@
 import { test, expect } from '@playwright/test';
-import {
-  loginAsAdmin,
-  navClick,
-} from './fixtures';
+import { loginAsAdmin, navClick } from './fixtures';
 
 /** Minimal queue item shape for mocking GET /api/review-queue */
 function mockQueueItem(requestId: string, overrides: Partial<{ uploaded_image: string; metadata: Record<string, unknown>; candidates: unknown[] }> = {}) {

@@ -12,6 +12,42 @@ const router = express.Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const VERIFICATION_EXPIRY_HOURS = 24;
 
+function sendVerifySuccess(res: Response, userId: number): void {
+  const user = db
+    .prepare('SELECT id, email, name, role, email_verified FROM users WHERE id = ?')
+    .get(userId) as User | undefined;
+
+  if (!user) {
+    res.status(500).json({ error: 'Failed to load user after verification' });
+    return;
+  }
+
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    res.status(500).json({ error: 'Server configuration error' });
+    return;
+  }
+
+  const jwtToken = jwt.sign(
+    { id: user.id, email: user.email, role: user.role, email_verified: true },
+    jwtSecret,
+    { expiresIn: '7d' }
+  );
+
+  res.json({
+    success: true,
+    message: 'Email verified successfully',
+    token: jwtToken,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      email_verified: true,
+    },
+  });
+}
+
 // Register new user
 router.post('/register', async (req: Request, res: Response) => {
   try {
@@ -45,7 +81,7 @@ router.post('/register', async (req: Request, res: Response) => {
     if (token) {
       const invitation = db
         .prepare(
-          'SELECT * FROM admin_invitations WHERE token = ? AND used = 0 AND expires_at > datetime("now")'
+          'SELECT * FROM admin_invitations WHERE token = ? AND used = 0 AND julianday(expires_at) > julianday(\'now\')'
         )
         .get(token) as any;
 
@@ -78,13 +114,14 @@ router.post('/register', async (req: Request, res: Response) => {
       .run(emailNormalized, passwordHash, name || null, role);
 
     // Reload database to ensure we have the latest data
+    const newId = Number(result.lastInsertRowid);
     const user = db
       .prepare('SELECT id, email, name, role, google_id, created_at, email_verified, email_verified_at FROM users WHERE id = ?')
-      .get(result.lastInsertRowid) as User;
+      .get(newId) as User;
 
     if (!user) {
       console.error('Failed to retrieve newly created user from database');
-      console.error(`   Tried to find user with ID: ${result.lastInsertRowid}, Email: ${emailNormalized}`);
+      console.error(`   Tried to find user with ID: ${newId}, Email: ${emailNormalized}`);
       res.status(500).json({ error: 'Failed to create user account' });
       return;
     }
@@ -110,8 +147,9 @@ router.post('/register', async (req: Request, res: Response) => {
       return;
     }
 
+    const emailVerified = Boolean(user.email_verified);
     const jwtToken = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, email_verified: user.email_verified ?? false },
+      { id: user.id, email: user.email, role: user.role, email_verified: emailVerified },
       jwtSecret,
       { expiresIn: '7d' }
     );
@@ -124,7 +162,7 @@ router.post('/register', async (req: Request, res: Response) => {
         email: user.email,
         name: user.name,
         role: user.role,
-        email_verified: user.email_verified ?? false,
+        email_verified: emailVerified,
       },
     });
   } catch (error) {
@@ -176,8 +214,9 @@ router.post('/login', async (req: Request, res: Response) => {
       return;
     }
 
+    const emailVerified = Boolean((user as User).email_verified);
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, email_verified: (user as User).email_verified ?? true },
+      { id: user.id, email: user.email, role: user.role, email_verified: emailVerified },
       jwtSecret,
       { expiresIn: '7d' }
     );
@@ -190,7 +229,7 @@ router.post('/login', async (req: Request, res: Response) => {
         email: user.email,
         name: user.name,
         role: user.role,
-        email_verified: (user as User).email_verified ?? true,
+        email_verified: emailVerified,
       },
     });
   } catch (error) {
@@ -211,7 +250,7 @@ router.get('/invitation/:token', (req: Request, res: Response) => {
 
     const invitation = db
       .prepare(
-        'SELECT * FROM admin_invitations WHERE token = ? AND used = 0 AND expires_at > datetime("now")'
+        'SELECT * FROM admin_invitations WHERE token = ? AND used = 0 AND julianday(expires_at) > julianday(\'now\')'
       )
       .get(token) as any;
 
@@ -258,7 +297,7 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
         email: user.email,
         name: user.name,
         role: user.role,
-        email_verified: user.email_verified ?? true,
+        email_verified: Boolean(user.email_verified),
       },
     });
   } catch (error) {
@@ -282,7 +321,8 @@ router.post('/logout', authenticateToken, (_req: Request, res: Response) => {
   res.json({ success: true, message: 'Logged out successfully' });
 });
 
-// Verify email with token (from link in email)
+// Verify email with token (from link in email). Idempotent: duplicate POST with same token still 200
+// after the first success (used_at set) so double requests (e.g. React Strict Mode) do not show false errors.
 router.post('/verify-email', async (req: Request, res: Response) => {
   try {
     const { token } = req.body;
@@ -291,56 +331,40 @@ router.post('/verify-email', async (req: Request, res: Response) => {
       return;
     }
 
-    const verification = db
+    const active = db
       .prepare(
-        'SELECT * FROM email_verifications WHERE token = ? AND expires_at > datetime("now")'
+        `SELECT * FROM email_verifications
+         WHERE token = ? AND used_at IS NULL AND julianday(expires_at) > julianday('now')`
       )
       .get(token) as { id: number; user_id: number; token: string; expires_at: string } | undefined;
 
-    if (!verification) {
-      res.status(400).json({
-        error: 'Invalid or expired verification link. Please request a new one.',
-      });
+    if (active) {
+      const now = new Date().toISOString();
+      db.prepare(
+        'UPDATE users SET email_verified = ?, email_verified_at = ?, updated_at = ? WHERE id = ?'
+      ).run(1, now, now, active.user_id);
+      db.prepare('UPDATE email_verifications SET used_at = ? WHERE token = ?').run(now, token);
+      sendVerifySuccess(res, active.user_id);
       return;
     }
 
-    const now = new Date().toISOString();
-    db.prepare(
-      'UPDATE users SET email_verified = ?, email_verified_at = ?, updated_at = ? WHERE id = ?'
-    ).run(1, now, now, verification.user_id);
-    db.prepare('DELETE FROM email_verifications WHERE token = ?').run(token);
+    const already = db
+      .prepare('SELECT user_id FROM email_verifications WHERE token = ? AND used_at IS NOT NULL')
+      .get(token) as { user_id: number } | undefined;
 
-    const user = db
-      .prepare('SELECT id, email, name, role, email_verified FROM users WHERE id = ?')
-      .get(verification.user_id) as User;
-
-    if (!user) {
-      res.status(500).json({ error: 'Failed to load user after verification' });
+    if (already) {
+      if (!Boolean((db.prepare('SELECT email_verified FROM users WHERE id = ?').get(already.user_id) as { email_verified: number } | undefined)?.email_verified)) {
+        const now = new Date().toISOString();
+        db.prepare(
+          'UPDATE users SET email_verified = ?, email_verified_at = ?, updated_at = ? WHERE id = ?'
+        ).run(1, now, now, already.user_id);
+      }
+      sendVerifySuccess(res, already.user_id);
       return;
     }
 
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      res.status(500).json({ error: 'Server configuration error' });
-      return;
-    }
-    const jwtToken = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, email_verified: true },
-      jwtSecret,
-      { expiresIn: '7d' }
-    );
-
-    res.json({
-      success: true,
-      message: 'Email verified successfully',
-      token: jwtToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        email_verified: true,
-      },
+    res.status(400).json({
+      error: 'Invalid or expired verification link. Please request a new one.',
     });
   } catch (error) {
     console.error('Verify email error:', error);

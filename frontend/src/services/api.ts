@@ -24,8 +24,10 @@ export {
   promoteToAdmin,
   getUsers,
   setUserRole,
+  deleteUser,
   isStaffRole,
 } from './api/auth';
+export { fetchCommunityGameState, saveCommunityGameState } from './api/communityGame';
 export type {
   User,
   UserRole,

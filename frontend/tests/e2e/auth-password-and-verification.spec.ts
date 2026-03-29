@@ -35,10 +35,8 @@ test.describe('Auth – password policy and email verification', () => {
       timeout: 5000,
     });
 
-    // After verification attempt: error or timeout message
-    await expect(
-      page.getByText(/invalid|expired|failed|timed out|longer than expected/i),
-    ).toBeVisible({ timeout: 20_000 });
+    // After verification attempt: error alert (strict: broad getByText matched title + body + hint)
+    await expect(page.getByRole('alert')).toBeVisible({ timeout: 20_000 });
 
     // User can continue to start page
     await expect(page.getByRole('button', { name: /Continue to start page/i })).toBeVisible({
