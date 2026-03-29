@@ -123,7 +123,15 @@ export const getCurrentUser = async (): Promise<User | null> => {
   }
 
   const result = await response.json();
-  return result.user;
+  const u = result.user as User;
+  if (!u) return null;
+  return {
+    ...u,
+    email_verified:
+      u.email_verified === undefined || u.email_verified === null
+        ? undefined
+        : Boolean(u.email_verified),
+  };
 };
 
 // Logout
@@ -169,10 +177,14 @@ export const getInvitationDetails = async (
 };
 
 // Verify email with token (from link in email)
-export const verifyEmail = async (token: string): Promise<AuthResponse> => {
+export const verifyEmail = async (
+  token: string,
+  signal?: AbortSignal,
+): Promise<AuthResponse> => {
   const response = await apiRequest('/auth/verify-email', {
     method: 'POST',
     body: JSON.stringify({ token }),
+    signal,
   });
 
   if (!response.ok) {
@@ -261,6 +273,21 @@ export const setUserRole = async (
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to set user role');
+  }
+
+  return await response.json();
+};
+
+export const deleteUser = async (
+  userId: number,
+): Promise<{ success: boolean; message: string }> => {
+  const response = await apiRequest(`/admin/users/${userId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete user');
   }
 
   return await response.json();

@@ -59,11 +59,12 @@ async function createUser(
     .run(email.toLowerCase(), passwordHash, name, role);
 
   const now = new Date().toISOString();
+  const newId = Number(result.lastInsertRowid);
   db.prepare(
     'UPDATE users SET email_verified = ?, email_verified_at = ?, updated_at = ? WHERE id = ?'
-  ).run(1, now, now, result.lastInsertRowid);
+  ).run(1, now, now, newId);
 
-  console.log(`✅ Created ${role} user: ${email} (ID: ${result.lastInsertRowid})`);
+  console.log(`✅ Created ${role} user: ${email} (ID: ${newId})`);
 }
 
 async function seedTestUsers() {

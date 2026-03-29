@@ -18,7 +18,7 @@ export async function openMobileMenu(page: Page): Promise<void> {
   }
 }
 
-/** Clicks a nav link by button label. When the mobile menu is opened, waits for the nav drawer and the button (by visible text) to be visible, then clicks to avoid flakiness from accessible-name or timing. */
+/** Clicks a nav control by label. In drawer mode, uses a DOM click after the drawer is visible — Mantine's slide transition breaks Playwright's stability checks on `locator.click()`. */
 export async function navClick(page: Page, label: string): Promise<void> {
   const burger = page.getByTestId('mobile-menu-button');
   const drawer = page.getByTestId('nav-drawer');
@@ -28,8 +28,15 @@ export async function navClick(page: Page, label: string): Promise<void> {
       await burger.click({ force: true });
     }
     await drawer.waitFor({ state: 'visible' });
-    // Single locator chain + getByRole: re-query on each retry to avoid "element was detached" when the drawer re-renders (e.g. Mantine open animation).
-    await drawer.getByRole('button', { name: label }).click();
+    await page.evaluate((wanted) => {
+      const root = document.querySelector('[data-testid="nav-drawer"]');
+      if (!root) throw new Error('nav-drawer missing');
+      const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+      const target = norm(wanted);
+      const btn = Array.from(root.querySelectorAll('button')).find((b) => norm(b.textContent ?? '') === target);
+      if (!btn) throw new Error(`nav button not found: ${wanted}`);
+      (btn as HTMLButtonElement).click();
+    }, label);
   } else {
     await page.getByRole('button', { name: label }).click();
   }

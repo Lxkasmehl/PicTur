@@ -15,11 +15,15 @@ import { notifications } from '@mantine/notifications';
 import { IconMail, IconAlertCircle, IconCheck } from '@tabler/icons-react';
 import { verifyEmail, resendVerificationEmail } from '../services/api';
 import { useUser } from '../hooks/useUser';
+import { useAppDispatch } from '../store/hooks';
+import { grantVerifiedObserverBadge } from '../store/slices/communityGameSlice';
+import { isEmailVerified } from '../utils/emailVerified';
 
 export default function VerifyEmailPage(): React.JSX.Element {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const { login: setUserLogin, user } = useUser();
   const [status, setStatus] = useState<'idle' | 'verifying' | 'success' | 'error' | 'timeout'>('idle');
   const [resendLoading, setResendLoading] = useState(false);
@@ -27,10 +31,12 @@ export default function VerifyEmailPage(): React.JSX.Element {
   const successHandledRef = useRef(false);
   const VERIFY_TIMEOUT_MS = 15000;
 
-  // If we have a token in URL, verify it (only once per token; ignore duplicate errors from Strict Mode / double submit)
+  // If we have a token in URL, verify it (ignore stale responses; abort on Strict Mode remount)
   useEffect(() => {
     if (!token) return;
-    if (successHandledRef.current) return;
+    successHandledRef.current = false;
+
+    const ac = new AbortController();
 
     setStatus('verifying');
     setErrorMessage(null);
@@ -43,35 +49,45 @@ export default function VerifyEmailPage(): React.JSX.Element {
       );
     }, VERIFY_TIMEOUT_MS);
 
-    verifyEmail(token)
+    verifyEmail(token, ac.signal)
       .then((response) => {
         clearTimeout(timeoutId);
         if (successHandledRef.current) return;
         successHandledRef.current = true;
         setStatus('success');
-        if (response.user) {
-          setUserLogin({
-            ...response.user,
-            email_verified: true,
+        try {
+          if (response.user) {
+            setUserLogin({
+              ...response.user,
+              email_verified: true,
+            });
+          }
+          dispatch(grantVerifiedObserverBadge());
+          notifications.show({
+            title: 'Email verified',
+            message: 'Your email has been verified. You can use all features now.',
+            color: 'green',
+            icon: <IconCheck size={18} />,
           });
+        } catch (e) {
+          console.error('After verify cleanup:', e);
         }
-        notifications.show({
-          title: 'Email verified',
-          message: 'Your email has been verified. You can use all features now.',
-          color: 'green',
-          icon: <IconCheck size={18} />,
-        });
-        setTimeout(() => navigate('/', { replace: true }), 1500);
+        window.setTimeout(() => navigate('/', { replace: true }), 1200);
       })
       .catch((err) => {
         clearTimeout(timeoutId);
         if (successHandledRef.current) return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (err instanceof Error && err.name === 'AbortError') return;
         setStatus('error');
         setErrorMessage(err instanceof Error ? err.message : 'Verification failed');
       });
 
-    return () => clearTimeout(timeoutId);
-  }, [token, setUserLogin, navigate]);
+    return () => {
+      clearTimeout(timeoutId);
+      ac.abort();
+    };
+  }, [token, setUserLogin, navigate, dispatch]);
 
   const handleResend = async () => {
     setResendLoading(true);
@@ -111,8 +127,8 @@ export default function VerifyEmailPage(): React.JSX.Element {
             </Title>
 
             {isPending && (
-              <Group justify='center' gap='xs'>
-                <Loader size='sm' />
+              <Group justify='center' gap='xs' wrap='nowrap'>
+                <Loader type='dots' size='sm' />
                 <Text size='sm'>Verifying your email…</Text>
               </Group>
             )}
@@ -136,7 +152,7 @@ export default function VerifyEmailPage(): React.JSX.Element {
                   The link may have expired or the server could not be reached. You can request a
                   new link below or continue to the start page.
                 </Text>
-                {user && !user.email_verified && (
+                {user && !isEmailVerified(user) && (
                   <Button
                     variant='light'
                     leftSection={<IconMail size={16} />}
@@ -172,7 +188,7 @@ export default function VerifyEmailPage(): React.JSX.Element {
   }
 
   // No token: show "check your email" and resend (for logged-in unverified users)
-  const showResend = user && user.email_verified === false;
+  const showResend = user && !isEmailVerified(user);
 
   return (
     <Container size='sm' py={{ base: 'md', sm: 'xl' }} px={{ base: 'xs', sm: 'md' }}>

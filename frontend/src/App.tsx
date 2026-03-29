@@ -19,6 +19,8 @@ import { store } from './store';
 import { useAppSelector } from './store/hooks';
 import { communityTheme, staffTheme, adminTheme } from './store/slices/themeSlice';
 import AuthProvider from './components/AuthProvider';
+import GamePersistence from './components/game/GamePersistence';
+import ObserverHubPage from './pages/ObserverHubPage';
 
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { role } = useAppSelector((state) => state.user);
@@ -32,6 +34,7 @@ function App(): React.JSX.Element {
   return (
     <Provider store={store}>
       <AuthProvider>
+        <GamePersistence />
         <ThemeProvider>
           <Notifications position='bottom-center' zIndex={1000} />
           <Router>
@@ -41,6 +44,7 @@ function App(): React.JSX.Element {
                 <Route path='/' element={<HomePage />} />
                 <Route path='/about' element={<AboutPage />} />
                 <Route path='/contact' element={<ContactPage />} />
+                <Route path='/observer' element={<ObserverHubPage />} />
                 <Route path='/login' element={<LoginPage />} />
                 <Route path='/register' element={<LoginPage initialMode='signup' />} />
                 <Route path='/verify-email' element={<VerifyEmailPage />} />
