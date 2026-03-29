@@ -1,6 +1,6 @@
 import { Buffer } from 'buffer';
 import { expect } from '@playwright/test';
-import type { Page, Route } from '@playwright/test';
+import type { Locator, Page, Route } from '@playwright/test';
 
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@test.com';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'testpassword123';
@@ -214,8 +214,23 @@ export async function selectSheetInCreateTurtleDialog(
     .waitFor({ state: 'hidden', timeout: SHEET_DROPDOWN_TIMEOUT });
 }
 
-const GENERAL_LOCATION_LABEL = /General Location/;
+/** Label pattern for the General Location field in turtle sheets forms. */
+export const GENERAL_LOCATION_LABEL = /General Location/;
 const GENERAL_LOCATION_DROPDOWN_TIMEOUT = 15_000;
+
+/**
+ * Community spreadsheet flow: General Location must be a plain TextInput, not a catalog Select
+ * (no combobox, no “+ Add new General Location”).
+ */
+export async function expectGeneralLocationIsFreeTextInDialog(dialog: Locator): Promise<void> {
+  const gl = dialog.getByLabel(GENERAL_LOCATION_LABEL);
+  await expect(gl).toBeVisible({ timeout: GENERAL_LOCATION_DROPDOWN_TIMEOUT });
+  const tag = await gl.evaluate((el) => el.tagName.toUpperCase());
+  expect(tag).toBe('INPUT');
+  const role = await gl.getAttribute('role');
+  expect(role).not.toBe('combobox');
+  await expect(dialog.getByRole('button', { name: /\+ Add new General Location/ })).toHaveCount(0);
+}
 
 /**
  * Selects a General Location in Create New Turtle dialog (Mantine Select or native select element).
@@ -225,6 +240,22 @@ export async function selectGeneralLocationInCreateTurtleDialog(
   dialog: ReturnType<Page['getByRole']>,
   locationName: string,
 ): Promise<void> {
+  const labeled = dialog.getByLabel(GENERAL_LOCATION_LABEL);
+  await labeled.waitFor({ state: 'visible', timeout: GENERAL_LOCATION_DROPDOWN_TIMEOUT });
+  const tag = await labeled.evaluate((el) => el.tagName.toUpperCase());
+  if (tag === 'SELECT') {
+    await labeled.selectOption({ label: locationName });
+    return;
+  }
+
+  // Community flow: plain TextInput (no catalog). Admin/research: Mantine Select shows "+ Add new General Location".
+  // Do not use role="combobox" — WebKit often omits it on the input, and fill() on a Select does not pick an option.
+  const isCatalogGeneralLocation = (await dialog.getByRole('button', { name: /\+ Add new General Location/ }).count()) > 0;
+  if (!isCatalogGeneralLocation) {
+    await labeled.fill(locationName);
+    return;
+  }
+
   // Portaled Mantine listboxes are outside `dialog`, so dialog-scoped getByLabel hits only the control
   // (avoids strict mode). NativeSelect <select> is not always exposed as textbox; combobox + label cover mobile/WebKit.
   const field = dialog

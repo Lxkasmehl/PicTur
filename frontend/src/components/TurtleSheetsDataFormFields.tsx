@@ -74,6 +74,7 @@ export function TurtleSheetsDataFormFields({
   mode,
   requireGeneralLocationForPath = false,
   requireNewSheetForCommunityMatch = false,
+  generalLocationUseCatalog,
   generalLocationOptions = [],
   generalLocationLoading = false,
   generalLocationLocked = false,
@@ -183,14 +184,17 @@ export function TurtleSheetsDataFormFields({
         const span = toSpan(config.span);
         const value = formData[config.key] ?? '';
         const isGeneralLocationField = config.key === 'general_location';
+        const generalLocationAsSelect = isGeneralLocationField && generalLocationUseCatalog;
         const generalLocationDescription =
-          isGeneralLocationField && generalLocationStateLabel
+          generalLocationAsSelect && generalLocationStateLabel
             ? generalLocationLocked
               ? `Auto-filled from the sheet rule for ${generalLocationStateLabel}.`
               : `Select a General Location for ${generalLocationStateLabel}, or add a new one.`
-            : config.key === 'general_location' && requireGeneralLocationForPath
-              ? 'Required for backend path (State/Location).'
-              : config.description;
+            : isGeneralLocationField && !generalLocationUseCatalog
+              ? 'Optional. Free text; not used for the research spreadsheet folder path.'
+              : config.key === 'general_location' && requireGeneralLocationForPath
+                ? 'Required for backend path (State/Location).'
+                : config.description;
 
         return (
           <Grid.Col key={config.key} span={span}>
@@ -206,18 +210,21 @@ export function TurtleSheetsDataFormFields({
               infoTooltip={config.infoTooltip}
               value={value}
               onChange={(v) => handleChange(config.key, v)}
-              type={isGeneralLocationField ? 'select' : config.type}
-              selectData={isGeneralLocationField ? generalLocationOptions : config.selectData}
+              type={generalLocationAsSelect ? 'select' : config.type}
+              selectData={generalLocationAsSelect ? generalLocationOptions : config.selectData}
               isFieldModeRestricted={effectiveRestrictedForField(config.key)}
               isFieldUnlocked={isFieldUnlocked}
               requestUnlock={requestUnlock}
-              disabled={config.key === 'id' || (isGeneralLocationField && (generalLocationLocked || generalLocationLoading))}
+              disabled={
+                config.key === 'id' ||
+                (generalLocationAsSelect && (generalLocationLocked || generalLocationLoading))
+              }
               error={errors?.[config.key]}
               required={config.key === 'general_location' ? requireGeneralLocationForPath : undefined}
-              searchable={isGeneralLocationField}
-              selectRemountKey={isGeneralLocationField ? generalLocationSelectRemountKey : undefined}
+              searchable={generalLocationAsSelect}
+              selectRemountKey={generalLocationAsSelect ? generalLocationSelectRemountKey : undefined}
               afterInput={
-                isGeneralLocationField && onCreateGeneralLocation && !generalLocationLocked ? (
+                generalLocationAsSelect && onCreateGeneralLocation && !generalLocationLocked ? (
                   <Button
                     variant='subtle'
                     size='compact-xs'

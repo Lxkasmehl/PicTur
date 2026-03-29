@@ -76,6 +76,10 @@ export function useTurtleSheetsDataForm(
 
   const duplicateNameMessage = 'This name is already used by another turtle';
 
+  /** Admin / backend-path flows use the general-locations catalog (dropdown); pure community sheet does not. */
+  const generalLocationUseCatalog =
+    sheetSource === 'admin' || useBackendLocations || requireNewSheetForCommunityMatch;
+
   const isFieldModeRestricted = addOnlyMode && mode === 'edit';
   const isFieldUnlocked = (field: keyof TurtleSheetsData) => unlockedFields.has(field);
   const requestUnlock = (field: keyof TurtleSheetsData) => setUnlockConfirmField(field);
@@ -239,6 +243,7 @@ export function useTurtleSheetsDataForm(
   }, [selectedGeneralLocationDefault, selectedPathGeneralLocation, selectedSheetName]);
 
   useEffect(() => {
+    if (!generalLocationUseCatalog) return;
     if (!selectedGeneralLocationState || !generalLocationCatalog || selectedGeneralLocationLocked) return;
     const current = normalizeValue(formData.general_location || '');
     if (!current) return;
@@ -250,6 +255,7 @@ export function useTurtleSheetsDataForm(
   }, [
     formData.general_location,
     generalLocationCatalog,
+    generalLocationUseCatalog,
     selectedGeneralLocationLocked,
     selectedGeneralLocationState,
     selectedPathGeneralLocation,
@@ -746,6 +752,7 @@ export function useTurtleSheetsDataForm(
     selectedGeneralLocationState,
     selectedGeneralLocationDefault,
     generalLocationOptions,
+    generalLocationUseCatalog,
     generalLocationLoading: loadingGeneralLocations,
     generalLocationLocked: selectedGeneralLocationLocked,
     loadingSheets,
