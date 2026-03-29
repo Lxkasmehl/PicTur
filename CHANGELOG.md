@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **E2E**: Playwright coverage for Review Queue → community upload → Create New Turtle: General Location is a plain text field (optional hint, no catalog “add new”), and the value stays after choosing sheet and sex; `expectGeneralLocationIsFreeTextInDialog` helper in `frontend/tests/e2e/fixtures.ts`.
+
 ### Changed
 
 - **Community turtles**: General Location is optional free text in the community spreadsheet flow (review queue / new turtle); the catalog dropdown stays for research paths (admin sheets, backend locations, and matching community turtles into admin).
