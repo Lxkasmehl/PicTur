@@ -32,6 +32,15 @@ export interface TurtleSheetsData {
   transmitter_lifespan?: string;
   radio_replace_date?: string;
   old_frequencies?: string;
+  // Optional mass and morphometrics
+  mass_g?: string;
+  curved_carapace_length_mm?: string;
+  straight_carapace_length_mm?: string;
+  carapace_width_mm?: string;
+  curved_plastron_length_mm?: string;
+  straight_plastron_length_mm?: string;
+  plastron_width_mm?: string;
+  dome_height_mm?: string;
 }
 
 export interface GetTurtleSheetsDataResponse {
@@ -137,6 +146,33 @@ export interface ListTurtlesResponse {
   turtles: TurtleSheetsData[];
   count: number;
   error?: string;
+}
+
+export interface GeneralLocationCatalog {
+  states: Record<string, string[]>;
+  sheet_defaults: Record<string, { state: string; general_location: string }>;
+}
+
+export interface GeneralLocationCatalogResponse {
+  success: boolean;
+  catalog?: GeneralLocationCatalog;
+  states?: { state: string; locations: string[] }[];
+  sheet_defaults?: { sheet_name: string; state: string; general_location: string }[];
+  error?: string;
+}
+
+export interface AddGeneralLocationRequest {
+  state: string;
+  general_location: string;
+}
+
+export interface AddGeneralLocationResponse extends GeneralLocationCatalogResponse {
+  synced?: boolean;
+  sheets_updated?: number;
+  sync_error?: string;
+  /** Present when Sheets API ran but no tab was updated (e.g. missing header). */
+  sync_warning?: string;
+  message?: string;
 }
 
 // Get turtle data from Google Sheets
@@ -401,6 +437,46 @@ export const getLocations = async (): Promise<GetLocationsResponse> => {
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to load locations');
+  }
+  return await response.json();
+};
+
+// Shared catalog of state-specific General Location options
+export const getGeneralLocationCatalog = async (): Promise<GeneralLocationCatalogResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await fetch(`${TURTLE_API_BASE_URL}/general-locations`, {
+    method: 'GET',
+    headers,
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to load general locations');
+  }
+  return await response.json();
+};
+
+export const addGeneralLocation = async (
+  data: AddGeneralLocationRequest,
+): Promise<AddGeneralLocationResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await fetch(`${TURTLE_API_BASE_URL}/general-locations`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to add general location');
   }
   return await response.json();
 };

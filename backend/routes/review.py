@@ -12,6 +12,7 @@ from auth import require_admin
 from services import manager_service
 from services.manager_service import get_sheets_service, get_community_sheets_service
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
+from general_locations_catalog import resolve_general_location_from_sheet_and_value
 
 # Metadata keys to strip when syncing turtle data to community spreadsheet
 _COMMUNITY_SYNC_STRIP_KEYS = ('sheet_name', 'row_index')
@@ -346,21 +347,54 @@ def register_review_routes(app):
         find_metadata = data.get('find_metadata')  # Optional: microhabitat_uploaded, physical_flag, digital_flag_*, etc.
         match_from_community = data.get('match_from_community') is True  # Admin re-found a community turtle
         community_sheet_name = (data.get('community_sheet_name') or '').strip() or None  # Community tab to remove from
+        is_community_upload = not (request_id.startswith('admin_') if request_id else False)
 
         # When moving turtle from community to admin, new admin path = sheet_name/general_location (e.g. Kansas/NT)
         new_admin_location = None
         if match_from_community and isinstance(sheets_data, dict) and sheets_data.get('sheet_name'):
             sheet_part = (sheets_data.get('sheet_name') or '').strip()
-            general_loc = (sheets_data.get('general_location') or '').strip()
-            if sheet_part and general_loc:
-                new_admin_location = f"{sheet_part}/{general_loc}"
-            elif sheet_part:
-                new_admin_location = sheet_part
+            provided_general_loc = (sheets_data.get('general_location') or '').strip()
+            try:
+                resolved_general_loc = resolve_general_location_from_sheet_and_value(
+                    sheet_part,
+                    provided_general_loc,
+                    state=sheet_part,
+                    allow_blank=False,
+                )
+            except ValueError as exc:
+                return jsonify({'error': str(exc)}), 400
+            if sheet_part and resolved_general_loc:
+                new_admin_location = f"{sheet_part}/{resolved_general_loc}"
+                sheets_data['general_location'] = resolved_general_loc
             if new_admin_location:
                 print(f"📋 Community→Admin move: new_admin_location={new_admin_location!r}, community_sheet_name={community_sheet_name!r}")
 
+        if new_location and new_turtle_id:
+            parts = [p.strip() for p in str(new_location).split('/') if p.strip()]
+            sheet_part = parts[0] if parts else ''
+            if sheet_part:
+                if is_community_upload and len(parts) == 1:
+                    new_location = sheet_part
+                else:
+                    provided_general_loc = ''
+                    if len(parts) > 1:
+                        provided_general_loc = '/'.join(parts[1:]).strip()
+                    elif isinstance(sheets_data, dict):
+                        provided_general_loc = (sheets_data.get('general_location') or '').strip()
+                    try:
+                        resolved_general_loc = resolve_general_location_from_sheet_and_value(
+                            sheet_part,
+                            provided_general_loc,
+                            state=sheet_part,
+                            allow_blank=is_community_upload,
+                        )
+                    except ValueError as exc:
+                        return jsonify({'error': str(exc)}), 400
+                    new_location = f"{sheet_part}/{resolved_general_loc}" if resolved_general_loc else sheet_part
+                    if isinstance(sheets_data, dict):
+                        sheets_data['general_location'] = resolved_general_loc
+
         try:
-            is_community_upload = not (request_id.startswith('admin_') if request_id else False)
             success, message = manager_service.manager.approve_review_packet(
                 request_id,
                 match_turtle_id=match_turtle_id,

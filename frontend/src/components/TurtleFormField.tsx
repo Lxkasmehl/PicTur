@@ -51,6 +51,9 @@ export function TurtleFormField({
   disabled,
   error,
   required,
+  searchable = false,
+  afterInput,
+  selectRemountKey,
 }: TurtleFormFieldProps) {
   const isMobile = useMediaQuery(MOBILE_BREAKPOINT);
   const locked = isFieldModeRestricted && !isFieldUnlocked(field);
@@ -77,6 +80,7 @@ export function TurtleFormField({
           error={error}
           required={required}
         />
+        {afterInput}
       </>
     );
   }
@@ -91,7 +95,9 @@ export function TurtleFormField({
         ? [{ value: '', label: placeholder }, ...data]
         : data;
       return (
+      <>
         <NativeSelect
+          key={selectRemountKey}
           label={labelNode}
           description={description}
           error={error}
@@ -101,22 +107,29 @@ export function TurtleFormField({
           data={nativeData}
           required={required}
         />
+        {afterInput}
+      </>
       );
     }
 
     return (
-      <Select
-        label={labelNode}
-        placeholder={placeholder}
-        data={data}
-        value={value}
-        onChange={(v) => onChange(v || '')}
-        description={description}
-        disabled={disabled}
-        error={error}
-        required={required}
-        comboboxProps={{ keepMounted: true }}
-      />
+      <>
+        <Select
+          key={selectRemountKey}
+          label={labelNode}
+          placeholder={placeholder}
+          data={data}
+          value={value || null}
+          onChange={(v) => onChange(v ?? '')}
+          description={description}
+          disabled={disabled}
+          error={error}
+          required={required}
+          comboboxProps={{ keepMounted: true }}
+          searchable={searchable}
+        />
+        {afterInput}
+      </>
     );
   }
 
@@ -137,15 +150,18 @@ export function TurtleFormField({
   }
 
   return (
-    <TextInput
-      label={labelNode}
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      description={description}
-      disabled={disabled}
-      error={error}
-      required={required}
-    />
+    <>
+      <TextInput
+        label={labelNode}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        description={description}
+        disabled={disabled}
+        error={error}
+        required={required}
+      />
+      {afterInput}
+    </>
   );
 }

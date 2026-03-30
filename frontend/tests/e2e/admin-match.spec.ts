@@ -5,6 +5,7 @@ import {
   grantLocationPermission,
   getTestImageBuffer,
   clickUploadPhotoButton,
+  selectSheetInCreateTurtleDialog,
 } from './fixtures';
 
 test.describe('Admin Turtle Match', () => {
@@ -133,6 +134,183 @@ test.describe('Admin Turtle Match', () => {
     await expect(dialog.getByLabel('Sheet / Location')).toBeVisible();
   });
 
+  test('Create New Turtle shows state-specific General Location dropdown', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.route('**/api/locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, locations: ['Kansas', 'Kansas/Wichita'] }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    await page.route('**/api/general-locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            catalog: {
+              states: {
+                Kansas: ['Lawrence', 'North Topeka'],
+              },
+              sheet_defaults: {},
+            },
+            states: [{ state: 'Kansas', locations: ['Lawrence', 'North Topeka'] }],
+            sheet_defaults: [],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    await page.route('**/api/sheets/turtle-names', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, names: [] }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await loginAsAdmin(page);
+    const fileInput = page.locator('input[type="file"]:not([capture])').first();
+    await fileInput.setInputFiles({
+      name: 'general-location-e2e.png',
+      mimeType: 'image/png',
+      buffer: getTestImageBuffer(),
+    });
+    await page.waitForSelector('button:has-text("Upload Photo")', { timeout: 5000 });
+    await clickUploadPhotoButton(page);
+    await expect(page).toHaveURL(/\/admin\/turtle-match\/[^/]+/, { timeout: 30_000 });
+
+    await page.getByRole('button', { name: 'Create New Turtle' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    const generalLocationField = dialog.getByLabel(/General Location/);
+    await expect(generalLocationField).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByRole('button', { name: /\+ Add new General Location/ })).toBeVisible();
+
+    const isNativeSelect = await generalLocationField.evaluate((el) => el.tagName === 'SELECT');
+    if (isNativeSelect) {
+      const options = await generalLocationField.locator('option').allTextContents();
+      expect(options).toContain('North Topeka');
+    } else {
+      await generalLocationField.click();
+      const listbox = page.getByRole('listbox');
+      await expect(listbox).toBeVisible({ timeout: 5000 });
+      const optionTexts = await listbox.getByRole('option').allTextContents();
+      expect(optionTexts).toContain('North Topeka');
+      await page.keyboard.press('Escape');
+    }
+  });
+
+  test('Create New Turtle: fixed sheet rule locks General Location to default', async ({ page }) => {
+    test.setTimeout(60_000);
+    const e2eRequestId = 'admin_e2e-fixed-sheet-gl';
+    await page.route('**/upload', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            request_id: e2eRequestId,
+            uploaded_image_path: '/e2e/fixed-sheet-gl.png',
+            matches: [],
+            message: 'Uploaded',
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    await page.route('**/api/locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            locations: ['NebraskaCPBS', 'Kansas', 'Kansas/Wichita'],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    await page.route('**/api/general-locations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            catalog: {
+              states: {
+                Nebraska: ['CPBS', 'Crescent Lake'],
+              },
+              sheet_defaults: {
+                NebraskaCPBS: { state: 'Nebraska', general_location: 'CPBS' },
+              },
+            },
+            states: [{ state: 'Nebraska', locations: ['CPBS', 'Crescent Lake'] }],
+            sheet_defaults: [
+              { sheet_name: 'NebraskaCPBS', state: 'Nebraska', general_location: 'CPBS' },
+            ],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    await page.route('**/api/sheets/turtle-names', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, names: [] }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await loginAsAdmin(page);
+    const fileInput = page.locator('input[type="file"]:not([capture])').first();
+    await fileInput.setInputFiles({
+      name: 'fixed-sheet-gl-e2e.png',
+      mimeType: 'image/png',
+      buffer: getTestImageBuffer(),
+    });
+    await page.waitForSelector('button:has-text("Upload Photo")', { timeout: 5000 });
+    await clickUploadPhotoButton(page);
+    await expect(page).toHaveURL(/\/admin\/turtle-match\/[^/]+/, { timeout: 30_000 });
+
+    await page.getByRole('button', { name: 'Create New Turtle' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    await selectSheetInCreateTurtleDialog(page, dialog, 'NebraskaCPBS');
+
+    const generalLocationField = dialog.getByLabel(/General Location/);
+    await expect(generalLocationField).toBeVisible({ timeout: 10_000 });
+    await expect(generalLocationField).toBeDisabled();
+    await expect(generalLocationField).toHaveValue('CPBS');
+    await expect(dialog.getByRole('button', { name: /\+ Add new General Location/ })).toHaveCount(0);
+    await expect(
+      dialog.getByText(/Auto-filled from the sheet rule for Nebraska/i),
+    ).toBeVisible();
+  });
+
   test('Create New Turtle: Sheet/Location dropdown shows only top-level states (no sublocations or system folders)', async ({
     page,
   }) => {
@@ -222,12 +400,12 @@ test.describe('Admin Turtle Match', () => {
       timeout: 15_000,
     });
 
-    // Wait for match results to load before branching
+    // Wait for either outcome — avoids racing upload/match load on slow mobile WebKit.
     const noMatches = page.getByText('No matches found');
-    const matchSection = page.getByText('Microhabitat / Condition photos');
-    await expect(noMatches.or(matchSection)).toBeVisible({ timeout: 10_000 });
+    const microSection = page.getByText('Microhabitat / Condition photos');
+    await expect(noMatches.or(microSection)).toBeVisible({ timeout: 25_000 });
     if (await noMatches.isVisible()) return;
-    await expect(matchSection).toBeVisible();
+    await expect(microSection).toBeVisible({ timeout: 10_000 });
   });
 
   test('Upload with extra microhabitat: image appears under From this upload, then can be removed', async ({

@@ -2,11 +2,166 @@
 Sheet management functions for Google Sheets
 """
 
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from googleapiclient.errors import HttpError
 import ssl
 import time
 from .helpers import escape_sheet_name, is_backup_sheet
+from general_locations_catalog import get_general_location_options_for_sheet
+
+GENERAL_LOCATION_VALIDATION_START_ROW = 1  # Row 2 in Sheets UI
+GENERAL_LOCATION_VALIDATION_END_ROW = 100000
+
+
+def _sheets_v4_client_and_id(service_or_wrapper):
+    """
+    Return (raw googleapiclient sheets v4 resource, spreadsheet_id).
+
+    Routes pass GoogleSheetsService, which stores the discovery client on .service
+    and the id on .spreadsheet_id. Other functions in this module use the raw client.
+    """
+    api = getattr(service_or_wrapper, 'service', None)
+    spreadsheet_id = getattr(service_or_wrapper, 'spreadsheet_id', None)
+    if api is not None and spreadsheet_id:
+        return api, spreadsheet_id
+    return None, None
+
+
+def _get_sheet_id(service, spreadsheet_id: str, sheet_name: str) -> Optional[int]:
+    """Return the sheet ID for a tab name."""
+    spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    for sheet in spreadsheet.get('sheets', []):
+        if sheet.get('properties', {}).get('title') == sheet_name:
+            return sheet.get('properties', {}).get('sheetId')
+    return None
+
+
+def _get_general_location_column_index(service, spreadsheet_id: str, sheet_name: str) -> Optional[int]:
+    """Return the zero-based column index for the General Location column."""
+    try:
+        escaped_sheet = escape_sheet_name(sheet_name)
+        range_name = f"{escaped_sheet}!1:1"
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=range_name,
+        ).execute()
+        values = result.get('values', [])
+        if not values:
+            return None
+        headers = values[0]
+        for idx, header in enumerate(headers):
+            h = ' '.join((header or '').strip().split())
+            if h.casefold() == 'general location':
+                return idx
+    except Exception:
+        return None
+    return None
+
+
+def _build_general_location_validation_values(sheet_name: str) -> List[str]:
+    """Return the dropdown values for General Location, including blank."""
+    options = get_general_location_options_for_sheet(sheet_name)
+    locations = list(options.get('locations', []))
+    values = ['']
+    for location in locations:
+        if location not in values:
+            values.append(location)
+    return values
+
+
+def _apply_general_location_validation(
+    service,
+    spreadsheet_id: str,
+    sheet_name: str,
+    sheet_id: Optional[int] = None,
+    column_index: Optional[int] = None,
+) -> bool:
+    """Apply the General Location data validation to a sheet tab."""
+    if is_backup_sheet(sheet_name):
+        return False
+
+    try:
+        if sheet_id is None:
+            sheet_id = _get_sheet_id(service, spreadsheet_id, sheet_name)
+        if sheet_id is None:
+            print(f"WARNING: Could not determine sheet ID for '{sheet_name}' when applying General Location validation")
+            return False
+        if column_index is None:
+            column_index = _get_general_location_column_index(service, spreadsheet_id, sheet_name)
+        if column_index is None:
+            print(f"WARNING: Could not determine General Location column for '{sheet_name}'")
+            return False
+
+        values = _build_general_location_validation_values(sheet_name)
+        if not values:
+            return False
+
+        requests = [{
+            'setDataValidation': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': GENERAL_LOCATION_VALIDATION_START_ROW,
+                    'endRowIndex': GENERAL_LOCATION_VALIDATION_END_ROW,
+                    'startColumnIndex': column_index,
+                    'endColumnIndex': column_index + 1,
+                },
+                'rule': {
+                    'condition': {
+                        'type': 'ONE_OF_LIST',
+                        'values': [{'userEnteredValue': value} for value in values],
+                    },
+                    'showCustomUi': True,
+                    'strict': True,
+                },
+            }
+        }]
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={'requests': requests},
+        ).execute()
+        return True
+    except HttpError as e:
+        print(f"Error applying General Location validation for '{sheet_name}': {e}")
+        return False
+    except Exception as e:
+        print(f"Error applying General Location validation for '{sheet_name}': {e}")
+        return False
+
+
+def sync_general_location_validations(service, sheet_names: Optional[List[str]] = None) -> int:
+    """Sync General Location dropdown validation across one or more sheets."""
+    api, spreadsheet_id = _sheets_v4_client_and_id(service)
+    if api is None or not spreadsheet_id:
+        print(
+            'ERROR: sync_general_location_validations requires GoogleSheetsService '
+            '(with .service and .spreadsheet_id)'
+        )
+        return 0
+
+    if sheet_names is None:
+        try:
+            sheet_names = service.list_sheets()
+        except Exception:
+            sheet_names = []
+
+    processed = 0
+    try:
+        spreadsheet = api.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        title_to_id = {
+            sheet.get('properties', {}).get('title'): sheet.get('properties', {}).get('sheetId')
+            for sheet in spreadsheet.get('sheets', [])
+        }
+        for sheet_name in sheet_names:
+            if not sheet_name or is_backup_sheet(sheet_name):
+                continue
+            sheet_id = title_to_id.get(sheet_name)
+            if sheet_id is None:
+                continue
+            if _apply_general_location_validation(api, spreadsheet_id, sheet_name, sheet_id):
+                processed += 1
+    except Exception as e:
+        print(f"Error syncing General Location validation: {e}")
+    return processed
 
 
 def ensure_primary_id_column(service, spreadsheet_id: str, sheet_name: str, get_all_column_indices_func,
@@ -348,6 +503,9 @@ def create_sheet_with_headers(service, spreadsheet_id: str, sheet_name: str, col
             valueInputOption='RAW',
             body=body
         ).execute()
+
+        general_location_idx = headers.index('General Location') if 'General Location' in headers else None
+        _apply_general_location_validation(service, spreadsheet_id, sheet_name, sheet_id, general_location_idx)
         
         print(f"✅ Created new sheet '{sheet_name}' with {len(headers)} headers")
         return True

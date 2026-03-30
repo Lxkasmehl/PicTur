@@ -75,24 +75,16 @@ export default function HomePage() {
           a.localeCompare(b, undefined, { sensitivity: 'base' }),
         );
         setAvailableLocations(list);
-        const firstLocation = list.find((p) => p.includes('/'));
-        const defaultSelection = firstLocation || list[0] || MATCH_ALL_VALUE;
-        setSelectedMatchSheet((prev) =>
-          prev === MATCH_ALL_VALUE ? defaultSelection : prev,
-        );
+        setSelectedMatchSheet((prev) => {
+          if (prev !== MATCH_ALL_VALUE) return prev;
+          const firstKansas = list.find((p) => p.startsWith('Kansas/'));
+          const firstWithSlash = list.find((p) => p.includes('/'));
+          return firstKansas || firstWithSlash || list[0] || MATCH_ALL_VALUE;
+        });
       })
       .catch(() => setAvailableLocations([]))
       .finally(() => setLocationsLoading(false));
   }, [isStaff]);
-  useEffect(() => {
-    if (isStaff && availableLocations.length > 0) {
-      const firstLocation = availableLocations.find((p) => p.startsWith('Kansas/'));
-      const defaultSelection = firstLocation || availableLocations[0];
-      setSelectedMatchSheet((prev) =>
-        prev === MATCH_ALL_VALUE ? defaultSelection : prev,
-      );
-    }
-  }, [isStaff, availableLocations]);
 
   const matchScopeOptions = useMemo(() => {
     const byState = new Map<string, Set<string>>();
@@ -134,6 +126,14 @@ export default function HomePage() {
     options.push({ value: MATCH_ALL_VALUE, label: 'All locations (everything)' });
     return options;
   }, [availableLocations]);
+
+  // Keep a real option selected: Mantine Select looks empty if `value` is missing from `data`.
+  useEffect(() => {
+    if (!isStaff || matchScopeOptions.length === 0) return;
+    if (!matchScopeOptions.some((o) => o.value === selectedMatchSheet)) {
+      setSelectedMatchSheet(matchScopeOptions[0].value);
+    }
+  }, [isStaff, matchScopeOptions, selectedMatchSheet]);
 
   const matchSheetForUpload = isStaff
     ? selectedMatchSheet === MATCH_ALL_VALUE
@@ -277,13 +277,16 @@ export default function HomePage() {
                 <Select
                   data={matchScopeOptions}
                   value={selectedMatchSheet}
-                  onChange={(v) => v != null && setSelectedMatchSheet(v)}
+                  onChange={(v) => {
+                    if (typeof v === 'string' && v.length > 0) setSelectedMatchSheet(v);
+                  }}
                   placeholder={
                     availableLocations.length
                       ? 'Select state or location'
                       : 'No locations yet'
                   }
                   allowDeselect={false}
+                  required
                   disabled={uploadState === 'uploading'}
                 />
               )}

@@ -3,6 +3,7 @@
  */
 
 import type { TurtleSheetsData } from '../services/api';
+import type { ReactNode } from 'react';
 
 export type TurtleFormFieldType = 'text' | 'select' | 'textarea';
 
@@ -23,4 +24,8 @@ export interface TurtleFormFieldProps {
   disabled?: boolean;
   error?: string;
   required?: boolean;
+  searchable?: boolean;
+  afterInput?: ReactNode;
+  /** When set, used as React `key` on Select/NativeSelect so the control remounts (fixes stale Mantine display with keepMounted). */
+  selectRemountKey?: string;
 }

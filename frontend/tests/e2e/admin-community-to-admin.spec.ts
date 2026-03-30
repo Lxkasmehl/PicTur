@@ -4,6 +4,8 @@ import {
   grantLocationPermission,
   getTestImageBuffer,
   clickUploadPhotoButton,
+  registerKansasGeneralLocationsCatalogMock,
+  E2E_KANSAS_GENERAL_LOCATION,
 } from './fixtures';
 
 const MATCH_REQUEST_ID = 'e2e-community-move';
@@ -155,6 +157,10 @@ test.describe('Admin Community turtle move to admin', () => {
       }
     });
 
+    // Dropdown options come from GET /api/general-locations, not from folder paths like Kansas/Wichita.
+    // Register after other routes so Playwright checks this handler first for that URL.
+    await registerKansasGeneralLocationsCatalogMock(page);
+
     await loginAsAdmin(page);
     await page
       .getByText('Successfully logged in!')
@@ -180,6 +186,8 @@ test.describe('Admin Community turtle move to admin', () => {
     // Select the community match (T1, Community_Uploads/TestSheet)
     await expect(page.getByText(COMMUNITY_MATCH.location)).toBeVisible({ timeout: 10_000 });
     await page.getByText(COMMUNITY_MATCH.turtle_id).first().click();
+    // Form mounts and GET /api/general-locations runs; re-register mock last so it wins over the real API.
+    await registerKansasGeneralLocationsCatalogMock(page);
 
     // Form should show; for community match, Sheet / Location and General Location are editable
     // On mobile (≤768px) we use NativeSelect (native <select>); on desktop we use Mantine Select (listbox in portal).
@@ -188,18 +196,40 @@ test.describe('Admin Community turtle move to admin', () => {
       .getByRole('textbox', { name: 'Sheet / Location' })
       .or(page.getByRole('combobox', { name: 'Sheet / Location' }));
     await expect(sheetLocationInput).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByLabel(/General Location/)).toBeVisible({
-      timeout: 5000,
+    // Form fields live in a Paper above the action bar; Save is in a sibling Paper (no shared Grid.Col).
+    const sheetsFormCard = page.locator('.mantine-Paper-root').filter({
+      has: page.getByRole('heading', { name: /Turtle Data - Google Sheets/ }),
     });
+    const generalLocationInput = sheetsFormCard
+      .getByRole('textbox', { name: /General Location/ })
+      .or(sheetsFormCard.getByRole('combobox', { name: /General Location/ }));
+    await expect(generalLocationInput).toBeVisible({ timeout: 15_000 });
 
     const isNativeSelect = await sheetLocationInput.evaluate((el) => (el as HTMLElement).tagName === 'SELECT');
     if (isNativeSelect) {
       await sheetLocationInput.selectOption({ label: 'Kansas' });
     } else {
       await sheetLocationInput.click();
-      await page.getByRole('listbox').getByRole('option', { name: 'Kansas' }).click();
+      await page
+        .getByRole('listbox', { name: 'Sheet / Location' })
+        .getByRole('option', { name: 'Kansas', exact: true })
+        .click();
+      await page.getByRole('listbox', { name: 'Sheet / Location' }).waitFor({ state: 'hidden', timeout: 10_000 });
     }
-    await page.getByLabel(/General Location/).fill('Wichita');
+    await registerKansasGeneralLocationsCatalogMock(page);
+    const isNativeGeneral = await generalLocationInput.evaluate((el) => (el as HTMLElement).tagName === 'SELECT');
+    if (isNativeGeneral) {
+      await generalLocationInput
+        .getByRole('option', { name: E2E_KANSAS_GENERAL_LOCATION, exact: true })
+        .waitFor({ state: 'attached', timeout: 15_000 });
+      await generalLocationInput.selectOption({ label: E2E_KANSAS_GENERAL_LOCATION });
+    } else {
+      await generalLocationInput.click();
+      await page
+        .getByRole('listbox', { name: /General Location/ })
+        .getByRole('option', { name: E2E_KANSAS_GENERAL_LOCATION, exact: true })
+        .click();
+    }
 
     await page.getByRole('button', { name: 'Save to Sheets & Confirm Match' }).click();
 
@@ -211,6 +241,6 @@ test.describe('Admin Community turtle move to admin', () => {
     expect(payload.community_sheet_name).toBe('TestSheet');
     expect(payload.match_turtle_id).toBe(COMMUNITY_MATCH.turtle_id);
     expect(payload.sheets_data?.sheet_name).toBe('Kansas');
-    expect(payload.sheets_data?.general_location).toBe('Wichita');
+    expect(payload.sheets_data?.general_location).toBe(E2E_KANSAS_GENERAL_LOCATION);
   });
 });

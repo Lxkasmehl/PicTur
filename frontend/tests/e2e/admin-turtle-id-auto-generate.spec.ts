@@ -4,6 +4,7 @@ import {
   grantLocationPermission,
   getTestImageBuffer,
   clickUploadPhotoButton,
+  registerKansasGeneralLocationsCatalogMock,
   selectSheetInCreateTurtleDialog,
   selectSexInCreateTurtleDialog,
 } from './fixtures';
@@ -18,6 +19,7 @@ const MOCK_BIOLOGY_ID = 'F42';
 
 test.describe('Admin Create New Turtle – auto-generated ID field', () => {
   test.beforeEach(async ({ page }) => {
+    await registerKansasGeneralLocationsCatalogMock(page);
     await page.goto('/');
     await grantLocationPermission(page);
   });

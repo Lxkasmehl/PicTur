@@ -35,6 +35,7 @@ from routes.images import register_image_routes
 from routes.sheets import register_sheets_routes
 from routes.turtles import register_turtle_routes
 from routes.locations import register_locations_routes
+from routes.general_locations import register_general_location_routes
 
 # Create Flask app
 app = Flask(__name__)
@@ -56,6 +57,7 @@ register_image_routes(app)
 register_sheets_routes(app)
 register_turtle_routes(app)
 register_locations_routes(app)
+register_general_location_routes(app)
 
 @app.errorhandler(Exception)
 def handle_exception(err):

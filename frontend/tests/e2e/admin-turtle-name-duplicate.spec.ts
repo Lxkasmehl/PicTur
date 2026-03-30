@@ -1,14 +1,13 @@
 import { test, expect } from '@playwright/test';
-import * as helpers from './fixtures';
-
-const {
+import {
   loginAsAdmin,
   grantLocationPermission,
   getTestImageBuffer,
   clickUploadPhotoButton,
   selectSheetInCreateTurtleDialog,
-  fillGeneralLocationInCreateTurtleDialog,
-} = helpers;
+  registerKansasGeneralLocationsCatalogMock,
+  pickKansasGeneralLocationInCreateTurtleDialog,
+} from './fixtures';
 
 /**
  * E2E tests: duplicate turtle name validation in the Create New Turtle form.
@@ -23,6 +22,7 @@ const MOCK_EXISTING_NAMES = [
 
 test.describe('Admin Create New Turtle – duplicate name validation', () => {
   test.beforeEach(async ({ page }) => {
+    await registerKansasGeneralLocationsCatalogMock(page);
     await page.goto('/');
     await grantLocationPermission(page);
   });
@@ -71,6 +71,8 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
       }
     });
 
+    await registerKansasGeneralLocationsCatalogMock(page);
+
     await loginAsAdmin(page);
 
     const fileInput = page.locator('input[type="file"]:not([capture])').first();
@@ -102,7 +104,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
 
     // Select sheet and General Location (required for admin create)
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
-    await fillGeneralLocationInCreateTurtleDialog(dialog, 'Wichita');
+    await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
 
     // Fill Name with an existing name (case-insensitive match)
     const nameInput = dialog.getByLabel('Name', { exact: true });
@@ -161,6 +163,8 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
       }
     });
 
+    await registerKansasGeneralLocationsCatalogMock(page);
+
     await loginAsAdmin(page);
 
     const fileInput = page.locator('input[type="file"]:not([capture])').first();
@@ -183,7 +187,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     await turtleNamesResponse;
 
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
-    await fillGeneralLocationInCreateTurtleDialog(dialog, 'Wichita');
+    await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
 
     // Different casing than stored "Leonardo" – should still be treated as duplicate
     const nameInput = dialog.getByLabel('Name', { exact: true });
@@ -234,6 +238,8 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
       }
     });
 
+    await registerKansasGeneralLocationsCatalogMock(page);
+
     await loginAsAdmin(page);
 
     const fileInput = page.locator('input[type="file"]:not([capture])').first();
@@ -251,7 +257,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     await expect(dialog).toBeVisible();
 
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
-    await fillGeneralLocationInCreateTurtleDialog(dialog, 'Wichita');
+    await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
 
     const nameInput = dialog.getByLabel('Name', { exact: true });
     await nameInput.fill('E2E Unique Turtle Name 999');
@@ -266,7 +272,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
 
     // Delay turtle-names so we can assert loading state and that submit is blocked before load
     await page.route('**/api/sheets/turtle-names', async (route) => {
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 5000));
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -302,6 +308,8 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
       }
     });
 
+    await registerKansasGeneralLocationsCatalogMock(page);
+
     await loginAsAdmin(page);
 
     const fileInput = page.locator('input[type="file"]:not([capture])').first();
@@ -322,11 +330,11 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     await expect(dialog).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Create New Turtle' })).toBeVisible();
 
-    // Button must be disabled while names are loading (would fail if we allowed submit before load)
-    await expect(
-      dialog.getByRole('button', { name: /Loading names/ }),
-    ).toBeVisible({ timeout: 3000 });
-    await expect(dialog.getByRole('button', { name: /Loading names/ })).toBeDisabled();
+    // Button must stay disabled while names load. One assertion avoids a race where the delayed
+    // response completes between a separate toBeVisible and toBeDisabled.
+    await expect(dialog.getByRole('button', { name: /Loading names/ })).toBeDisabled({
+      timeout: 3000,
+    });
 
     // Wait for turtle-names response so form enables submit
     await page.waitForResponse(
@@ -340,7 +348,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     await expect(createDataBtn).toBeEnabled();
 
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
-    await fillGeneralLocationInCreateTurtleDialog(dialog, 'Wichita');
+    await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
 
     const nameInput = dialog.getByLabel('Name', { exact: true });
     await nameInput.fill('Master Oogway');
@@ -397,6 +405,8 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
       }
     });
 
+    await registerKansasGeneralLocationsCatalogMock(page);
+
     await loginAsAdmin(page);
 
     const fileInput = page.locator('input[type="file"]:not([capture])').first();
@@ -412,13 +422,15 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
       timeout: 15_000,
     });
 
+    // Last chance before the dialog mounts and GET /general-locations runs (Playwright matches last-registered routes first).
+    await registerKansasGeneralLocationsCatalogMock(page);
     await page.getByRole('button', { name: 'Create New Turtle' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
 
     // Do NOT wait for turtle-names. Select sheet, General Location, fill duplicate name, click submit immediately.
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
-    await fillGeneralLocationInCreateTurtleDialog(dialog, 'Wichita');
+    await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
     const nameInput = dialog.getByLabel('Name', { exact: true });
     await nameInput.fill('Master Oogway');
     await nameInput.blur();

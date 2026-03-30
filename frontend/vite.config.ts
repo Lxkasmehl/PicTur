@@ -7,8 +7,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     host: true, // Listen on all network interfaces
-    port: 5173, // Explicitly set port for consistency
-    strictPort: true,
+    port: 5173, // Must match playwright.config.ts webServer.url and baseURL
+    strictPort: true, // Fail if 5173 is in use so Playwright’s readiness check doesn’t time out
     allowedHosts: [
       '.loca.lt', // Allow all localtunnel subdomains
     ],

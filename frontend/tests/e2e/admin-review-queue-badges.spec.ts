@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import {
   loginAsAdmin,
   navClick,
-  openMobileMenu,
 } from './fixtures';
 
 /** Minimal queue item shape for mocking GET /api/review-queue */
