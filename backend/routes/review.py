@@ -146,8 +146,23 @@ def format_review_packet_item(packet_dir, request_id):
             pass
         if match_search_error is None:
             match_search_error = 'Match search failed.'
+
+    # Staff/admin /api/upload builds the packet synchronously before search. If search errors,
+    # candidate_matches is never created; without a failure file (older uploads), the folder
+    # is not "still matching" — classify as failed so the queue shows recovery actions.
+    if (
+        request_id.startswith('admin_')
+        and not os.path.isdir(candidates_dir)
+        and not match_search_failed
+    ):
+        match_search_failed = True
+        match_search_error = (
+            'Match search did not complete for this staff/admin upload. '
+            'Try uploading again, or create a new turtle from this find.'
+        )
+
     # candidate_matches is created after SuperPoint search succeeds in create_review_packet;
-    # missing dir + no failure marker => matching still running (or legacy stuck packet).
+    # missing dir + no failure marker => matching still running (or legacy stuck community packet).
     match_search_pending = not os.path.isdir(candidates_dir) and not match_search_failed
     candidates = []
     if os.path.isdir(candidates_dir):

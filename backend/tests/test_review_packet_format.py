@@ -60,6 +60,17 @@ def test_match_search_pending_false_when_candidate_matches_empty_dir(packet_dir)
     assert item["metadata"].get("finder") == "test"
 
 
+def test_admin_prefix_missing_candidates_is_failed_not_pending(packet_dir):
+    """Legacy staff/admin /api/upload failures leave no candidate_matches and no marker file."""
+    packet_dir.mkdir()
+    _write_minimal_jpeg(str(packet_dir / "query.jpg"))
+    item = format_review_packet_item(str(packet_dir), "admin_123_photo.jpg")
+    assert item["match_search_pending"] is False
+    assert item["match_search_failed"] is True
+    assert item["match_search_error"]
+    assert item["candidates"] == []
+
+
 def test_match_search_pending_false_with_ranked_candidate(packet_dir):
     """Non-empty candidate_matches yields candidates and not pending."""
     packet_dir.mkdir()
