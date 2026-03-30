@@ -1,12 +1,12 @@
 """
 Complete Backend Reset Script
 Clears ALL data from the backend:
-- Database (all Turtle and TurtleImage records)
+- Legacy Django SQLite DB and media (if still present from old installs)
 - Official turtle data (State/Location folders)
 - Uploaded data (Review Queue, Community Uploads)
 - Legacy VLAD/FAISS artifacts (optional fallback files)
 
-Important: Legacy index/vocab files in backend/turtles/ are removed together so the
+Important: Legacy index/vocab files under backend/turtles/ are removed together so the
 deprecated VLAD/FAISS fallback state stays consistent when experimenting.
 """
 
@@ -15,111 +15,43 @@ import shutil
 import sys
 from pathlib import Path
 
-# Add turtles directory to path for Django imports
 base_dir = os.path.dirname(os.path.abspath(__file__))
-turtles_dir = os.path.join(base_dir, 'turtles')
-if turtles_dir not in sys.path:
-    sys.path.insert(0, turtles_dir)
+turtles_dir = os.path.join(base_dir, "turtles")
 
-# Load .env so sheet-based folder creation can use GOOGLE_SHEETS_* (before Django)
 try:
     from dotenv import load_dotenv
-    for env_path in [Path(base_dir) / '.env', Path(base_dir).parent / '.env']:
+    for env_path in [Path(base_dir) / ".env", Path(base_dir).parent / ".env"]:
         if env_path.exists():
             load_dotenv(env_path, override=False)
             break
 except ImportError:
     pass
 
-# Setup Django environment
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'turtles.settings')
 
-import django
-django.setup()
+def clear_legacy_django_storage():
+    """Remove leftover Django SQLite DB and media directory (pre-Flask-only installs)."""
+    print("🗄️  Clearing legacy Django storage (if present)...")
 
-from django.db import connection
-from django.db.utils import OperationalError
-from identification.models import Turtle, TurtleImage
-
-
-def _table_exists(table_name):
-    """Return True if the given table exists in the database."""
-    with connection.cursor() as cursor:
-        if connection.vendor == 'sqlite':
-            cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name=%s",
-                [table_name],
-            )
-        else:
-            cursor.execute(
-                "SELECT table_name FROM information_schema.tables WHERE table_name = %s",
-                [table_name],
-            )
-        return cursor.fetchone() is not None
-
-
-def _clear_media_if_present():
-    """Remove Django media directory if it exists."""
-    from django.conf import settings
-    media_root = getattr(settings, 'MEDIA_ROOT', None)
-    if media_root and os.path.exists(media_root):
-        print(f"   🗑️  Deleting Django media files from {media_root}...")
-        shutil.rmtree(media_root)
-        print("   ✅ Deleted Django media directory")
+    db_path = os.path.join(turtles_dir, "db.sqlite3")
+    if os.path.isfile(db_path):
+        try:
+            os.remove(db_path)
+            print(f"   ✅ Removed {db_path}")
+        except OSError as e:
+            print(f"   ⚠️  Could not remove database file: {e}")
     else:
-        media_dir = os.path.join(turtles_dir, 'media')
-        if os.path.exists(media_dir):
-            print("   🗑️  Deleting Django media files...")
+        print("   ℹ️  No legacy db.sqlite3 under backend/turtles/")
+
+    media_dir = os.path.join(turtles_dir, "media")
+    if os.path.isdir(media_dir):
+        try:
+            print(f"   🗑️  Removing legacy media directory {media_dir}...")
             shutil.rmtree(media_dir)
-            print("   ✅ Deleted Django media directory")
-
-
-def clear_database():
-    """Delete all Turtle and TurtleImage records from the database"""
-    print("🗄️  Clearing database...")
-    
-    turtle_table = Turtle._meta.db_table
-    image_table = TurtleImage._meta.db_table
-
-    if not _table_exists(image_table) and not _table_exists(turtle_table):
-        print("   ℹ️  Database tables do not exist (migrations not applied). Nothing to clear.")
-        _clear_media_if_present()
-        return
-
-    try:
-        # Delete all images first (due to foreign key constraint)
-        try:
-            if _table_exists(image_table):
-                image_count = TurtleImage.objects.count()
-                TurtleImage.objects.all().delete()
-                print(f"   ✅ Deleted {image_count} TurtleImage records")
-        except OperationalError as e:
-            if "no such table" in str(e).lower():
-                print("   ℹ️  TurtleImage table does not exist (migrations may not be applied); skipping.")
-            else:
-                raise
-        else:
-            print("   ℹ️  TurtleImage table does not exist. Skipping.")
-
-        # Delete all turtles
-        try:
-            if _table_exists(turtle_table):
-                turtle_count = Turtle.objects.count()
-                Turtle.objects.all().delete()
-                print(f"   ✅ Deleted {turtle_count} Turtle records")
-        except OperationalError as e:
-            if "no such table" in str(e).lower():
-                print("   ℹ️  Turtle table does not exist (migrations may not be applied); skipping.")
-            else:
-                raise
-        else:
-            print("   ℹ️  Turtle table does not exist. Skipping.")
-
-        _clear_media_if_present()
-
-    except Exception as e:
-        print(f"   ❌ Error clearing database: {e}")
-        raise
+            print("   ✅ Removed legacy media directory")
+        except OSError as e:
+            print(f"   ⚠️  Could not remove media directory: {e}")
+    else:
+        print("   ℹ️  No legacy media directory")
 
 
 def clear_official_turtle_data():
@@ -332,7 +264,7 @@ def reset_complete_backend():
     print("⚠️  COMPLETE BACKEND RESET ⚠️")
     print("=" * 60)
     print("\nThis will delete:")
-    print("  ❌ All database records (Turtles, TurtleImages)")
+    print("  ❌ Legacy Django SQLite DB and media (if still present)")
     print("  ❌ All official turtle data (State/Location folders)")
     print("  ❌ All uploaded data (Review Queue, Community Uploads)")
     print("  ❌ All deprecated VLAD/FAISS artifacts (if present)")
@@ -347,8 +279,8 @@ def reset_complete_backend():
     print("\n🚀 Starting reset...\n")
     
     try:
-        # 1. Clear database
-        clear_database()
+        # 1. Legacy Django files (harmless if already gone)
+        clear_legacy_django_storage()
         
         # 2. Clear official turtle data
         clear_official_turtle_data()

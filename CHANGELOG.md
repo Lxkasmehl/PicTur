@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Email verification (frontend)**: Unverified logged-in users may open `/observer` (still redirected from other app areas until verified). After hydrating community game state, the verified observer badge is granted when the account is verified.
 - **Auth backend**: Primary store is SQLite (`auth.sqlite`, `better-sqlite3`) instead of `auth.json`; one-time import from legacy `auth.json` when the DB is empty; WAL/foreign keys; `email_verifications.used_at` added for existing DBs when missing.
 - **Google OAuth / signup**: New Google users get explicit verification timestamps on insert; duplicate-account path handles SQLite `UNIQUE` constraint errors (and removes the old post-insert delay).
+- **Backend**: `reset_complete_backend.py` removes leftover Django artifacts (`backend/turtles/db.sqlite3`, `backend/turtles/media/`) instead of clearing tables via the Django ORM.
 
 ### Fixed
 
@@ -31,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Integration (admin role)**: `test_patch_user_role_as_admin_success` targets the seeded role-test community user (`E2E_ROLE_TEST_EMAIL`, default `role-test-community@test.com`) so role demotion does not revoke JWTs used by other tests.
 - **Observer / auth**: Playwright E2E for Observer HQ (`observer-hub.spec.ts`: guest teaser, community hub, staff nav, mobile “Learn more”) and gamification (`observer-hq-gamification.spec.ts`: community upload → rewards modal +XP, `PUT /auth/community-game`, quests/badges on `/observer`; serial suite for shared seed user). Backend integration: `test_community_game_api.py` (401/400, roundtrip, user isolation) and `community_token` fixture in `conftest.py`.
+
+### Removed
+
+- **Backend**: Legacy Django project under `backend/turtles/` (identification app, `manage.py`, related tests). The HTTP API remains Flask-only; `backend/turtles/image_processing.py` (SuperPoint/LightGlue) is kept.
+- **Backend**: Deprecated VLAD/FAISS helper `search_utils.py` and duplicate `vlad_utils` modules; removed direct `faiss-cpu` and explicit `scipy` from `requirements.txt` (scikit-learn may still install scipy as a dependency).
+- **Backend**: Unused Flask imports in `app.py`.
 
 ## [1.0.0] - 2026-03-23
 
