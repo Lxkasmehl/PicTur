@@ -82,6 +82,11 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
     try {
       const response = await getReviewQueue();
       setQueueItems(response.items);
+      setSelectedItem((prev) => {
+        if (!prev) return prev;
+        const updated = response.items.find((i) => i.request_id === prev.request_id);
+        return updated ?? prev;
+      });
       queueInitialLoadDone.current = true;
     } catch (error) {
       console.error('Error loading review queue:', error);
@@ -94,6 +99,18 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
       if (isInitial) setQueueLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!authChecked) return;
+    if (role !== 'staff' && role !== 'admin') return;
+    if (activeTab !== 'queue') return;
+    if (!queueItems.some((i) => i.match_search_pending)) return;
+    const id = window.setInterval(() => {
+      void loadQueue();
+    }, 5000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadQueue intentionally omitted; re-bind when queueItems pending flag changes
+  }, [authChecked, role, activeTab, queueItems]);
 
   const refreshQueueItem = async (requestId: string) => {
     try {

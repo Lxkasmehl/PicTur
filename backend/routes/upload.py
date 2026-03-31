@@ -157,54 +157,72 @@ def register_upload_routes(app):
                             except OSError: pass
 
                 match_sheet = (request.form.get('match_sheet') or '').strip() or None
-
-                # ARCHITECT FIX: Correctly unpacks tuple from SuperPoint search and applies filter
-                results = manager_service.manager.search_for_matches(query_save_path, location_filter=match_sheet)
-
-                # Safely unpack the tuple (matches, elapsed_time)
-                if isinstance(results, tuple) and len(results) == 2:
-                    matches, _ = results
-                else:
-                    matches = results if results else []
-
-                # Write candidate images to disk so the Review Queue can
-                # display them if the admin backs out of the match page.
                 candidates_dir = os.path.join(packet_dir, 'candidate_matches')
-                os.makedirs(candidates_dir, exist_ok=True)
-                for rank, match in enumerate(matches, start=1):
-                    pt_path = match.get('file_path', '') or ''
-                    if pt_path and pt_path.endswith('.pt'):
-                        base_path = pt_path[:-3]
-                        for ext in ['.jpg', '.jpeg', '.png']:
-                            if os.path.exists(base_path + ext):
-                                turtle_id = match.get('site_id', 'Unknown')
-                                conf_int = int(round(match.get('confidence', 0.0) * 100))
-                                cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
-                                shutil.copy2(base_path + ext, os.path.join(candidates_dir, cand_filename))
-                                break
 
-                formatted_matches = []
-                for match in matches:
-                    pt_path = match.get('file_path', '') or ''
-                    image_path = convert_pt_to_image_path(pt_path)
-                    loc = (match.get('location') or 'Unknown').strip() or 'Unknown'
-                    formatted_matches.append({
-                        'turtle_id': match.get('site_id', 'Unknown') or 'Unknown',
-                        'location': loc,
-                        'confidence': float(match.get('confidence', 0.0)),
-                        'file_path': image_path,
-                        'filename': os.path.basename(image_path) if image_path else ''
+                try:
+                    # ARCHITECT FIX: Correctly unpacks tuple from SuperPoint search and applies filter
+                    results = manager_service.manager.search_for_matches(
+                        query_save_path, location_filter=match_sheet
+                    )
+
+                    # Safely unpack the tuple (matches, elapsed_time)
+                    if isinstance(results, tuple) and len(results) == 2:
+                        matches, _ = results
+                    else:
+                        matches = results if results else []
+
+                    # Write candidate images to disk so the Review Queue can
+                    # display them if the admin backs out of the match page.
+                    os.makedirs(candidates_dir, exist_ok=True)
+                    for rank, match in enumerate(matches, start=1):
+                        pt_path = match.get('file_path', '') or ''
+                        if pt_path and pt_path.endswith('.pt'):
+                            base_path = pt_path[:-3]
+                            for ext in ['.jpg', '.jpeg', '.png']:
+                                if os.path.exists(base_path + ext):
+                                    turtle_id = match.get('site_id', 'Unknown')
+                                    conf_int = int(round(match.get('confidence', 0.0) * 100))
+                                    cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
+                                    shutil.copy2(base_path + ext, os.path.join(candidates_dir, cand_filename))
+                                    break
+
+                    formatted_matches = []
+                    for match in matches:
+                        pt_path = match.get('file_path', '') or ''
+                        image_path = convert_pt_to_image_path(pt_path)
+                        loc = (match.get('location') or 'Unknown').strip() or 'Unknown'
+                        formatted_matches.append({
+                            'turtle_id': match.get('site_id', 'Unknown') or 'Unknown',
+                            'location': loc,
+                            'confidence': float(match.get('confidence', 0.0)),
+                            'file_path': image_path,
+                            'filename': os.path.basename(image_path) if image_path else ''
+                        })
+
+                    message = (
+                        f'Photo processed successfully. {len(formatted_matches)} matches found.'
+                        if len(formatted_matches) > 0
+                        else 'Photo processed successfully. No matches found. You can create a new turtle.'
+                    )
+
+                    return jsonify({
+                        'success': True,
+                        'request_id': request_id,
+                        'matches': formatted_matches,
+                        'uploaded_image_path': query_save_path,
+                        'message': message
                     })
-
-                message = f'Photo processed successfully. {len(formatted_matches)} matches found.' if len(formatted_matches) > 0 else 'Photo processed successfully. No matches found. You can create a new turtle.'
-
-                return jsonify({
-                    'success': True,
-                    'request_id': request_id,
-                    'matches': formatted_matches,
-                    'uploaded_image_path': query_save_path,
-                    'message': message
-                })
+                except Exception as search_exc:
+                    # Same as create_review_packet: without this, GET /review-queue treats the
+                    # packet as match_search_pending forever (no candidate_matches dir).
+                    if os.path.isdir(packet_dir) and not os.path.isdir(candidates_dir):
+                        fail_path = os.path.join(packet_dir, 'match_search_failed.json')
+                        try:
+                            with open(fail_path, 'w', encoding='utf-8') as f:
+                                json.dump({'error': str(search_exc)}, f)
+                        except OSError:
+                            pass
+                    raise
 
             else:
                 # Community or Anonymous Upload Process

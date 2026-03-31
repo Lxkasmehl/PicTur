@@ -1,4 +1,5 @@
 import {
+  Alert,
   Badge,
   Button,
   Card,
@@ -15,6 +16,7 @@ import {
 } from '@mantine/core';
 import { useEffect, useState } from 'react';
 import {
+  IconAlertCircle,
   IconCheck,
   IconList,
   IconMapPin,
@@ -194,6 +196,38 @@ export function ReviewQueueTab() {
                     </Text>
                     {loadingCandidateNames && <Loader size='xs' />}
                   </Group>
+                  {selectedItem.match_search_pending === true ? (
+                    <Center py='xl'>
+                      <Stack align='center' gap='md'>
+                        <Loader size='md' />
+                        <Text size='sm' c='dimmed' ta='center' maw={440}>
+                          Still running photo matching in the background. This can take a few
+                          minutes. The list refreshes automatically; you can leave and come back.
+                        </Text>
+                      </Stack>
+                    </Center>
+                  ) : selectedItem.match_search_failed === true ? (
+                    <Stack gap='md'>
+                      <Alert
+                        icon={<IconAlertCircle size={18} />}
+                        title='Automatic matching failed'
+                        color='red'
+                        variant='light'
+                      >
+                        <Text size='sm'>
+                          {selectedItem.match_search_error?.trim() ||
+                            'The server could not run match search for this upload. You can still create a new turtle or remove this item from the queue.'}
+                        </Text>
+                      </Alert>
+                      <Text size='sm' c='dimmed' ta='center' maw={440}>
+                        No suggested matches are available. Use{' '}
+                        <Text span fw={600}>
+                          Create New Turtle
+                        </Text>{' '}
+                        below if this is a new individual.
+                      </Text>
+                    </Stack>
+                  ) : (
                   <Flex gap='sm' wrap='wrap' align='stretch'>
                     {selectedItem.candidates.map((candidate) => (
                       <Card
@@ -265,6 +299,7 @@ export function ReviewQueueTab() {
                       </Card>
                     ))}
                   </Flex>
+                  )}
                 </Stack>
               </Grid.Col>
             </Grid>
@@ -290,7 +325,7 @@ export function ReviewQueueTab() {
                 }))}
                 requestId={selectedItem.request_id}
                 onRefresh={() => refreshQueueItem(selectedItem.request_id)}
-                disabled={!!processing}
+                disabled={!!processing || selectedItem.match_search_pending === true}
               />
               {selectedCandidate && (
                 <AdditionalImagesSection
@@ -403,6 +438,33 @@ export function ReviewQueueTab() {
                 </Group>
               </Paper>
             </>
+          ) : selectedItem.match_search_pending === true ? (
+            <Paper shadow='sm' p='xl' radius='md' withBorder>
+              <Center py='xl'>
+                <Text size='sm' c='dimmed' ta='center' maw={420}>
+                  Match suggestions are not ready yet. You can review photos above, or wait until
+                  matching finishes to choose a match or create a new turtle.
+                </Text>
+              </Center>
+            </Paper>
+          ) : selectedItem.match_search_failed === true ? (
+            <Paper shadow='sm' p='xl' radius='md' withBorder>
+              <Center py='xl'>
+                <Stack gap='md' align='center'>
+                  <Text size='sm' c='dimmed' ta='center' maw={420}>
+                    Matching did not complete, so there are no suggested turtles to pick from. You
+                    can still add this find as a new turtle.
+                  </Text>
+                  <Button
+                    leftSection={<IconPlus size={16} />}
+                    onClick={onCreateNewTurtle}
+                    variant='light'
+                  >
+                    Create New Turtle
+                  </Button>
+                </Stack>
+              </Center>
+            </Paper>
           ) : (
             <Paper shadow='sm' p='xl' radius='md' withBorder>
               <Center py='xl'>
@@ -496,9 +558,25 @@ export function ReviewQueueTab() {
                             style={{ maxHeight: 180, objectFit: 'contain' }}
                           />
                         )}
-                        <Text size='sm' c='dimmed'>
-                          {item.candidates.length} matches
-                        </Text>
+                        {item.match_search_pending === true ? (
+                          <Group gap='xs' wrap='nowrap'>
+                            <Loader size='xs' />
+                            <Text size='sm' c='dimmed'>
+                              Finding matches…
+                            </Text>
+                          </Group>
+                        ) : item.match_search_failed === true ? (
+                          <Group gap='xs' wrap='nowrap'>
+                            <IconAlertCircle size={16} color='var(--mantine-color-red-6)' />
+                            <Text size='sm' c='red'>
+                              Match search failed
+                            </Text>
+                          </Group>
+                        ) : (
+                          <Text size='sm' c='dimmed'>
+                            {item.candidates.length} matches
+                          </Text>
+                        )}
                         {item.metadata.state && item.metadata.location && (
                           <Text size='xs' c='dimmed'>
                             {item.metadata.state} / {item.metadata.location}
