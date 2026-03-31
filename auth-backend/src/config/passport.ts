@@ -15,11 +15,15 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import db from '../db/database.js';
 import type { User } from '../types/user.js';
 
-// Build full callback URL from environment or use default
+// Full OAuth redirect URI (set in Google Cloud Console). Prefer explicit URL in production.
 const getCallbackURL = (): string => {
-  const baseURL =
-    process.env.AUTH_BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
-  return `${baseURL}/api/auth/google/callback`;
+  const explicit = process.env.GOOGLE_CALLBACK_URL?.trim();
+  if (explicit) return explicit;
+  const base = (
+    process.env.AUTH_BACKEND_URL ||
+    `http://localhost:${process.env.PORT || 3001}`
+  ).replace(/\/$/, '');
+  return `${base}/api/auth/google/callback`;
 };
 
 // Only configure Google OAuth if credentials are provided

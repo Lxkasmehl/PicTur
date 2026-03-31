@@ -33,6 +33,8 @@ services:
       # Optional: Google OAuth (set in .env for login with Google)
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Public base URL of the auth API (no trailing slash). Used for Google OAuth if GOOGLE_CALLBACK_URL is unset.
+      AUTH_BACKEND_URL: ${AUTH_BACKEND_URL:-}
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-}
     volumes:
       - auth-data:/app/data
