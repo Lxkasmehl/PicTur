@@ -64,12 +64,10 @@ The server runs by default on `http://localhost:5000`.
 ### Photo Upload
 
 - `POST /api/upload` - Uploads a photo
-
   - **Admin**: Processes immediately and returns top 5 matches
   - **Community**: Saves to review queue with top 5 matches
 
   Form Data:
-
   - `file`: The image file
   - `role`: 'admin' or 'community'
   - `email`: User's email address
@@ -306,6 +304,7 @@ pip install -r requirements.txt
 ```
 
 This will install:
+
 - `google-api-python-client`
 - `google-auth`
 - `google-auth-oauthlib`
@@ -314,6 +313,7 @@ This will install:
 #### Step 8: Verify Setup
 
 1. Start the backend server:
+
    ```bash
    python app.py
    ```
@@ -392,20 +392,24 @@ Once the turtle team confirms an upload (match to existing turtle or new turtle)
 ### Troubleshooting Google Sheets
 
 #### Error: "Google Sheets service not configured"
+
 - Check that `GOOGLE_SHEETS_SPREADSHEET_ID` and `GOOGLE_SHEETS_CREDENTIALS_PATH` are set in `.env`
 - Verify the credentials file exists at the specified path
 
 #### Error: "Failed to authenticate with Google Sheets"
+
 - Check that the credentials JSON file is valid
 - Verify the service account email has access to the spreadsheet
 - Make sure the Google Sheets API is enabled in your Google Cloud project
 
 #### Error: "Turtle not found in Google Sheets"
+
 - Verify the turtle's Primary ID exists in the spreadsheet
 - Check that you're looking in the correct sheet (state/region)
 - Ensure the "ID" column header is exactly "ID" (case-sensitive)
 
 #### Error: "Failed to create/update turtle data"
+
 - Check that the service account has "Editor" permissions on the spreadsheet
 - Verify the sheet name matches the state name
 - Check that all required columns exist in the header row
@@ -420,4 +424,4 @@ The backend can export all sheets from both the admin and community spreadsheets
   ```
 - **Output:** `BACKUP_OUTPUT_DIR/sheets/YYYY-MM-DD/` with one CSV per sheet (`admin_SheetName.csv`, `community_SheetName.csv`) and optional `admin.json` / `community.json`.
 - **Env:** `BACKUP_OUTPUT_DIR` (default: `./backups`). With Docker, the compose file mounts `./backups` on the host to `/app/backups` so backups are stored outside the container.
-- **On the server:** Set `BACKUP_OUTPUT_DIR` to a host path (e.g. `/srv/turtletracker/backups`) and mount that directory into the backend container; run `python -m backup.run` daily via cron (e.g. `docker compose exec backend python -m backup.run`).
+- **On the server / cron:** Schedule the job with **`crontab -e`** (do not paste cron lines into a normal shell—the leading `0 3 * * *` is not a command). Use `docker compose exec -T backend python -m backup.run` from the Compose project directory with an absolute `cd`. Example and manual test command: **docs/BACKUP.md**.

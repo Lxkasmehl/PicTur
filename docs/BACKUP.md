@@ -6,11 +6,11 @@ This document describes the backup strategy for the TurtleTracker web app: **Goo
 
 ## 1. What is backed up?
 
-| What | Where | Notes |
-|------|--------|--------|
-| **Admin spreadsheet** | Google Sheets (external) | Content as snapshot (e.g. CSV/JSON) |
-| **Community spreadsheet** | Google Sheets (external) | Content as snapshot |
-| **Images & folders** | Backend `data/` (Review_Queue, Community_Uploads, State/Location/TurtleID) | Full data directory |
+| What                      | Where                                                                      | Notes                               |
+| ------------------------- | -------------------------------------------------------------------------- | ----------------------------------- |
+| **Admin spreadsheet**     | Google Sheets (external)                                                   | Content as snapshot (e.g. CSV/JSON) |
+| **Community spreadsheet** | Google Sheets (external)                                                   | Content as snapshot                 |
+| **Images & folders**      | Backend `data/` (Review_Queue, Community_Uploads, State/Location/TurtleID) | Full data directory                 |
 
 ---
 
@@ -49,6 +49,7 @@ This document describes the backup strategy for the TurtleTracker web app: **Goo
   - **Compression:** Archive `data/` as tar.gz/zip – saves space, restore takes a bit longer.
 
 **Pragmatic approach:**
+
 - Sheets: daily, keep e.g. 30 days (or 7 daily + 4 weekly).
 - Images: depending on space – e.g. daily rsync into a backup directory with retention (e.g. keep only last 7 days) or one full backup per week with compression.
 
@@ -56,14 +57,14 @@ This document describes the backup strategy for the TurtleTracker web app: **Goo
 
 ## 5. What can you prepare **now** (without a running server)?
 
-| Task | Possible now? | Description |
-|------|----------------|-------------|
-| **Backup code** | ✅ Yes | Module/script that reads both spreadsheets via API and writes all sheets as CSV (and optional JSON) to a configurable directory. |
-| **Env/config** | ✅ Yes | Variable e.g. `BACKUP_OUTPUT_DIR` (path for backups). Locally e.g. `./backups`; on the server e.g. `/srv/turtletracker/backups` or host mount. |
-| **Docker** | ✅ Yes | Additional volume for backups: host path e.g. `./backups:/app/backups` (or absolute path on the server); backend writes there. |
-| **Image backup** | ✅ Can be prepared | Script/instructions: copy `data/` to `BACKUP_OUTPUT_DIR/data/` (rsync/robocopy). The **actual cron job** is set up when the server is running. |
-| **Cron / scheduler** | ⏳ Later | Daily run of the backup script (Sheets and optionally data copy) via cron (Linux) or Task Scheduler (Windows). Configure on the server. |
-| **Restore / history** | ✅ Partially now | Restore: re-import from CSV/JSON into Sheets (manually or with a small script). Showing history = list backup files and display/download old CSV/JSON when needed – both can be prepared conceptually now. |
+| Task                  | Possible now?      | Description                                                                                                                                                                                                |
+| --------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Backup code**       | ✅ Yes             | Module/script that reads both spreadsheets via API and writes all sheets as CSV (and optional JSON) to a configurable directory.                                                                           |
+| **Env/config**        | ✅ Yes             | Variable e.g. `BACKUP_OUTPUT_DIR` (path for backups). Locally e.g. `./backups`; on the server e.g. `/srv/turtletracker/backups` or host mount.                                                             |
+| **Docker**            | ✅ Yes             | Additional volume for backups: host path e.g. `./backups:/app/backups` (or absolute path on the server); backend writes there.                                                                             |
+| **Image backup**      | ✅ Can be prepared | Script/instructions: copy `data/` to `BACKUP_OUTPUT_DIR/data/` (rsync/robocopy). The **actual cron job** is set up when the server is running.                                                             |
+| **Cron / scheduler**  | ⏳ Later           | Daily run of the backup script (Sheets and optionally data copy) via cron (Linux) or Task Scheduler (Windows). Configure on the server.                                                                    |
+| **Restore / history** | ✅ Partially now   | Restore: re-import from CSV/JSON into Sheets (manually or with a small script). Showing history = list backup files and display/download old CSV/JSON when needed – both can be prepared conceptually now. |
 
 ---
 
@@ -81,8 +82,17 @@ This document describes the backup strategy for the TurtleTracker web app: **Goo
    - Or: separate cron job on the host that only syncs `data/` to a fixed backup path – independent of the container.
 
 3. **After deployment:**
-   - On the server: set `BACKUP_OUTPUT_DIR` to a host path (e.g. `/srv/turtletracker/backups`).
-   - Cron: e.g. daily at 3:00 – run the backup in the container with `python -m backup.run` (or a shell wrapper that runs `docker compose exec backend python -m backup.run`) and optionally run the data sync afterwards.
+   - On the server: optional fixed host path for backups (e.g. `/srv/turtletracker/backups`); with default Compose, `./backups` next to `docker-compose.yml` is enough (e.g. `~/TurtleProject/backups`).
+   - **Cron:** Add a line with **`crontab -e`**. Do **not** paste the whole line into an interactive shell—the first five fields (`0 3 * * *`) are the schedule; the shell would try to run `0` as a command and print `command not found`.
+   - Use an **absolute** path in `cd` (`~` often does not expand under cron). Example (adjust user/project if needed):
+     ```cron
+     0 3 * * * cd /home/lukas/TurtleProject && /usr/bin/docker compose exec -T backend python -m backup.run >> /home/lukas/turtletracker-backup.log 2>&1
+     ```
+     `-T` avoids TTY errors when cron runs non-interactively. If `docker` is not at `/usr/bin/docker`, use the path from `which docker` on the server.
+   - **Test the backup manually** (normal shell, no cron fields):
+     ```bash
+     cd /home/lukas/TurtleProject && /usr/bin/docker compose exec -T backend python -m backup.run
+     ```
    - Retention: delete old backup folders/files after X days (small script or `find` + cron).
 
 4. **Restore:**
