@@ -52,6 +52,9 @@ def test_get_review_queue_with_packet(client, review_packet_dir):
     assert "uploaded_image" in item
     assert item.get("additional_images") == []
     assert item.get("candidates") == []
+    assert item.get("match_search_pending") is False
+    assert item.get("match_search_failed") is False
+    assert item.get("match_search_error") is None
     assert item.get("status") == "pending"
 
 
@@ -76,6 +79,8 @@ def test_get_review_packet_success(client, review_packet_dir):
     assert "additional_images" in item
     assert "candidates" in item
     assert "metadata" in item
+    assert item.get("match_search_pending") is False
+    assert item.get("match_search_failed") is False
 
 
 def test_add_additional_images_no_files(client, review_packet_dir):

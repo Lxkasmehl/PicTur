@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Review queue (admin)**: While a community upload is still running SuperPoint matching, the API exposes `match_search_pending` and the Turtle Records queue shows **Finding matches…** instead of a misleading **0 matches**; the detail view explains that matching runs in the background and the list auto-refreshes (faster polling while any item is pending).
 - **Backup (Google Sheets)**: Export admin and community spreadsheets to CSV and JSON for backup and history. Run `python -m backup.run` from backend; output under `BACKUP_OUTPUT_DIR/sheets/YYYY-MM-DD/` (one CSV per sheet plus optional JSON per spreadsheet). `BACKUP_OUTPUT_DIR` configurable via env (default `./backups`). Docker Compose mounts `./backups` on the host so backups survive container/volume removal. Strategy and retention in `docs/BACKUP.md`; backend README and env.template updated. `.gitignore` excludes `backups/`. `.env.docker.example` documents `GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID` for Docker.
 - **Observer gamification**: Observer Hub, XP, weekly quests, badges, and reward flows on upload/home for **any logged-in role** (community, staff, admin). Progress is stored **per user id** in SQLite (`community_game`) and survives role promotion/demotion; guests see a sign-up teaser only (no anonymous progress). Client: Redux (`communityGameSlice`), local fallback when sync fails, debounced `GET`/`PUT /auth/community-game`. Navigation includes Observer HQ for staff/admin; staff match uploads can update progress before navigating to the match page. Backend validates payload bounds.
 - **Auth backend**: `npm run delete-user` script (by email, refuses last admin; `CASCADE` cleans related rows).
@@ -30,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Testing
 
+- **Review queue**: Unit tests `tests/test_review_packet_format.py` for `format_review_packet_item` (`match_search_pending` vs empty `candidate_matches`); integration asserts `match_search_pending` on queue/packet GET; Playwright `admin-review-queue-matching-pending.spec.ts` (mocked API: list + detail + poll to ready).
 - **Integration (admin role)**: `test_patch_user_role_as_admin_success` targets the seeded role-test community user (`E2E_ROLE_TEST_EMAIL`, default `role-test-community@test.com`) so role demotion does not revoke JWTs used by other tests.
 - **Observer / auth**: Playwright E2E for Observer HQ (`observer-hub.spec.ts`: guest teaser, community hub, staff nav, mobile “Learn more”) and gamification (`observer-hq-gamification.spec.ts`: community upload → rewards modal +XP, `PUT /auth/community-game`, quests/badges on `/observer`; serial suite for shared seed user). Backend integration: `test_community_game_api.py` (401/400, roundtrip, user isolation) and `community_token` fixture in `conftest.py`.
 
