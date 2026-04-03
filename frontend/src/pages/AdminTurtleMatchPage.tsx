@@ -745,6 +745,7 @@ export default function AdminTurtleMatchPage() {
                   initialAvailableSheets={availableSheets.length > 0 ? availableSheets : undefined}
                   sheetSource="admin"
                   requireNewSheetForCommunityMatch={isMatchFromCommunity}
+                  matchPageColumnLayout
                 />
               </Paper>
 

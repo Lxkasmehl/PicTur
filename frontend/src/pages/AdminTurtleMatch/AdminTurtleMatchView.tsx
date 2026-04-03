@@ -248,6 +248,7 @@ export function AdminTurtleMatchView() {
                 initialAvailableSheets={
                   availableSheets.length > 0 ? availableSheets : undefined
                 }
+                matchPageColumnLayout
               />
             </Paper>
 

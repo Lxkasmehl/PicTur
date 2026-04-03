@@ -42,6 +42,7 @@ export function useTurtleSheetsDataForm(
     useBackendLocations = false,
     sheetSource = 'admin',
     requireNewSheetForCommunityMatch = false,
+    matchPageColumnLayout = false,
   } = props;
 
   const [formData, setFormData] = useState<TurtleSheetsData>(initialData || {});
@@ -668,7 +669,7 @@ export function useTurtleSheetsDataForm(
     setLoading(true);
     try {
       let dataToSave = formData;
-      if (isFieldModeRestricted) {
+      if (isFieldModeRestricted && !matchPageColumnLayout) {
         const mergedNotes = [formData.notes, additionalNotes]
           .filter(Boolean)
           .join('\n\n');

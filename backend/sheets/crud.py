@@ -82,10 +82,6 @@ def get_turtle_data(service, spreadsheet_id: str, primary_id: str, sheet_name: s
         turtle_data['sheet_name'] = sheet_name
         turtle_data['row_index'] = row_idx
 
-        # Legacy single "Pic in 2024 Archive?" maps to pic_in_2024_archive; expose as plastron if new cols absent
-        if turtle_data.get('pic_in_2024_archive') and not turtle_data.get('plastron_picture_in_archive'):
-            turtle_data['plastron_picture_in_archive'] = turtle_data['pic_in_2024_archive']
-
         normalize_turtle_row_after_read(turtle_data)
         return turtle_data
     except HttpError as e:

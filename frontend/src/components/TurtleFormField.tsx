@@ -48,6 +48,7 @@ export function TurtleFormField({
   isFieldModeRestricted,
   isFieldUnlocked,
   requestUnlock,
+  readOnlyDisplay = false,
   disabled,
   error,
   required,
@@ -58,6 +59,35 @@ export function TurtleFormField({
   const isMobile = useMediaQuery(MOBILE_BREAKPOINT);
   const locked = isFieldModeRestricted && !isFieldUnlocked(field);
   const labelNode = <LabelWithOptionalTooltip label={label} infoTooltip={infoTooltip} />;
+
+  if (readOnlyDisplay) {
+    if (type === 'textarea') {
+      return (
+        <Textarea
+          label={labelNode}
+          value={value}
+          disabled
+          description={description}
+          error={error}
+          required={required}
+          minRows={3}
+        />
+      );
+    }
+    return (
+      <>
+        <TextInput
+          label={labelNode}
+          value={value}
+          disabled
+          description={description}
+          error={error}
+          required={required}
+        />
+        {afterInput}
+      </>
+    );
+  }
 
   if (locked) {
     return (

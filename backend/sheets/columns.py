@@ -4,20 +4,17 @@ Column mappings for Google Sheets
 
 from typing import Any, Dict, List, Sequence, Tuple
 
-# Canonical header order (matches the research spreadsheet layout). Used when creating
-# new tabs and when inserting columns missing from older sheets.
+# Canonical header order (research spreadsheet). Used for new tabs and inserting missing columns.
 CANONICAL_COLUMN_ORDER: Tuple[str, ...] = (
     'Primary ID',
-    'Transmitter ID',
-    'Freq',
+    'Frequency',
     'ID',
-    'ID2 (random sequence)',
     'Pit?',
     'Plastron Picture in Archive?',
     'Carapace Picture in Archive?',
     'Adopted?',
     'iButton?',
-    'DNA Extracted?',
+    'Date DNA Extracted?',
     'Date 1st found',
     'Species',
     'Name',
@@ -28,6 +25,7 @@ CANONICAL_COLUMN_ORDER: Tuple[str, ...] = (
     'Specific Location',
     'General Location',
     'Location',
+    'Cow Interactions?',
     'Health Status',
     'Notes',
     'Transmitter put on by',
@@ -36,65 +34,69 @@ CANONICAL_COLUMN_ORDER: Tuple[str, ...] = (
     'Transmitter lifespan',
     'Radio Replace Date',
     'OLD Frequencies',
-    'Mass (g)',
     'Flesh Flies?',
-    'Curved carapace length (mm)',
-    'Straight carapace length (mm)',
-    'Carapace width (mm)',
-    'Curved plastron length (mm)',
-    'Straight plastron length (mm)',
-    'Plastron width (mm)',
-    'Dome height (mm)',
+    'Mass (g)',
+    'CCL',
+    'Cflat',
+    'Cwidth',
+    'PlasCL',
+    'Pflat',
+    'P1',
+    'P2',
+    'Pwidth',
+    'DomeHeight',
 )
 
 # Keys on turtle payloads that are not sheet columns
 TURTLE_METADATA_KEYS = frozenset({'sheet_name', 'row_index'})
 
-# Column mapping: Google Sheets column headers to internal field names.
-# Put canonical headers first; legacy aliases below map old headers for reads.
-COLUMN_MAPPING: Dict[str, str] = {
-    'Primary ID': 'primary_id',
-    'Transmitter ID': 'transmitter_id',
-    'Freq': 'freq',
-    'ID': 'id',
-    'ID2 (random sequence)': 'id2',
-    'Pit?': 'pit',
-    'Plastron Picture in Archive?': 'plastron_picture_in_archive',
-    'Carapace Picture in Archive?': 'carapace_picture_in_archive',
-    'Adopted?': 'adopted',
-    'iButton?': 'ibutton',
-    'DNA Extracted?': 'dna_extracted',
-    'Date 1st found': 'date_1st_found',
-    'Species': 'species',
-    'Name': 'name',
-    'Sex': 'sex',
-    'iButton Last set': 'ibutton_last_set',
-    'Last Assay Date': 'last_assay_date',
-    'Dates refound': 'dates_refound',
-    'Specific Location': 'specific_location',
-    'General Location': 'general_location',
-    'Location': 'location',
-    'Health Status': 'health_status',
-    'Notes': 'notes',
-    'Transmitter put on by': 'transmitter_put_on_by',
-    'Transmitter On Date': 'transmitter_on_date',
-    'Transmitter Type': 'transmitter_type',
-    'Transmitter lifespan': 'transmitter_lifespan',
-    'Radio Replace Date': 'radio_replace_date',
-    'OLD Frequencies': 'old_frequencies',
-    'Mass (g)': 'mass_g',
-    'Flesh Flies?': 'flesh_flies',
-    'Curved carapace length (mm)': 'curved_carapace_length_mm',
-    'Straight carapace length (mm)': 'straight_carapace_length_mm',
-    'Carapace width (mm)': 'carapace_width_mm',
-    'Curved plastron length (mm)': 'curved_plastron_length_mm',
-    'Straight plastron length (mm)': 'straight_plastron_length_mm',
-    'Plastron width (mm)': 'plastron_width_mm',
-    'Dome height (mm)': 'dome_height_mm',
-    # Legacy headers (older spreadsheets)
-    'Pic in 2024 Archive?': 'pic_in_2024_archive',
-    'Transmitter type': 'transmitter_type',
-}
+
+def _column_mapping_entries() -> List[Tuple[str, str]]:
+    """Row 1 headers must match these strings exactly (see CANONICAL_COLUMN_ORDER)."""
+    return [
+        ('Primary ID', 'primary_id'),
+        ('Frequency', 'freq'),
+        ('ID', 'id'),
+        ('Pit?', 'pit'),
+        ('Plastron Picture in Archive?', 'plastron_picture_in_archive'),
+        ('Carapace Picture in Archive?', 'carapace_picture_in_archive'),
+        ('Adopted?', 'adopted'),
+        ('iButton?', 'ibutton'),
+        ('Date DNA Extracted?', 'dna_extracted'),
+        ('Date 1st found', 'date_1st_found'),
+        ('Species', 'species'),
+        ('Name', 'name'),
+        ('Sex', 'sex'),
+        ('iButton Last set', 'ibutton_last_set'),
+        ('Last Assay Date', 'last_assay_date'),
+        ('Dates refound', 'dates_refound'),
+        ('Specific Location', 'specific_location'),
+        ('General Location', 'general_location'),
+        ('Location', 'location'),
+        ('Cow Interactions?', 'cow_interactions'),
+        ('Health Status', 'health_status'),
+        ('Notes', 'notes'),
+        ('Transmitter put on by', 'transmitter_put_on_by'),
+        ('Transmitter On Date', 'transmitter_on_date'),
+        ('Transmitter Type', 'transmitter_type'),
+        ('Transmitter lifespan', 'transmitter_lifespan'),
+        ('Radio Replace Date', 'radio_replace_date'),
+        ('OLD Frequencies', 'old_frequencies'),
+        ('Flesh Flies?', 'flesh_flies'),
+        ('Mass (g)', 'mass_g'),
+        ('CCL', 'curved_carapace_length_mm'),
+        ('Cflat', 'straight_carapace_length_mm'),
+        ('Cwidth', 'carapace_width_mm'),
+        ('PlasCL', 'curved_plastron_length_mm'),
+        ('Pflat', 'straight_plastron_length_mm'),
+        ('P1', 'plastron_p1_mm'),
+        ('P2', 'plastron_p2_mm'),
+        ('Pwidth', 'plastron_width_mm'),
+        ('DomeHeight', 'dome_height_mm'),
+    ]
+
+
+COLUMN_MAPPING: Dict[str, str] = dict(_column_mapping_entries())
 
 
 def _build_field_to_column(column_mapping: Dict[str, str]) -> Dict[str, str]:
@@ -107,7 +109,18 @@ def _build_field_to_column(column_mapping: Dict[str, str]) -> Dict[str, str]:
     out['transmitter_type'] = 'Transmitter Type'
     out['plastron_picture_in_archive'] = 'Plastron Picture in Archive?'
     out['carapace_picture_in_archive'] = 'Carapace Picture in Archive?'
-    out['pic_in_2024_archive'] = 'Plastron Picture in Archive?'
+    out['freq'] = 'Frequency'
+    out['dna_extracted'] = 'Date DNA Extracted?'
+    out['cow_interactions'] = 'Cow Interactions?'
+    out['curved_carapace_length_mm'] = 'CCL'
+    out['straight_carapace_length_mm'] = 'Cflat'
+    out['carapace_width_mm'] = 'Cwidth'
+    out['curved_plastron_length_mm'] = 'PlasCL'
+    out['straight_plastron_length_mm'] = 'Pflat'
+    out['plastron_p1_mm'] = 'P1'
+    out['plastron_p2_mm'] = 'P2'
+    out['plastron_width_mm'] = 'Pwidth'
+    out['dome_height_mm'] = 'DomeHeight'
     return out
 
 

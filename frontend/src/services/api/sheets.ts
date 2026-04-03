@@ -8,7 +8,7 @@ export interface TurtleSheetsData {
   primary_id?: string;
   sheet_name?: string; // Which Google Sheets tab this turtle belongs to
   transmitter_id?: string;
-  /** Sheet column "Freq" */
+  /** Sheet column "Frequency" (legacy header "Freq") */
   freq?: string;
   id?: string;
   id2?: string;
@@ -19,7 +19,9 @@ export interface TurtleSheetsData {
   carapace_picture_in_archive?: string;
   adopted?: string;
   ibutton?: string;
+  /** Sheet column "Date DNA Extracted?" (legacy "DNA Extracted?") */
   dna_extracted?: string;
+  cow_interactions?: string;
   date_1st_found?: string;
   species?: string;
   name?: string;
@@ -39,7 +41,7 @@ export interface TurtleSheetsData {
   transmitter_lifespan?: string;
   radio_replace_date?: string;
   old_frequencies?: string;
-  // Optional mass and morphometrics
+  // Optional mass and morphometrics (sheet headers CCL, Cflat, …; legacy long names still read)
   mass_g?: string;
   flesh_flies?: string;
   curved_carapace_length_mm?: string;
@@ -47,6 +49,8 @@ export interface TurtleSheetsData {
   carapace_width_mm?: string;
   curved_plastron_length_mm?: string;
   straight_plastron_length_mm?: string;
+  plastron_p1_mm?: string;
+  plastron_p2_mm?: string;
   plastron_width_mm?: string;
   dome_height_mm?: string;
 }

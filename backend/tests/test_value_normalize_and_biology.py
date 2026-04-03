@@ -1,14 +1,9 @@
-"""Biology ID canonical form and Yes/No normalization."""
+"""Biology ID canonical form and sheet value formatting."""
 
 import pytest
 
 from sheets import migration
-from sheets.value_normalize import (
-    format_field_value_for_sheet,
-    normalize_turtle_row_after_read,
-    normalize_yes_no_from_sheet,
-    normalize_yes_no_to_sheet,
-)
+from sheets.value_normalize import format_field_value_for_sheet, normalize_turtle_row_after_read
 
 
 @pytest.mark.parametrize(
@@ -32,22 +27,15 @@ def test_normalize_biology_id_unknown_passthrough():
     assert migration.normalize_biology_id_display('Turtle42') == 'Turtle42'
 
 
-def test_yes_no_round_trip():
-    assert normalize_yes_no_from_sheet('Y') == 'Yes'
-    assert normalize_yes_no_from_sheet('n') == 'No'
-    assert normalize_yes_no_to_sheet('Y') == 'Yes'
-    assert normalize_yes_no_to_sheet('No') == 'No'
-    assert normalize_yes_no_from_sheet('Maybe') == 'Maybe'
-
-
-def test_format_field_value_for_sheet_id_and_pit():
+def test_format_field_value_for_sheet_id_and_free_text_flags():
     assert format_field_value_for_sheet('id', 'f2') == 'F002'
-    assert format_field_value_for_sheet('pit', 'y') == 'Yes'
+    assert format_field_value_for_sheet('pit', 'y') == 'y'
+    assert format_field_value_for_sheet('pit', 'Yes (see notes)') == 'Yes (see notes)'
 
 
 def test_normalize_turtle_row_after_read_mutates():
     row = {'id': 'm5', 'pit': 'N', 'species': 'X'}
     normalize_turtle_row_after_read(row)
     assert row['id'] == 'M005'
-    assert row['pit'] == 'No'
+    assert row['pit'] == 'N'
     assert row['species'] == 'X'

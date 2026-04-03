@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Observer gamification**: Observer Hub, XP, weekly quests, badges, and reward flows on upload/home for **any logged-in role** (community, staff, admin). Progress is stored **per user id** in SQLite (`community_game`) and survives role promotion/demotion; guests see a sign-up teaser only (no anonymous progress). Client: Redux (`communityGameSlice`), local fallback when sync fails, debounced `GET`/`PUT /auth/community-game`. Navigation includes Observer HQ for staff/admin; staff match uploads can update progress before navigating to the match page. Backend validates payload bounds.
 - **Auth backend**: `npm run delete-user` script (by email, refuses last admin; `CASCADE` cleans related rows).
 - **E2E**: Playwright coverage for Review Queue → community upload → Create New Turtle: General Location is a plain text field (optional hint, no catalog “add new”), and the value stays after choosing sheet and sex; `expectGeneralLocationIsFreeTextInDialog` helper in `frontend/tests/e2e/fixtures.ts`.
-- **Google Sheets (research)**: Canonical column order for new tabs (`CANONICAL_COLUMN_ORDER`); mappings for Freq, Specific Location, Flesh Flies?, and separate Plastron/Carapace Picture in Archive columns with legacy header aliases for older sheets. Missing columns required by a save are inserted automatically in canonical positions; cell values can be formatted on write (`value_normalize`). Sheet value reads use wider ranges (e.g. `A:ZZ`) so extra columns are not cut off. Biology IDs support more legacy cell formats and normalize to MFJU + three-digit sequence for display and generation.
+- **Google Sheets (research)**: Canonical column order for new tabs (`CANONICAL_COLUMN_ORDER`): **Frequency**, **Date DNA Extracted?**, **Cow Interactions?**, **Flesh Flies?** before **Mass (g)**, short morphometrics (**CCL**, **Cflat**, **Cwidth**, **PlasCL**, **Pflat**, **P1**, **P2**, **Pwidth**, **DomeHeight**). Row 1 headers must match exactly (no legacy alias mapping). Missing columns needed for a save are inserted in canonical positions; reads use wider ranges (e.g. `A:ZZ`). Biology IDs support more legacy cell shapes and normalize to MFJU + three-digit sequence for display and generation.
 
 ### Changed
 
@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Backend**: `reset_complete_backend.py` removes leftover Django artifacts (`backend/turtles/db.sqlite3`, `backend/turtles/media/`) instead of clearing tables via the Django ORM.
 - **General locations & Drive**: Default Kansas general-location list and flat `DRIVE_LOCATION_TO_BACKEND_PATH` entries updated (e.g. Dee Hobelman, Other, West Topeka).
 - **Admin turtle form / API types**: Form fields and `TurtleSheetsData` extended for the new sheet columns.
+- **Admin turtle form / Turtle Match**: Form column order follows the research sheet; **Pit?**, archive/adoption/iButton/**Cow Interactions?**/**Flesh Flies?** use free-text fields instead of Yes/No dropdowns. Turtle Match shows a subset of columns (read-only vs unlock-to-edit); saving from that layout uses the main notes/dates fields directly (no append-only merge). **`value_normalize`**: only the biology **ID** column is normalized; other cells are unchanged end-to-end.
 
 ### Fixed
 

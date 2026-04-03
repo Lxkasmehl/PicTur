@@ -49,6 +49,7 @@ export const TurtleSheetsDataForm = forwardRef<
     useBackendLocations = false,
     sheetSource = 'admin',
     requireNewSheetForCommunityMatch = false,
+    matchPageColumnLayout = false,
   },
   ref,
 ) {
@@ -68,6 +69,7 @@ export const TurtleSheetsDataForm = forwardRef<
     useBackendLocations,
     sheetSource,
     requireNewSheetForCommunityMatch,
+    matchPageColumnLayout,
   });
 
   useImperativeHandle(ref, () => ({
@@ -120,10 +122,9 @@ export const TurtleSheetsDataForm = forwardRef<
         {hook.isFieldModeRestricted && (
           <Alert color='yellow' radius='md' title='Add-only mode (field use)'>
             <Text size='sm'>
-              You can only add data here; existing values are read-only to avoid
-              accidental changes. You can append to Notes and Dates Refound. To edit an
-              existing field, use &quot;Unlock editing&quot; above that field and
-              confirm.
+              {matchPageColumnLayout
+                ? 'Only selected columns are shown. Read-only fields cannot be edited. For other fields, use “Unlock editing” and confirm before changing values.'
+                : 'You can only add data here; existing values are read-only to avoid accidental changes. You can append to Notes and Dates Refound. To edit an existing field, use “Unlock editing” above that field and confirm.'}
             </Text>
           </Alert>
         )}
@@ -184,6 +185,7 @@ export const TurtleSheetsDataForm = forwardRef<
                   : () => hook.setShowCreateGeneralLocationModal(true)
               }
               generalLocationSelectRemountKey={hook.selectedSheetName}
+              matchPageColumnLayout={matchPageColumnLayout}
             />
           </Grid>
 
