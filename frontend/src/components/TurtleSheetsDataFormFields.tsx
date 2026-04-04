@@ -88,7 +88,7 @@ export function TurtleSheetsDataFormFields({
 
       {formFieldOrder.map((key) => {
         if (key === '__dates_refound__') {
-          if (useMatchEditLocks) {
+          if (matchPageColumnLayout) {
             const cfg = configByKey.dates_refound;
             const span = toSpan(cfg.span);
             return (
@@ -154,7 +154,7 @@ export function TurtleSheetsDataFormFields({
         }
 
         if (key === '__notes__') {
-          if (useMatchEditLocks) {
+          if (matchPageColumnLayout) {
             const cfg = configByKey.notes;
             const span = toSpan(cfg.span);
             return (

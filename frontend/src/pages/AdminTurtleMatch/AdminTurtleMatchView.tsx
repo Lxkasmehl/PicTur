@@ -240,7 +240,7 @@ export function AdminTurtleMatchView() {
                 state={state}
                 location={location}
                 primaryId={primaryId || undefined}
-                mode={sheetsData ? 'edit' : 'create'}
+                mode='edit'
                 onSave={handleSaveSheetsData}
                 hideSubmitButton
                 onCombinedSubmit={handleSaveAndConfirm}

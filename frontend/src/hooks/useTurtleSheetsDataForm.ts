@@ -81,7 +81,9 @@ export function useTurtleSheetsDataForm(
   const generalLocationUseCatalog =
     sheetSource === 'admin' || useBackendLocations || requireNewSheetForCommunityMatch;
 
-  const isFieldModeRestricted = addOnlyMode && mode === 'edit';
+  /** Match page uses addOnlyMode + matchPageColumnLayout; mode was briefly `create` while sheets load, which must still restrict/unlock fields. */
+  const isFieldModeRestricted =
+    addOnlyMode && (mode === 'edit' || Boolean(matchPageColumnLayout));
   const isFieldUnlocked = (field: keyof TurtleSheetsData) => unlockedFields.has(field);
   const requestUnlock = (field: keyof TurtleSheetsData) => setUnlockConfirmField(field);
   const confirmUnlock = () => {
