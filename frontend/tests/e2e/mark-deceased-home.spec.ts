@@ -16,7 +16,7 @@ test.describe('Home – mortality without plastron (mark deceased)', () => {
   test('Staff opens modal, loads mocked lookup options, and Apply succeeds', async ({
     page,
   }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(90_000);
 
     await page.route('**/api/sheets/sheets', async (route) => {
       if (route.request().method() !== 'GET') {
@@ -30,21 +30,25 @@ test.describe('Home – mortality without plastron (mark deceased)', () => {
       });
     });
 
-    await page.route('**/api/sheets/mark-deceased/lookup-options**', async (route) => {
-      if (route.request().method() !== 'GET') {
-        await route.continue();
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          options: ['F1', 'M2'],
-          count: 2,
-        }),
-      });
-    });
+    // Match any host (localhost vs 127.0.0.1, CI) — unmocked lookup shows TextInput, not Select (no role=option).
+    await page.route(
+      (url) => url.pathname.includes('/api/sheets/mark-deceased/lookup-options'),
+      async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            options: ['F1', 'M2'],
+            count: 2,
+          }),
+        });
+      },
+    );
 
     await page.route('**/api/sheets/turtle/mark-deceased', async (route) => {
       if (route.request().method() !== 'POST') {
@@ -74,15 +78,29 @@ test.describe('Home – mortality without plastron (mark deceased)', () => {
 
     const sheetSelect = page.getByRole('textbox', { name: 'Spreadsheet tab (location)' });
     await sheetSelect.click();
-    await page.getByRole('option', { name: MOCK_SHEET, exact: true }).click();
+    const sheetListbox = page.getByRole('listbox', { name: 'Spreadsheet tab (location)' });
+    await sheetListbox.waitFor({ state: 'visible', timeout: 15_000 });
+    await sheetListbox.getByRole('option', { name: MOCK_SHEET, exact: true }).click();
 
     await expect(page.getByText('Loading values from this sheet…')).not.toBeVisible({
       timeout: 15_000,
     });
 
-    const biologySelect = page.getByRole('textbox', { name: 'Biology ID' });
+    const biologyLabel = 'Biology ID';
+    const biologySelect = page
+      .getByRole('textbox', { name: biologyLabel })
+      .or(page.getByRole('combobox', { name: biologyLabel }));
     await biologySelect.click();
-    await page.getByRole('option', { name: 'F1', exact: true }).click();
+    // Portaled Mantine listboxes: scope options to this field; WebKit sometimes omits listbox name (see fixtures.ts).
+    const namedBioListbox = page.getByRole('listbox', { name: biologyLabel });
+    const useNamedBio = await namedBioListbox
+      .waitFor({ state: 'visible', timeout: 3_000 })
+      .then(() => true)
+      .catch(() => false);
+    const bioListbox = useNamedBio ? namedBioListbox : page.getByRole('listbox').last();
+    await bioListbox.waitFor({ state: 'visible', timeout: 15_000 });
+    await biologySelect.fill('F1');
+    await bioListbox.getByRole('option', { name: 'F1', exact: true }).click();
 
     await page.getByRole('button', { name: 'Apply' }).click();
 
