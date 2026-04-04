@@ -182,6 +182,37 @@ const SHEET_SELECT_LABEL = 'Sheet / Location';
 const SHEET_DROPDOWN_TIMEOUT = 20_000;
 
 /**
+ * Turtle Match “Create New Turtle” modal uses unlock-to-edit for most fields. Repeatedly
+ * confirms “Unlock editing” until the labeled control is enabled. No-ops if already enabled
+ * or if no unlock buttons exist (e.g. full Turtle Records form without match layout).
+ */
+export async function unlockUntilFieldEditable(
+  page: Page,
+  dialog: Locator,
+  label: string | RegExp,
+): Promise<void> {
+  const field =
+    typeof label === 'string' ? dialog.getByLabel(label, { exact: true }) : dialog.getByLabel(label);
+  await field.waitFor({ state: 'visible', timeout: SHEET_DROPDOWN_TIMEOUT });
+  for (let i = 0; i < 60; i += 1) {
+    if (await field.isEnabled()) return;
+    const unlockBtn = dialog.getByRole('button', { name: 'Unlock editing' }).first();
+    const unlockVisible = await unlockBtn.isVisible().catch(() => false);
+    if (!unlockVisible) {
+      throw new Error(
+        `Field is disabled but no "Unlock editing" button found (label=${String(label)}, step=${i})`,
+      );
+    }
+    await unlockBtn.click();
+    const confirmModal = page.getByRole('dialog', { name: 'Unlock editing' });
+    await confirmModal.waitFor({ state: 'visible', timeout: 10_000 });
+    await confirmModal.getByRole('button', { name: 'I understand, unlock editing' }).click();
+    await confirmModal.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
+  }
+  throw new Error(`Field still disabled after max unlock steps: ${String(label)}`);
+}
+
+/**
  * In the Create New Turtle dialog, select a sheet (e.g. "Kansas").
  * On mobile we use NativeSelect (native <select>); on desktop, Mantine Select (textbox + listbox).
  * Uses getByLabel so the same helper works for both.
@@ -240,6 +271,7 @@ export async function selectGeneralLocationInCreateTurtleDialog(
   dialog: ReturnType<Page['getByRole']>,
   locationName: string,
 ): Promise<void> {
+  await unlockUntilFieldEditable(page, dialog, GENERAL_LOCATION_LABEL);
   const labeled = dialog.getByLabel(GENERAL_LOCATION_LABEL);
   await labeled.waitFor({ state: 'visible', timeout: GENERAL_LOCATION_DROPDOWN_TIMEOUT });
   const tag = await labeled.evaluate((el) => el.tagName.toUpperCase());
@@ -374,6 +406,7 @@ export async function selectSexInCreateTurtleDialog(
   dialog: ReturnType<Page['getByRole']>,
   value: string,
 ): Promise<void> {
+  await unlockUntilFieldEditable(page, dialog, SEX_SELECT_LABEL);
   const sexSelect = dialog.getByLabel(SEX_SELECT_LABEL);
   await sexSelect.waitFor({ state: 'visible', timeout: SEX_DROPDOWN_TIMEOUT });
 

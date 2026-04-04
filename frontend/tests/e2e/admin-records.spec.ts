@@ -241,7 +241,7 @@ test.describe('Admin Turtle Records (Sheets Browser)', () => {
     await expect(idField).toHaveValue('M1');
     await expect(idField).toBeDisabled();
     await expect(
-      tabPanel.getByText('Original turtle ID (read-only; may not be unique across sheets)'),
+      tabPanel.getByText('Biology ID from sheet (read-only when auto-generated)'),
     ).toBeVisible();
   });
 });

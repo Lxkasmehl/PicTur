@@ -8,6 +8,7 @@ import {
   pickKansasGeneralLocationInCreateTurtleDialog,
   selectSheetInCreateTurtleDialog,
   selectSexInCreateTurtleDialog,
+  unlockUntilFieldEditable,
 } from './fixtures';
 
 /**
@@ -79,9 +80,11 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
     await expect(dialog).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Create New Turtle' })).toBeVisible();
 
+    await unlockUntilFieldEditable(page, dialog, 'DomeHeight');
+
     await expect(dialog.getByLabel('Mass (g)', { exact: true })).toBeVisible();
-    await expect(dialog.getByLabel('Curved carapace length (mm)', { exact: true })).toBeVisible();
-    await expect(dialog.getByLabel('Dome height (mm)', { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel('CCL', { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel('DomeHeight', { exact: true })).toBeVisible();
   });
 
   test('Filled mass and morphometrics are sent in POST turtle_data', async ({ page }) => {
@@ -189,9 +192,11 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
     await selectSexInCreateTurtleDialog(page, dialog, 'F');
     await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
 
+    await unlockUntilFieldEditable(page, dialog, 'Name');
     await dialog.getByLabel('Name', { exact: true }).fill('E2E Morph Turtle');
+    await unlockUntilFieldEditable(page, dialog, 'DomeHeight');
     const massInput = dialog.getByLabel('Mass (g)', { exact: true });
-    const domeHeightInput = dialog.getByLabel('Dome height (mm)', { exact: true });
+    const domeHeightInput = dialog.getByLabel('DomeHeight', { exact: true });
     await massInput.fill('300');
     await domeHeightInput.fill('98');
     await expect(massInput).toHaveValue('300');

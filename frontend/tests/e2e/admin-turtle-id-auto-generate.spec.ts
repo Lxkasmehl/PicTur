@@ -30,7 +30,7 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
     test.setTimeout(90_000);
 
     // Mock generate-id so the form gets a predictable biology ID preview (match any base URL)
-    await page.route('**/sheets/generate-id', async (route) => {
+    await page.route('**/api/sheets/generate-id', async (route) => {
       if (route.request().method() === 'POST') {
         await route.fulfill({
           status: 200,
@@ -130,7 +130,7 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
 
     // Create mode: ID description explains auto-generation (branch: ID always read-only)
     await expect(
-      dialog.getByText('Auto-generated from sex + sequence for this sheet (e.g. M1, F2)'),
+      dialog.getByText('Auto-generated from sex + sequence for this sheet (e.g. M001, F002)'),
     ).toBeVisible();
   });
 
