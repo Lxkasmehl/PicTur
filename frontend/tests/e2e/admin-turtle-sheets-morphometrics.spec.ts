@@ -194,6 +194,7 @@ test.describe('Admin Create New Turtle – sheets morphometrics fields', () => {
 
     await unlockUntilFieldEditable(page, dialog, 'Name');
     await dialog.getByLabel('Name', { exact: true }).fill('E2E Morph Turtle');
+    await unlockUntilFieldEditable(page, dialog, 'Mass (g)');
     await unlockUntilFieldEditable(page, dialog, 'DomeHeight');
     const massInput = dialog.getByLabel('Mass (g)', { exact: true });
     const domeHeightInput = dialog.getByLabel('DomeHeight', { exact: true });
