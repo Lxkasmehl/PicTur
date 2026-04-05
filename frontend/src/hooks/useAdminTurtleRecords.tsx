@@ -101,9 +101,22 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
       setQueueItems((prev) =>
         prev.map((it) => (it.request_id === requestId ? item : it)),
       );
-      setSelectedItem((prev) =>
-        prev?.request_id === requestId ? item : prev,
-      );
+      setSelectedItem((prev) => {
+        if (prev?.request_id === requestId) {
+          // Candidates may have changed (e.g. after classify) — clear stale state
+          setSelectedCandidate(null);
+          setCandidateNames({});
+          setCandidateOriginalIds({});
+          setSheetsData(null);
+          setPrimaryId(null);
+          // Reload candidate names for the fresh candidate set
+          if (item.candidates?.length) {
+            loadCandidateNames(item);
+          }
+          return item;
+        }
+        return prev;
+      });
     } catch (error) {
       console.error('Error refreshing queue item:', error);
       notifications.show({
@@ -326,9 +339,16 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
     }
     setProcessing(selectedItem.request_id);
     try {
+      // Verify the review item still exists before committing
+      try {
+        await getReviewPacket(selectedItem.request_id);
+      } catch {
+        throw new Error('This review item has already been processed by another admin. Please go back to the queue.');
+      }
       await handleSaveSheetsData(data, sheetName);
       await approveReview(selectedItem.request_id, {
         match_turtle_id: selectedCandidate,
+        photo_type: selectedItem.photo_type ?? 'plastron',
       });
       notifications.show({
         title: 'Success!',
@@ -430,6 +450,12 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
           });
         }
       }
+      // Verify the review item still exists before committing
+      try {
+        await getReviewPacket(selectedItem.request_id);
+      } catch {
+        throw new Error('This review item has already been processed by another admin. Please go back to the queue.');
+      }
       const turtleIdForReview = finalPrimaryId || `T${Date.now()}`;
       // Admin: backend path = data/State/Location/PrimaryID (Location = general_location). Community: data/Community_Uploads/Sheet/.
       const generalLoc = effectiveSheetsData?.general_location?.trim() ?? '';
@@ -450,6 +476,7 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
               primary_id: sheetsDataCreated ? (finalPrimaryId ?? undefined) : undefined,
             }
           : undefined,
+        photo_type: selectedItem.photo_type ?? 'plastron',
       });
       notifications.show({
         title: 'Success!',
@@ -552,6 +579,15 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
     setPrimaryId(null);
   };
 
+  /** Delete a queue item directly (no modal). Removes from local state and clears selection. */
+  const deleteQueueItemDirect = async (requestId: string) => {
+    await deleteReviewItem(requestId);
+    setQueueItems((prev) => prev.filter((i) => i.request_id !== requestId));
+    if (selectedItem?.request_id === requestId) {
+      clearSelectedItem();
+    }
+  };
+
   const setSelectedSheetFilterAndLoad = (value: string) => {
     setSelectedSheetFilter(value);
     loadAllTurtles(value || undefined);
@@ -619,5 +655,6 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
     clearSelectedItem,
     setSelectedSheetFilterAndLoad,
     refreshQueueItem,
+    deleteQueueItemDirect,
   };
 }

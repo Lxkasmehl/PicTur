@@ -135,7 +135,7 @@ def register_upload_routes(app):
                 for key in list(request.files.keys()):
                     if key.startswith('extra_') and key != 'file':
                         rest = key.replace('extra_', '', 1).strip().lower()
-                        typ = 'microhabitat' if rest.startswith('microhabitat') else 'condition' if rest.startswith('condition') else 'other'
+                        typ = 'microhabitat' if rest.startswith('microhabitat') else 'condition' if rest.startswith('condition') else 'carapace' if rest.startswith('carapace') else 'plastron' if rest.startswith('plastron') else 'other'
                         f = request.files[key]
                         if f and f.filename and allowed_file(f.filename):
                             f.seek(0, os.SEEK_END)
@@ -159,7 +159,8 @@ def register_upload_routes(app):
                 match_sheet = (request.form.get('match_sheet') or '').strip() or None
 
                 # ARCHITECT FIX: Correctly unpacks tuple from SuperPoint search and applies filter
-                results = manager_service.manager.search_for_matches(query_save_path, location_filter=match_sheet)
+                # Admin uploads are always plastron — no photo_type selector needed
+                results = manager_service.manager.search_for_matches(query_save_path, location_filter=match_sheet, photo_type='plastron')
 
                 # Safely unpack the tuple (matches, elapsed_time)
                 if isinstance(results, tuple) and len(results) == 2:
@@ -198,11 +199,16 @@ def register_upload_routes(app):
 
                 message = f'Photo processed successfully. {len(formatted_matches)} matches found.' if len(formatted_matches) > 0 else 'Photo processed successfully. No matches found. You can create a new turtle.'
 
+                # Save metadata with photo_type so review queue can display it
+                with open(os.path.join(packet_dir, 'metadata.json'), 'w') as mf:
+                    json.dump({'photo_type': 'plastron'}, mf)
+
                 return jsonify({
                     'success': True,
                     'request_id': request_id,
                     'matches': formatted_matches,
                     'uploaded_image_path': query_save_path,
+                    'photo_type': 'plastron',
                     'message': message
                 })
 
@@ -213,7 +219,8 @@ def register_upload_routes(app):
                 user_info = {
                     'finder': finder_name,
                     'email': user_email,
-                    'uploaded_at': time.time()
+                    'uploaded_at': time.time(),
+                    'photo_type': 'unclassified',
                 }
 
                 if state and location:
@@ -245,7 +252,7 @@ def register_upload_routes(app):
                 for key in list(request.files.keys()):
                     if key.startswith('extra_') and key != 'file':
                         rest = key.replace('extra_', '', 1).strip().lower()
-                        typ = 'microhabitat' if rest.startswith('microhabitat') else 'condition' if rest.startswith('condition') else 'other'
+                        typ = 'microhabitat' if rest.startswith('microhabitat') else 'condition' if rest.startswith('condition') else 'carapace' if rest.startswith('carapace') else 'plastron' if rest.startswith('plastron') else 'other'
                         f = request.files[key]
                         if f and f.filename and allowed_file(f.filename):
                             f.seek(0, os.SEEK_END)

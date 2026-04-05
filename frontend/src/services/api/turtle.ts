@@ -13,11 +13,14 @@ export interface TurtleMatch {
   filename: string;
 }
 
+export type PhotoType = 'plastron' | 'carapace' | 'unclassified';
+
 export interface UploadPhotoResponse {
   success: boolean;
   request_id?: string;
   matches?: TurtleMatch[];
   uploaded_image_path?: string;
+  photo_type?: PhotoType;
   message: string;
 }
 
@@ -64,6 +67,7 @@ export interface ReviewQueueItem {
     image_path: string;
   }>;
   status: string;
+  photo_type?: PhotoType;
 }
 
 /** Flag/microhabitat data sent when approving a review (new or matched turtle) */
@@ -93,6 +97,8 @@ export interface ApproveReviewRequest {
   match_from_community?: boolean;
   /** Community sheet tab name where the turtle currently lives (e.g. "Unknown"). Required when match_from_community is true. */
   community_sheet_name?: string;
+  /** Photo type: plastron (belly, default) or carapace (top of shell). */
+  photo_type?: PhotoType;
 }
 
 /** Optional flag/collected-to-lab and extra images for upload (community flow) */
@@ -103,7 +109,7 @@ export interface UploadFlagOptions {
 }
 
 export interface UploadExtraFile {
-  type: 'microhabitat' | 'condition';
+  type: 'microhabitat' | 'condition' | 'carapace' | 'plastron';
   file: File;
 }
 
@@ -209,10 +215,10 @@ export const getReviewQueue = async (): Promise<ReviewQueueResponse> => {
   return await response.json();
 };
 
-// Add additional images (microhabitat, condition) to a review packet (Admin only)
+// Add additional images (microhabitat, condition, carapace, plastron) to a review packet (Admin only)
 export const uploadReviewPacketAdditionalImages = async (
   requestId: string,
-  files: Array<{ type: 'microhabitat' | 'condition'; file: File }>,
+  files: Array<{ type: 'microhabitat' | 'condition' | 'carapace' | 'plastron'; file: File }>,
 ): Promise<{ success: boolean; message?: string }> => {
   const token = getToken();
   const headers: Record<string, string> = {};
@@ -297,6 +303,49 @@ export const approveReview = async (
     throw new Error(error.error || 'Failed to approve review');
   }
 
+  return await response.json();
+};
+
+/** Cross-check a review packet against a different photo_type cache (diagnostic, does not modify packet). */
+export const crossCheckReviewPacket = async (
+  requestId: string,
+  photoType: PhotoType,
+): Promise<{
+  success: boolean;
+  photo_type: string;
+  matches: Array<{ turtle_id: string; location: string; confidence: number; score: number; image_path: string }>;
+  elapsed: number;
+}> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(
+    `${TURTLE_API_BASE_URL}/review-queue/${encodeURIComponent(requestId)}/cross-check`,
+    { method: 'POST', headers, body: JSON.stringify({ photo_type: photoType }) },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Cross-check failed' }));
+    throw new Error(err.error || 'Failed to cross-check');
+  }
+  return await response.json();
+};
+
+// Classify a review packet as plastron or carapace, triggering AI matching (Admin only)
+export const classifyReviewPacket = async (
+  requestId: string,
+  photoType: PhotoType,
+): Promise<{ success: boolean; item: ReviewQueueItem; matches_found: number }> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(
+    `${TURTLE_API_BASE_URL}/review-queue/${encodeURIComponent(requestId)}/classify`,
+    { method: 'POST', headers, body: JSON.stringify({ photo_type: photoType }) },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Classification failed' }));
+    throw new Error(err.error || 'Failed to classify review packet');
+  }
   return await response.json();
 };
 
@@ -430,7 +479,7 @@ export const getTurtlePrimariesBatch = async (
 /** Add microhabitat/condition images to a turtle folder (Admin only). */
 export const uploadTurtleAdditionalImages = async (
   turtleId: string,
-  files: Array<{ type: 'microhabitat' | 'condition'; file: File }>,
+  files: Array<{ type: 'microhabitat' | 'condition' | 'carapace' | 'plastron'; file: File }>,
   sheetName?: string | null,
 ): Promise<{ success: boolean; message?: string }> => {
   const token = getToken();

@@ -204,7 +204,7 @@ def register_turtle_routes(app):
                     continue
                 idx = key.replace('file_', '')
                 typ = (request.form.get(f'type_{idx}') or 'other').strip().lower()
-                if typ not in ('microhabitat', 'condition', 'other'):
+                if typ not in ('microhabitat', 'condition', 'carapace', 'plastron', 'other'):
                     typ = 'other'
                 if not allowed_file(f.filename):
                     continue

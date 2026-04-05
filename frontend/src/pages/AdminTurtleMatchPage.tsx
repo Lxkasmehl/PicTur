@@ -49,6 +49,7 @@ interface MatchData {
   request_id: string;
   uploaded_image_path: string;
   matches: TurtleMatch[];
+  photo_type?: PhotoType;
 }
 
 export default function AdminTurtleMatchPage() {
@@ -119,7 +120,17 @@ export default function AdminTurtleMatchPage() {
         if (imageId) {
           const stored = localStorage.getItem(`match_${imageId}`);
           if (stored) {
-            const data: MatchData = JSON.parse(stored);
+            let data: MatchData;
+            try {
+              data = JSON.parse(stored);
+            } catch {
+              console.error('Corrupted match data in localStorage, removing');
+              localStorage.removeItem(`match_${imageId}`);
+              setMatchData(null);
+              setPacketItem(null);
+              setLoading(false);
+              return;
+            }
             setMatchData(data);
             try {
               const { item } = await getReviewPacket(imageId);
@@ -274,6 +285,7 @@ export default function AdminTurtleMatchPage() {
         },
         match_from_community: isMatchFromCommunity,
         community_sheet_name: isMatchFromCommunity ? communitySheetName : undefined,
+        photo_type: matchData.photo_type ?? 'plastron',
       });
 
       localStorage.removeItem(`match_${imageId}`);
@@ -450,6 +462,7 @@ export default function AdminTurtleMatchPage() {
               primary_id: finalPrimaryId ?? undefined,
             }
           : undefined,
+        photo_type: matchData?.photo_type ?? 'plastron',
       });
 
       localStorage.removeItem(`match_${imageId}`);

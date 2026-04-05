@@ -1,3 +1,5 @@
+import threading
+
 import torch
 from lightglue import LightGlue, SuperPoint, utils
 import cv2
@@ -38,10 +40,18 @@ class TurtleDeepMatcher:
             self.extractor = torch.compile(self.extractor, dynamic=True)
 
         self.feature_cache = {}
-        self.vram_cache = []  # Initialize the cache list
+        self.vram_cache_plastron = []
+        self.vram_cache_carapace = []
+        # Serializes all GPU operations — prevents crashes from concurrent
+        # community upload threads hitting CUDA simultaneously.
+        self._gpu_lock = threading.Lock()
 
     def set_device(self, device_mode):
         """Switches device dynamically based on GUI selection."""
+        with self._gpu_lock:
+            return self._set_device_unlocked(device_mode)
+
+    def _set_device_unlocked(self, device_mode):
         self.device_str = "cuda" if device_mode == "GPU" and torch.cuda.is_available() else "cpu"
         self.device = torch.device(self.device_str)
         self.use_amp = (self.device_str == "cuda")
@@ -49,11 +59,14 @@ class TurtleDeepMatcher:
         self.extractor = self.extractor.to(self.device)
         self.matcher = self.matcher.to(self.device)
 
-        # --- NEW: Migrate the Cache to the new hardware ---
-        if hasattr(self, 'vram_cache') and self.vram_cache:
-            for cand in self.vram_cache:
+        # Migrate both caches to the new hardware
+        total_migrated = 0
+        for cache in (self.vram_cache_plastron, self.vram_cache_carapace):
+            for cand in cache:
                 cand['feats'] = {k: v.to(self.device) for k, v in cand['feats'].items()}
-            logger.info(f"🔄 Migrated {len(self.vram_cache)} cached tensors to {self.device_str.upper()}.")
+            total_migrated += len(cache)
+        if total_migrated:
+            logger.info(f"🔄 Migrated {total_migrated} cached tensors to {self.device_str.upper()}.")
 
         logger.info(f"🔄 Switched compute device to: {self.device_str.upper()}")
 
@@ -61,29 +74,50 @@ class TurtleDeepMatcher:
         self.feature_cache = cache_dict
         logger.info(f"🧠 Brain: Feature cache synchronized ({len(cache_dict)} items).")
 
-    # --- NEW: VRAM CACHE METHODS ---
+    # --- VRAM CACHE METHODS ---
     def load_database_to_vram(self, db_index_list):
-        """Pre-loads the entire database into GPU VRAM for instant access."""
-        logger.info(f"⚡ Loading {len(db_index_list)} turtles into memory cache ({self.device_str})...")
-        self.vram_cache = []
+        with self._gpu_lock:
+            return self._load_database_to_vram_unlocked(db_index_list)
 
-        for db_pt_path, turtle_id, location in db_index_list:
-            if not os.path.exists(db_pt_path): continue
+    def _load_database_to_vram_unlocked(self, db_index_list):
+        """Pre-loads the entire database into GPU VRAM for instant access.
+
+        Each entry in db_index_list is a tuple of:
+          (pt_path, turtle_id, location)              — legacy 3-tuple, defaults to plastron
+          (pt_path, turtle_id, location, photo_type)  — 4-tuple with explicit type
+        """
+        logger.info(f"⚡ Loading {len(db_index_list)} turtles into memory cache ({self.device_str})...")
+        self.vram_cache_plastron = []
+        self.vram_cache_carapace = []
+
+        for entry in db_index_list:
+            if len(entry) == 4:
+                db_pt_path, turtle_id, location, photo_type = entry
+            else:
+                db_pt_path, turtle_id, location = entry
+                photo_type = 'plastron'
+
+            if not os.path.exists(db_pt_path):
+                continue
             try:
-                # Load securely and map directly to the active device
                 cand_data = torch.load(db_pt_path, map_location=self.device, weights_only=True)
                 cand_feats = {k: v.unsqueeze(0).to(self.device) for k, v in cand_data.items()}
 
-                self.vram_cache.append({
+                item = {
                     'site_id': turtle_id,
                     'location': location,
                     'file_path': db_pt_path,
                     'feats': cand_feats
-                })
+                }
+                if photo_type == 'carapace':
+                    self.vram_cache_carapace.append(item)
+                else:
+                    self.vram_cache_plastron.append(item)
             except Exception as e:
                 logger.error(f"Failed to cache {turtle_id}: {e}")
 
-        logger.info(f"✅ Cached {len(self.vram_cache)} turtles securely.")
+        total = len(self.vram_cache_plastron) + len(self.vram_cache_carapace)
+        logger.info(f"✅ Cached {total} turtles ({len(self.vram_cache_plastron)} plastron, {len(self.vram_cache_carapace)} carapace).")
 
     def preprocess_image_robust(self, img):
         h, w = img.shape
@@ -96,6 +130,10 @@ class TurtleDeepMatcher:
         return clahe.apply(img)
 
     def process_and_save(self, image_path, output_pt_path):
+        with self._gpu_lock:
+            return self._process_and_save_unlocked(image_path, output_pt_path)
+
+    def _process_and_save_unlocked(self, image_path, output_pt_path):
         try:
             img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
             if img is None: return False
@@ -116,6 +154,10 @@ class TurtleDeepMatcher:
 
     def match_query_robust(self, query_path, db_index_list):
         """Standard disk-based search (kept as fallback)."""
+        with self._gpu_lock:
+            return self._match_query_robust_unlocked(query_path, db_index_list)
+
+    def _match_query_robust_unlocked(self, query_path, db_index_list):
         img_raw = cv2.imread(query_path, cv2.IMREAD_GRAYSCALE)
         if img_raw is None: return []
 
@@ -171,6 +213,10 @@ class TurtleDeepMatcher:
     def extract_query_features(self, query_path):
         """Extract SuperPoint features for 4 rotations of a query image.
         Returns list of 4 feature dicts, or None if image can't be read."""
+        with self._gpu_lock:
+            return self._extract_query_features_unlocked(query_path)
+
+    def _extract_query_features_unlocked(self, query_path):
         img_raw = cv2.imread(query_path, cv2.IMREAD_GRAYSCALE)
         if img_raw is None:
             return None
@@ -193,15 +239,24 @@ class TurtleDeepMatcher:
 
         return query_feats_list
 
-    def match_against_cache(self, query_feats_list, location_filter="All Locations"):
-        """Run LightGlue matching of pre-extracted query features against the VRAM cache."""
-        if not getattr(self, 'vram_cache', None):
-            logger.warning("⚠️ VRAM cache empty! Returning no matches.")
+    def match_against_cache(self, query_feats_list, location_filter="All Locations", photo_type="plastron"):
+        """Run LightGlue matching of pre-extracted query features against the VRAM cache.
+
+        Args:
+            photo_type: 'plastron' (default) or 'carapace' — selects which cache to search.
+        """
+        with self._gpu_lock:
+            return self._match_against_cache_unlocked(query_feats_list, location_filter, photo_type)
+
+    def _match_against_cache_unlocked(self, query_feats_list, location_filter="All Locations", photo_type="plastron"):
+        cache = self.vram_cache_carapace if photo_type == 'carapace' else self.vram_cache_plastron
+        if not cache:
+            logger.warning(f"⚠️ VRAM cache empty for {photo_type}! Returning no matches.")
             return []
 
         results = []
 
-        for cand in self.vram_cache:
+        for cand in cache:
             # Apply location filter early to skip unnecessary math.
             # Uses prefix matching so a state like "Kansas" matches
             # "Kansas/Lawrence", "Kansas/North Topeka", etc.
@@ -235,12 +290,38 @@ class TurtleDeepMatcher:
             torch.cuda.empty_cache()
         return results
 
-    def match_query_robust_vram(self, query_path, location_filter="All Locations"):
+    def add_single_to_vram(self, pt_path, turtle_id, location, photo_type="plastron"):
+        """Incrementally add one turtle to the VRAM cache without full reload."""
+        with self._gpu_lock:
+            return self._add_single_to_vram_unlocked(pt_path, turtle_id, location, photo_type)
+
+    def _add_single_to_vram_unlocked(self, pt_path, turtle_id, location, photo_type="plastron"):
+        if not os.path.exists(pt_path):
+            logger.warning(f"⚠️ Cannot add to cache — file not found: {pt_path}")
+            return False
+        try:
+            cand_data = torch.load(pt_path, map_location=self.device, weights_only=True)
+            cand_feats = {k: v.unsqueeze(0).to(self.device) for k, v in cand_data.items()}
+            item = {
+                'site_id': turtle_id,
+                'location': location,
+                'file_path': pt_path,
+                'feats': cand_feats
+            }
+            cache = self.vram_cache_carapace if photo_type == 'carapace' else self.vram_cache_plastron
+            cache.append(item)
+            logger.info(f"✅ Incrementally cached {turtle_id} ({location}, {photo_type})")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to incrementally cache {turtle_id}: {e}")
+            return False
+
+    def match_query_robust_vram(self, query_path, location_filter="All Locations", photo_type="plastron"):
         """Convenience wrapper: extract + match in one call."""
         query_feats = self.extract_query_features(query_path)
         if query_feats is None:
             return []
-        return self.match_against_cache(query_feats, location_filter)
+        return self.match_against_cache(query_feats, location_filter, photo_type=photo_type)
 
     def _run_glue(self, feats0, feats1):
         with torch.inference_mode(), torch.autocast(device_type=self.device.type, dtype=torch.float16,

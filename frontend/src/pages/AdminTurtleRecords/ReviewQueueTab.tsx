@@ -22,7 +22,8 @@ import {
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react';
-import { getImageUrl, getTurtleImages, type TurtleImagesResponse } from '../../services/api';
+import { getImageUrl, getTurtleImages, classifyReviewPacket, crossCheckReviewPacket, type TurtleImagesResponse, type PhotoType } from '../../services/api';
+import { notifications } from '@mantine/notifications';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { MapDisplay } from '../../components/MapDisplay';
 import { DeleteQueueItemModal } from './DeleteQueueItemModal';
@@ -32,6 +33,11 @@ import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
 export function ReviewQueueTab() {
   const ctx = useAdminTurtleRecordsContext();
   const [selectedCandidateTurtleImages, setSelectedCandidateTurtleImages] = useState<TurtleImagesResponse | null>(null);
+  const [crossCheckResults, setCrossCheckResults] = useState<Array<{ turtle_id: string; location: string; confidence: number; score: number; image_path: string }> | null>(null);
+  const [crossCheckLoading, setCrossCheckLoading] = useState(false);
+  const [classifyLoading, setClassifyLoading] = useState<'plastron' | 'carapace' | null>(null);
+  const [classifyConfirm, setClassifyConfirm] = useState<'plastron' | 'carapace' | 'trash' | null>(null);
+  const [trashLoading, setTrashLoading] = useState(false);
   const {
     queueLoading,
     queueItems,
@@ -58,6 +64,7 @@ export function ReviewQueueTab() {
     handleCombinedButtonClick: onCombinedButtonClick,
     handleCreateNewTurtle: onCreateNewTurtle,
     refreshQueueItem,
+    deleteQueueItemDirect,
   } = ctx;
 
   const state = selectedItem?.metadata.state || '';
@@ -71,6 +78,12 @@ export function ReviewQueueTab() {
     isAdminUpload(requestId) ? 'Admin upload' : 'Community upload';
   const uploadSourceBadgeColor = (requestId: string | undefined) =>
     isAdminUpload(requestId) ? 'blue' : 'teal';
+
+  // Clear cross-check and confirm state when item changes
+  useEffect(() => {
+    setCrossCheckResults(null);
+    setClassifyConfirm(null);
+  }, [selectedItem?.request_id]);
 
   // Load selected candidate turtle's existing additional images when a match is selected (must run before any early return)
   useEffect(() => {
@@ -127,6 +140,14 @@ export function ReviewQueueTab() {
                 data-testid='review-upload-source-badge'
               >
                 {uploadSourceLabel(selectedItem.request_id)}
+              </Badge>
+              <Badge
+                size='lg'
+                variant='light'
+                color={selectedItem.photo_type === 'carapace' ? 'teal' : selectedItem.photo_type === 'unclassified' ? 'yellow' : 'grape'}
+                data-testid='review-photo-type-badge'
+              >
+                {selectedItem.photo_type === 'carapace' ? 'Carapace' : selectedItem.photo_type === 'unclassified' ? 'Unclassified' : 'Plastron'}
               </Badge>
             </Group>
             <Button
@@ -185,6 +206,141 @@ export function ReviewQueueTab() {
               )}
             </Stack>
           </Paper>
+
+          {/* Classify control (community/unclassified) or cross-check button (admin/plastron) */}
+          {selectedItem.photo_type === 'unclassified' ? (
+            <Paper shadow='sm' p='md' radius='md' withBorder>
+              {classifyLoading ? (
+                <Group gap='md' align='center'>
+                  <Loader size='sm' />
+                  <Text fw={500} size='sm'>
+                    Classified as {classifyLoading === 'carapace' ? 'Carapace' : 'Plastron'} — matching in progress...
+                  </Text>
+                </Group>
+              ) : trashLoading ? (
+                <Group gap='md' align='center'>
+                  <Loader size='sm' color='red' />
+                  <Text fw={500} size='sm'>Deleting upload...</Text>
+                </Group>
+              ) : classifyConfirm ? (
+                <Stack gap='xs'>
+                  <Text fw={500} size='sm'>
+                    {classifyConfirm === 'trash'
+                      ? 'Delete this upload from the queue?'
+                      : `Classify as ${classifyConfirm === 'carapace' ? 'Carapace' : 'Plastron'} and run matching?`}
+                  </Text>
+                  <Group gap='sm'>
+                    <Button
+                      size='sm'
+                      variant='filled'
+                      color={classifyConfirm === 'trash' ? 'red' : classifyConfirm === 'carapace' ? 'teal' : 'grape'}
+                      onClick={async () => {
+                        const action = classifyConfirm;
+                        setClassifyConfirm(null);
+                        if (action === 'trash') {
+                          setTrashLoading(true);
+                          try {
+                            await deleteQueueItemDirect(selectedItem.request_id);
+                            notifications.show({ title: 'Deleted', message: 'Upload removed from review queue', color: 'green' });
+                          } catch (err) {
+                            notifications.show({ title: 'Error', message: err instanceof Error ? err.message : 'Delete failed', color: 'red' });
+                          } finally {
+                            setTrashLoading(false);
+                          }
+                        } else {
+                          setClassifyLoading(action);
+                          try {
+                            await classifyReviewPacket(selectedItem.request_id, action);
+                            await refreshQueueItem(selectedItem.request_id);
+                            notifications.show({
+                              title: `Classified as ${action === 'carapace' ? 'Carapace' : 'Plastron'}`,
+                              message: `Matching against ${action} dataset complete`,
+                              color: action === 'carapace' ? 'teal' : 'grape',
+                            });
+                          } catch (err) {
+                            notifications.show({ title: 'Error', message: err instanceof Error ? err.message : 'Classification failed', color: 'red' });
+                          } finally {
+                            setClassifyLoading(null);
+                          }
+                        }
+                      }}
+                    >
+                      Yes
+                    </Button>
+                    <Button size='sm' variant='default' onClick={() => setClassifyConfirm(null)}>
+                      No
+                    </Button>
+                  </Group>
+                </Stack>
+              ) : (
+                <Stack gap='xs'>
+                  <Text fw={500} size='sm'>This photo needs classification before matching can run.</Text>
+                  <Text size='xs' c='dimmed'>Select the photo type to match against the correct dataset:</Text>
+                  <Group gap='sm'>
+                    <Button size='sm' variant='filled' color='grape' onClick={() => setClassifyConfirm('plastron')}>
+                      Plastron (belly)
+                    </Button>
+                    <Button size='sm' variant='filled' color='teal' onClick={() => setClassifyConfirm('carapace')}>
+                      Carapace (top of shell)
+                    </Button>
+                    <Button size='sm' variant='filled' color='red' leftSection={<IconTrash size={14} />} onClick={() => setClassifyConfirm('trash')}>
+                      Trash
+                    </Button>
+                  </Group>
+                </Stack>
+              )}
+            </Paper>
+          ) : (
+            <Paper shadow='sm' p='md' radius='md' withBorder>
+              <Group gap='md' align='center'>
+                <Text fw={500} size='sm'>
+                  Matched against: {selectedItem.photo_type === 'carapace' ? 'Carapace' : 'Plastron'}
+                </Text>
+                <Button
+                  size='sm'
+                  variant='light'
+                  color='teal'
+                  loading={crossCheckLoading}
+                  onClick={async () => {
+                    setCrossCheckLoading(true);
+                    const otherType = selectedItem.photo_type === 'carapace' ? 'plastron' : 'carapace';
+                    try {
+                      const result = await crossCheckReviewPacket(selectedItem.request_id, otherType as PhotoType);
+                      setCrossCheckResults(result.matches);
+                      if (result.matches.length === 0) {
+                        notifications.show({ title: 'Cross-check', message: `No ${otherType} matches found`, color: 'yellow' });
+                      }
+                    } catch (err) {
+                      notifications.show({
+                        title: 'Error',
+                        message: err instanceof Error ? err.message : 'Cross-check failed',
+                        color: 'red',
+                      });
+                    } finally {
+                      setCrossCheckLoading(false);
+                    }
+                  }}
+                >
+                  Cross-check {selectedItem.photo_type === 'carapace' ? 'Plastron' : 'Carapace'}
+                </Button>
+                {crossCheckResults !== null && (
+                  <Badge size='lg' variant='light' color={crossCheckResults.length > 0 ? 'teal' : 'gray'}>
+                    {crossCheckResults.length} {selectedItem.photo_type === 'carapace' ? 'plastron' : 'carapace'} match(es)
+                  </Badge>
+                )}
+              </Group>
+              {crossCheckResults && crossCheckResults.length > 0 && (
+                <Stack gap='xs' mt='sm'>
+                  <Text size='xs' c='dimmed'>
+                    Top {selectedItem.photo_type === 'carapace' ? 'plastron' : 'carapace'} match: <b>{crossCheckResults[0].turtle_id}</b> ({Math.round(crossCheckResults[0].confidence * 100)}% confidence)
+                    {selectedItem.candidates.length > 0 && crossCheckResults[0].turtle_id !== selectedItem.candidates[0].turtle_id && (
+                      <Badge size='sm' variant='light' color='red' ml='xs'>Differs from top {selectedItem.photo_type} match</Badge>
+                    )}
+                  </Text>
+                </Stack>
+              )}
+            </Paper>
+          )}
 
           {/* Top 5 Matches — responsive grid with large cards */}
           <Paper shadow='sm' p='md' radius='md' withBorder>

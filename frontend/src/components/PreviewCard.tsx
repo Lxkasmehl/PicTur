@@ -208,10 +208,28 @@ export function PreviewCard({
                       }}
                     />
                   </Button>
+                  {(role === 'admin' || role === 'staff') && (
+                    <Button size='sm' variant='light' color='teal' leftSection={<IconPhotoPlus size={14} />} component='label'>
+                      Carapace
+                      <input
+                        type='file'
+                        accept='image/*'
+                        hidden
+                        onChange={(e) => {
+                          const list = e.target.files;
+                          if (!list?.length) return;
+                          const file = list[0];
+                          const validation = validateFile(file);
+                          if (validation.isValid) setExtraFiles((prev) => [...prev, { type: 'carapace', file }]);
+                          e.target.value = '';
+                        }}
+                      />
+                    </Button>
+                  )}
                 </Group>
                 {extraFiles.length > 0 && (
                   <Stack gap='xs'>
-                    {(['microhabitat', 'condition'] as const).map((t) => {
+                    {(['microhabitat', 'condition', 'carapace'] as const).map((t) => {
                       const ofType = extraFiles.map((ef, i) => ({ ef, i })).filter(({ ef }) => ef.type === t);
                       if (ofType.length === 0) return null;
                       return (
@@ -464,19 +482,30 @@ export function PreviewCard({
               <Stack gap='xs' data-testid='upload-progress'>
                 <Group justify='space-between'>
                   <Text size='sm' fw={500}>
-                    {isGettingLocation ? 'Getting location...' : 'Uploading...'}
+                    {isGettingLocation ? 'Getting location...' : uploadProgress >= 90 ? 'Matching in progress...' : 'Uploading...'}
                   </Text>
-                  <Text size='sm' c='dimmed'>
-                    {uploadProgress}%
-                  </Text>
+                  {uploadProgress < 90 && (
+                    <Text size='sm' c='dimmed'>
+                      {uploadProgress}%
+                    </Text>
+                  )}
                 </Group>
-                <Progress value={uploadProgress} size='lg' radius='xl' animated />
+                {uploadProgress < 90 ? (
+                  <Progress value={uploadProgress} size='lg' radius='xl' animated />
+                ) : (
+                  <Progress value={100} size='lg' radius='xl' animated color='blue' />
+                )}
                 <Center>
                   <Loader size='sm' />
                 </Center>
                 {isGettingLocation && (
                   <Text size='xs' c='dimmed' ta='center'>
                     Please allow location access to track turtle sightings
+                  </Text>
+                )}
+                {uploadProgress >= 90 && !isGettingLocation && (
+                  <Text size='xs' c='dimmed' ta='center'>
+                    Photo uploaded. Running AI matching against the dataset — this may take a minute.
                   </Text>
                 )}
               </Stack>

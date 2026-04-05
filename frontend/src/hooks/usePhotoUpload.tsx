@@ -217,7 +217,24 @@ export function usePhotoUpload({
               find_metadata_from_upload,
             }),
           };
-          localStorage.setItem(`match_${response.request_id}`, JSON.stringify(matchData));
+          try {
+            localStorage.setItem(`match_${response.request_id}`, JSON.stringify(matchData));
+          } catch {
+            // localStorage full — clear stale match entries and retry
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+              const key = localStorage.key(i);
+              if (key?.startsWith('match_') && key !== `match_${response.request_id}`) {
+                localStorage.removeItem(key);
+              }
+            }
+            try {
+              localStorage.setItem(`match_${response.request_id}`, JSON.stringify(matchData));
+            } catch {
+              setUploadState('error');
+              setUploadResponse('Browser storage is full. Please clear your browser data and try again.');
+              return;
+            }
+          }
 
           // Navigate to turtle match page with request_id
           navigate(`/admin/turtle-match/${response.request_id}`);

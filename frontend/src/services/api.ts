@@ -52,8 +52,11 @@ export {
   getTurtlePrimariesBatch,
   uploadTurtleAdditionalImages,
   deleteTurtleAdditionalImage,
+  classifyReviewPacket,
+  crossCheckReviewPacket,
 } from './api/turtle';
 export type {
+  PhotoType,
   TurtleMatch,
   UploadPhotoResponse,
   LocationHint,

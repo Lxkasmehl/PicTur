@@ -92,9 +92,9 @@ export function AdditionalImagesSection({
     }
   };
 
-  const handleAdd = async (type: 'microhabitat' | 'condition', files: FileList | null) => {
+  const handleAdd = async (type: 'microhabitat' | 'condition' | 'carapace' | 'plastron', files: FileList | null) => {
     if (!files?.length) return;
-    const toAdd: Array<{ type: 'microhabitat' | 'condition'; file: File }> = [];
+    const toAdd: Array<{ type: 'microhabitat' | 'condition' | 'carapace' | 'plastron'; file: File }> = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const validation = validateFile(file);
@@ -194,12 +194,52 @@ export function AdditionalImagesSection({
                 }}
               />
             </Button>
+            <Button
+              size="sm"
+              variant="light"
+              color="teal"
+              leftSection={<IconPhotoPlus size={14} />}
+              component="label"
+              loading={adding}
+              disabled={disabled}
+            >
+              Carapace
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => {
+                  handleAdd('carapace', e.target.files);
+                  e.target.value = '';
+                }}
+              />
+            </Button>
+            <Button
+              size="sm"
+              variant="light"
+              color="grape"
+              leftSection={<IconPhotoPlus size={14} />}
+              component="label"
+              loading={adding}
+              disabled={disabled}
+            >
+              Plastron
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => {
+                  handleAdd('plastron', e.target.files);
+                  e.target.value = '';
+                }}
+              />
+            </Button>
           </Group>
         )}
 
         {(images.length > 0 || canEdit) && (
           <Stack gap="sm">
-            {(['microhabitat', 'condition'] as const).map((t) => {
+            {(['microhabitat', 'condition', 'carapace', 'plastron'] as const).map((t) => {
               const list = byType(t);
               if (list.length === 0) return null;
               return (
