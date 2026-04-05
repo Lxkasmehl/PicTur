@@ -7,6 +7,7 @@ import {
   selectSheetInCreateTurtleDialog,
   registerKansasGeneralLocationsCatalogMock,
   pickKansasGeneralLocationInCreateTurtleDialog,
+  unlockUntilFieldEditable,
 } from './fixtures';
 
 /**
@@ -106,6 +107,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
     await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
 
+    await unlockUntilFieldEditable(page, dialog, 'Name');
     // Fill Name with an existing name (case-insensitive match)
     const nameInput = dialog.getByLabel('Name', { exact: true });
     await nameInput.fill('Master Oogway');
@@ -189,6 +191,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
     await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
 
+    await unlockUntilFieldEditable(page, dialog, 'Name');
     // Different casing than stored "Leonardo" – should still be treated as duplicate
     const nameInput = dialog.getByLabel('Name', { exact: true });
     await nameInput.fill('leonardo');
@@ -259,6 +262,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
     await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
 
+    await unlockUntilFieldEditable(page, dialog, 'Name');
     const nameInput = dialog.getByLabel('Name', { exact: true });
     await nameInput.fill('E2E Unique Turtle Name 999');
     await nameInput.dispatchEvent('blur');
@@ -350,6 +354,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
     await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
 
+    await unlockUntilFieldEditable(page, dialog, 'Name');
     const nameInput = dialog.getByLabel('Name', { exact: true });
     await nameInput.fill('Master Oogway');
     await nameInput.blur();
@@ -431,6 +436,7 @@ test.describe('Admin Create New Turtle – duplicate name validation', () => {
     // Do NOT wait for turtle-names. Select sheet, General Location, fill duplicate name, click submit immediately.
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
     await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
+    await unlockUntilFieldEditable(page, dialog, 'Name');
     const nameInput = dialog.getByLabel('Name', { exact: true });
     await nameInput.fill('Master Oogway');
     await nameInput.blur();

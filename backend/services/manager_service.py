@@ -53,7 +53,10 @@ def get_community_sheets_service():
         return None
     if community_sheets_service is None:
         try:
-            community_sheets_service = GoogleSheetsService(spreadsheet_id=community_id)
+            community_sheets_service = GoogleSheetsService(
+                spreadsheet_id=community_id,
+                apply_general_location_sheet_validation=False,
+            )
         except Exception as e:
             print(f"⚠️ Warning: Community Google Sheets not available: {e}")
             return None

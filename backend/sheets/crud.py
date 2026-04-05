@@ -7,6 +7,8 @@ from googleapiclient.errors import HttpError
 from .helpers import escape_sheet_name, get_sheet_name_for_region
 from .columns import COLUMN_MAPPING
 from .row_formatting import apply_deceased_row_background, is_deceased_yes
+from . import sheet_management
+from .value_normalize import format_field_value_for_sheet, normalize_turtle_row_after_read
 
 
 def get_turtle_data(service, spreadsheet_id: str, primary_id: str, sheet_name: str, 
@@ -42,7 +44,7 @@ def get_turtle_data(service, spreadsheet_id: str, primary_id: str, sheet_name: s
         ensure_primary_id_column_func(sheet_name)
         
         # Find the row using Primary ID column first, then fall back to ID column
-        # (biology ID like F001/M1). This handles the case where the AI match
+        # (biology ID like F001/M012). This handles the case where the AI match
         # system passes a folder name (biology ID) instead of the actual Primary ID.
         row_idx = find_row_by_primary_id_func(sheet_name, primary_id, 'Primary ID')
         if not row_idx:
@@ -80,7 +82,8 @@ def get_turtle_data(service, spreadsheet_id: str, primary_id: str, sheet_name: s
         turtle_data['primary_id'] = turtle_data.get('primary_id') or primary_id
         turtle_data['sheet_name'] = sheet_name
         turtle_data['row_index'] = row_idx
-        
+
+        normalize_turtle_row_after_read(turtle_data)
         return turtle_data
     except HttpError as e:
         print(f"Error getting turtle data: {e}")
@@ -89,7 +92,8 @@ def get_turtle_data(service, spreadsheet_id: str, primary_id: str, sheet_name: s
 
 def create_turtle_data(service, spreadsheet_id: str, turtle_data: Dict[str, Any], sheet_name: str,
                       state: Optional[str] = None, location: Optional[str] = None,
-                      ensure_primary_id_column_func=None, get_all_column_indices_func=None) -> Optional[str]:
+                      ensure_primary_id_column_func=None, get_all_column_indices_func=None,
+                      invalidate_column_indices_cache_func=None) -> Optional[str]:
     """
     Create a new turtle entry in Google Sheets.
     
@@ -118,6 +122,15 @@ def create_turtle_data(service, spreadsheet_id: str, turtle_data: Dict[str, Any]
         if not ensure_primary_id_column_func(sheet_name):
             print(f"ERROR in create_turtle_data: Could not ensure Primary ID column for sheet '{sheet_name}'")
             return None
+
+        sheet_management.ensure_missing_columns_for_turtle_write(
+            service,
+            spreadsheet_id,
+            sheet_name,
+            turtle_data,
+            get_all_column_indices_func,
+            invalidate_column_indices_cache_func,
+        )
         
         # Get column indices
         column_indices = get_all_column_indices_func(sheet_name)
@@ -148,7 +161,9 @@ def create_turtle_data(service, spreadsheet_id: str, turtle_data: Dict[str, Any]
             if header in COLUMN_MAPPING:
                 field_name = COLUMN_MAPPING[header]
                 if field_name in turtle_data:
-                    row_data[col_idx] = str(turtle_data[field_name])
+                    row_data[col_idx] = format_field_value_for_sheet(
+                        field_name, turtle_data[field_name]
+                    )
         
         # Ensure Primary ID is written (it's required)
         primary_id = turtle_data.get('primary_id') or turtle_data.get('id')
@@ -187,7 +202,8 @@ def create_turtle_data(service, spreadsheet_id: str, turtle_data: Dict[str, Any]
 def update_turtle_data(service, spreadsheet_id: str, primary_id: str, turtle_data: Dict[str, Any], sheet_name: str,
                       state: Optional[str] = None, location: Optional[str] = None,
                       ensure_primary_id_column_func=None, find_row_by_primary_id_func=None,
-                      get_all_column_indices_func=None) -> bool:
+                      get_all_column_indices_func=None,
+                      invalidate_column_indices_cache_func=None) -> bool:
     """
     Update existing turtle data in Google Sheets.
     
@@ -223,6 +239,15 @@ def update_turtle_data(service, spreadsheet_id: str, primary_id: str, turtle_dat
             row_idx = find_row_by_primary_id_func(sheet_name, primary_id, 'ID')
         if not row_idx:
             return False
+
+        sheet_management.ensure_missing_columns_for_turtle_write(
+            service,
+            spreadsheet_id,
+            sheet_name,
+            turtle_data,
+            get_all_column_indices_func,
+            invalidate_column_indices_cache_func,
+        )
         
         # Get column indices
         column_indices = get_all_column_indices_func(sheet_name)
@@ -249,7 +274,9 @@ def update_turtle_data(service, spreadsheet_id: str, primary_id: str, turtle_dat
                     # Extend row_data if necessary
                     while len(row_data) <= col_idx:
                         row_data.append('')
-                    row_data[col_idx] = str(turtle_data[field_name])
+                    row_data[col_idx] = format_field_value_for_sheet(
+                        field_name, turtle_data[field_name]
+                    )
         
         # Primary ID: keep existing cell if the row was matched via biology ID (ID column)
         if 'Primary ID' in column_indices:

@@ -152,6 +152,8 @@ export default function AdminTurtleMatchPage() {
       return;
     }
     setSelectedMatch(turtleId);
+    setSheetsData(null);
+    setPrimaryId(turtleId);
     setLoadingTurtleData(true);
 
     const match = matchData?.matches.find((m) => m.turtle_id === turtleId);
@@ -737,7 +739,7 @@ export default function AdminTurtleMatchPage() {
                   initialData={sheetsData || undefined}
                   sheetName={isMatchFromCommunity ? '' : (sheetsData?.sheet_name)}
                   primaryId={primaryId || undefined}
-                  mode={sheetsData ? 'edit' : 'create'}
+                  mode='edit'
                   onSave={handleSaveSheetsData}
                   hideSubmitButton={true}
                   onCombinedSubmit={handleSaveAndConfirm}
@@ -745,6 +747,7 @@ export default function AdminTurtleMatchPage() {
                   initialAvailableSheets={availableSheets.length > 0 ? availableSheets : undefined}
                   sheetSource="admin"
                   requireNewSheetForCommunityMatch={isMatchFromCommunity}
+                  matchPageColumnLayout
                 />
               </Paper>
 
@@ -939,6 +942,12 @@ export default function AdminTurtleMatchPage() {
             onSave={handleSaveNewTurtleSheetsData}
             onCancel={() => setShowNewTurtleModal(false)}
             useBackendLocations
+            sheetSource='admin'
+            addOnlyMode
+            matchPageColumnLayout
+            initialAvailableSheets={
+              availableSheets.length > 0 ? availableSheets : undefined
+            }
           />
         </Stack>
       </Modal>

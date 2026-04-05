@@ -42,6 +42,7 @@ export function useTurtleSheetsDataForm(
     useBackendLocations = false,
     sheetSource = 'admin',
     requireNewSheetForCommunityMatch = false,
+    matchPageColumnLayout = false,
   } = props;
 
   const [formData, setFormData] = useState<TurtleSheetsData>(initialData || {});
@@ -80,7 +81,12 @@ export function useTurtleSheetsDataForm(
   const generalLocationUseCatalog =
     sheetSource === 'admin' || useBackendLocations || requireNewSheetForCommunityMatch;
 
-  const isFieldModeRestricted = addOnlyMode && mode === 'edit';
+  /**
+   * Match layout: same read-only / unlock rules in create and edit (subset columns on Turtle Match).
+   * Legacy add-only (no match layout): only when editing.
+   */
+  const isFieldModeRestricted =
+    Boolean(matchPageColumnLayout) || (addOnlyMode && mode === 'edit');
   const isFieldUnlocked = (field: keyof TurtleSheetsData) => unlockedFields.has(field);
   const requestUnlock = (field: keyof TurtleSheetsData) => setUnlockConfirmField(field);
   const confirmUnlock = () => {
@@ -668,7 +674,7 @@ export function useTurtleSheetsDataForm(
     setLoading(true);
     try {
       let dataToSave = formData;
-      if (isFieldModeRestricted) {
+      if (isFieldModeRestricted && !matchPageColumnLayout) {
         const mergedNotes = [formData.notes, additionalNotes]
           .filter(Boolean)
           .join('\n\n');

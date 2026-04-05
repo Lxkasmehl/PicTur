@@ -5,13 +5,55 @@ Migration functions for Google Sheets
 import re
 import time
 import random
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 from googleapiclient.errors import HttpError
 from .helpers import escape_sheet_name, column_index_to_letter
 from .sheet_management import ensure_primary_id_column
 
-# Biology ID format: one letter + digits. When parsing max number we accept any letter (M/F/J/U).
+# Biology ID: one letter + digits (e.g. F1, F001). Legacy: Null.1, F.26
 BIOLOGY_ID_PATTERN = re.compile(r'^[A-Za-z](\d+)$')
+_NULL_BIOLOGY_PATTERN = re.compile(r'(?i)^null[.\s]*(\d+)$')
+_LETTER_DOT_DIGITS_PATTERN = re.compile(r'(?i)^([mfju])[.\s]+(\d+)$')
+
+
+def _parse_biology_id_parts(cell: str) -> Optional[Tuple[str, int]]:
+    """Return (M/F/J/U, sequence number) if cell looks like a biology ID, else None."""
+    c = (cell or '').strip()
+    if not c:
+        return None
+    m = BIOLOGY_ID_PATTERN.match(c)
+    if m:
+        letter = c[0].upper()
+        if letter not in ('M', 'F', 'J', 'U'):
+            letter = 'U'
+        return letter, int(m.group(1))
+    m = _NULL_BIOLOGY_PATTERN.match(c)
+    if m:
+        return 'U', int(m.group(1))
+    m = _LETTER_DOT_DIGITS_PATTERN.match(c)
+    if m:
+        return m.group(1).upper(), int(m.group(2))
+    return None
+
+
+def normalize_biology_id_display(cell: str) -> str:
+    """
+    Canonical form: one of MFJU + three-digit sequence (F001, M026).
+    Unrecognized values are returned stripped unchanged.
+    """
+    parsed = _parse_biology_id_parts(cell)
+    if not parsed:
+        return (cell or '').strip()
+    letter, num = parsed
+    return f'{letter}{num:03d}'
+
+
+def _biology_id_sequence_number(cell: str) -> Optional[int]:
+    """Numeric suffix for max-ID scan (shared sequence across M/F/J/U in a tab)."""
+    parsed = _parse_biology_id_parts(cell)
+    if not parsed:
+        return None
+    return parsed[1]
 
 
 def generate_primary_id(service, spreadsheet_id: str, list_sheets_func=None, find_row_by_primary_id_func=None,
@@ -42,7 +84,7 @@ def get_max_biology_id_number(service, spreadsheet_id: str, sheet_name: str,
                                get_all_column_indices_func=None) -> int:
     """
     Scan the "ID" column in the given sheet only and return the highest numeric part.
-    IDs are expected to match format: one letter + digits (e.g. F1, M2, U10).
+    Accepts F1/F001, F.26, Null.1 (treated as U…), etc., consistent with normalize_biology_id_display.
     Retries on 429 (rate limit) to avoid returning 0 and causing duplicate biology IDs.
 
     Args:
@@ -102,11 +144,9 @@ def get_max_biology_id_number(service, spreadsheet_id: str, sheet_name: str,
             cell = (raw or '').strip()
             if not cell:
                 continue
-            match = BIOLOGY_ID_PATTERN.match(cell)
-            if match:
-                num = int(match.group(1))
-                if num > max_num:
-                    max_num = num
+            num = _biology_id_sequence_number(cell)
+            if num is not None and num > max_num:
+                max_num = num
         return max_num
     except HttpError as e:
         print(f"Warning: Error reading ID column from sheet '{sheet_name}': {e}")
@@ -130,7 +170,7 @@ def generate_biology_id(service, spreadsheet_id: str, sheet_name: str,
         gender: One of 'M', 'F', 'J', 'U' (Male, Female, Juvenile, Unknown). Default 'U'.
 
     Returns:
-        New ID string (e.g. 'M1', 'F2', 'J3', 'U4').
+        New ID string (e.g. 'M001', 'F002', 'J003', 'U004').
     """
     prefix = (gender or 'U').upper()
     if prefix not in ('M', 'F', 'J', 'U'):
@@ -139,7 +179,7 @@ def generate_biology_id(service, spreadsheet_id: str, sheet_name: str,
         service, spreadsheet_id, sheet_name, get_all_column_indices_func
     )
     next_num = max_num + 1
-    return f"{prefix}{next_num}"
+    return f'{prefix}{next_num:03d}'
 
 
 def needs_migration(service, spreadsheet_id: str, list_sheets_func=None, ensure_primary_id_column_func=None) -> bool:
@@ -171,7 +211,7 @@ def needs_migration(service, spreadsheet_id: str, list_sheets_func=None, ensure_
                 
                 # Get all rows from the sheet
                 escaped_sheet = escape_sheet_name(sheet_name)
-                range_name = f"{escaped_sheet}!A:Z"
+                range_name = f"{escaped_sheet}!A:ZZ"
                 result = service.spreadsheets().values().get(
                     spreadsheetId=spreadsheet_id,
                     range=range_name
@@ -254,7 +294,7 @@ def migrate_ids_to_primary_ids(service, spreadsheet_id: str, list_sheets_func=No
                 
                 # Get all rows from the sheet
                 escaped_sheet = escape_sheet_name(sheet_name)
-                range_name = f"{escaped_sheet}!A:Z"
+                range_name = f"{escaped_sheet}!A:ZZ"
                 result = service.spreadsheets().values().get(
                     spreadsheetId=spreadsheet_id,
                     range=range_name

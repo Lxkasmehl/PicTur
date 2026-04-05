@@ -6,6 +6,8 @@ import {
   getTestImageBuffer,
   clickUploadPhotoButton,
   selectSheetInCreateTurtleDialog,
+  unlockUntilFieldEditable,
+  GENERAL_LOCATION_LABEL,
 } from './fixtures';
 
 test.describe('Admin Turtle Match', () => {
@@ -194,6 +196,8 @@ test.describe('Admin Turtle Match', () => {
     await page.getByRole('button', { name: 'Create New Turtle' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
+
+    await unlockUntilFieldEditable(page, dialog, GENERAL_LOCATION_LABEL);
 
     const generalLocationField = dialog.getByLabel(/General Location/);
     await expect(generalLocationField).toBeVisible({ timeout: 10_000 });

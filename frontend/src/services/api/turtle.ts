@@ -63,6 +63,12 @@ export interface ReviewQueueItem {
     confidence: number;
     image_path: string;
   }>;
+  /** True while SuperPoint matching has not finished (candidate_matches dir not created yet). */
+  match_search_pending?: boolean;
+  /** True when matching errored before candidate_matches was created (see match_search_error). */
+  match_search_failed?: boolean;
+  /** Server error message when match_search_failed is true. */
+  match_search_error?: string | null;
   status: string;
 }
 

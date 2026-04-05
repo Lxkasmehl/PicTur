@@ -10,9 +10,8 @@ import sys
 import config
 
 # Import Flask and CORS
-from flask import Flask, request, jsonify, send_file
+from flask import Flask
 from flask_cors import CORS
-from werkzeug.serving import make_server
 
 # Fix Unicode encoding issues on Windows
 if sys.platform == 'win32':

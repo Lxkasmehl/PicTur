@@ -14,6 +14,7 @@ from services.manager_service import get_sheets_service, get_community_sheets_se
 from general_locations_catalog import resolve_general_location_from_sheet_and_value
 from sheets import sheet_management
 from sheets import lookup as sheets_lookup
+from sheets.value_normalize import normalize_turtle_row_after_read
 
 # Timeout for single attempt to find sheet + get turtle data (avoids hanging on SSL/slow API)
 SHEETS_TURTLE_DATA_TIMEOUT_SEC = 25
@@ -827,7 +828,7 @@ def register_sheets_routes(app):
                     escaped_sheet = sheet
                     if any(char in sheet for char in [' ', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '+', '=']):
                         escaped_sheet = f"'{sheet}'"
-                    range_name = f"{escaped_sheet}!A:Z"
+                    range_name = f"{escaped_sheet}!A:ZZ"
                     result = service.service.spreadsheets().values().get(
                         spreadsheetId=service.spreadsheet_id,
                         range=range_name
@@ -856,6 +857,8 @@ def register_sheets_routes(app):
                                 field_name = service.COLUMN_MAPPING[header]
                                 value = row_data[col_idx] if col_idx < len(row_data) else ''
                                 turtle_data[field_name] = value.strip() if value else ''
+
+                        normalize_turtle_row_after_read(turtle_data)
                         
                         # Primary ID should come from "Primary ID" column, not "ID" column
                         primary_id = turtle_data.get('primary_id')
@@ -927,7 +930,7 @@ def register_sheets_routes(app):
                                 escaped_sheet = sheet
                                 if any(char in sheet for char in [' ', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '+', '=']):
                                     escaped_sheet = f"'{sheet}'"
-                                range_name = f"{escaped_sheet}!A:Z"
+                                range_name = f"{escaped_sheet}!A:ZZ"
                                 result = service.get_sheet_values(range_name)
                                 if not result:
                                     sheet_ok = True

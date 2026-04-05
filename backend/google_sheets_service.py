@@ -14,7 +14,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 # Import modules
-from sheets.columns import COLUMN_MAPPING, FIELD_TO_COLUMN
+from sheets.columns import CANONICAL_COLUMN_ORDER, COLUMN_MAPPING, FIELD_TO_COLUMN
 from sheets import helpers
 from sheets import crud
 from sheets import migration
@@ -36,13 +36,21 @@ class GoogleSheetsService:
     # Reentrant lock for all Google Sheets API access (avoids SSL/connection errors from concurrent use)
     LIST_SHEETS_CACHE_TTL_SEC = 30
 
-    def __init__(self, spreadsheet_id: Optional[str] = None, credentials_path: Optional[str] = None):
+    def __init__(
+        self,
+        spreadsheet_id: Optional[str] = None,
+        credentials_path: Optional[str] = None,
+        *,
+        apply_general_location_sheet_validation: bool = True,
+    ):
         """
         Initialize Google Sheets Service.
         
         Args:
             spreadsheet_id: Google Sheets spreadsheet ID (from URL)
             credentials_path: Path to service account credentials JSON file
+            apply_general_location_sheet_validation: If False (community spreadsheet), do not set or keep
+                catalog dropdowns on the General Location column in Google Sheets.
         """
         self.spreadsheet_id = spreadsheet_id or os.environ.get('GOOGLE_SHEETS_SPREADSHEET_ID')
         if not self.spreadsheet_id:
@@ -76,6 +84,10 @@ class GoogleSheetsService:
             self.service = build('sheets', 'v4', credentials=credentials)
         except Exception as e:
             raise Exception(f"Failed to authenticate with Google Sheets: {str(e)}")
+
+        # Research spreadsheet: sync catalog-based dropdown on "General Location".
+        # Community spreadsheet: free-text general locations (no admin catalog validation in Sheets).
+        self.apply_general_location_sheet_validation = apply_general_location_sheet_validation
 
     # Helper methods that delegate to module functions
     def _escape_sheet_name(self, sheet_name: str) -> str:
@@ -189,10 +201,22 @@ class GoogleSheetsService:
                     self.list_sheets,
                     self._invalidate_column_indices_cache,
                 )
-            return crud.create_turtle_data(
+            created = crud.create_turtle_data(
                 self.service, self.spreadsheet_id, turtle_data, sheet_name, state, location,
-                self._ensure_primary_id_column, self._get_all_column_indices
+                self._ensure_primary_id_column, self._get_all_column_indices,
+                self._invalidate_column_indices_cache,
             )
+            if created and not self.apply_general_location_sheet_validation:
+                try:
+                    sheet_management.clear_general_location_validation(
+                        self.service, self.spreadsheet_id, sheet_name
+                    )
+                except Exception as clear_err:
+                    print(
+                        f"WARNING: Could not clear General Location dropdown on community sheet "
+                        f"'{sheet_name}': {clear_err}"
+                    )
+            return created
     
     def update_turtle_data(self, primary_id: str, turtle_data: Dict[str, Any], sheet_name: str, state: Optional[str] = None, location: Optional[str] = None) -> bool:
         """Update existing turtle data in Google Sheets."""
@@ -205,10 +229,22 @@ class GoogleSheetsService:
                     self.list_sheets,
                     self._invalidate_column_indices_cache,
                 )
-            return crud.update_turtle_data(
+            ok = crud.update_turtle_data(
                 self.service, self.spreadsheet_id, primary_id, turtle_data, sheet_name, state, location,
-                self._ensure_primary_id_column, self._find_row_by_primary_id, self._get_all_column_indices
+                self._ensure_primary_id_column, self._find_row_by_primary_id, self._get_all_column_indices,
+                self._invalidate_column_indices_cache,
             )
+            if ok and not self.apply_general_location_sheet_validation:
+                try:
+                    sheet_management.clear_general_location_validation(
+                        self.service, self.spreadsheet_id, sheet_name
+                    )
+                except Exception as clear_err:
+                    print(
+                        f"WARNING: Could not clear General Location dropdown on community sheet "
+                        f"'{sheet_name}': {clear_err}"
+                    )
+            return ok
     
     def delete_turtle_data(self, primary_id: str, sheet_name: str) -> bool:
         """Delete turtle data from Google Sheets by removing the entire row."""
@@ -313,7 +349,13 @@ class GoogleSheetsService:
         """Create a new sheet (tab) with all required headers."""
         with self._api_lock:
             result = sheet_management.create_sheet_with_headers(
-                self.service, self.spreadsheet_id, sheet_name, self.COLUMN_MAPPING, self.list_sheets
+                self.service,
+                self.spreadsheet_id,
+                sheet_name,
+                self.COLUMN_MAPPING,
+                self.list_sheets,
+                header_order=list(CANONICAL_COLUMN_ORDER),
+                apply_general_location_validation=self.apply_general_location_sheet_validation,
             )
             if result:
                 self._invalidate_list_sheets_cache()

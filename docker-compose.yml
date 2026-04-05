@@ -33,7 +33,16 @@ services:
       # Optional: Google OAuth (set in .env for login with Google)
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Public base URL of the auth API (no trailing slash). Used for Google OAuth if GOOGLE_CALLBACK_URL is unset.
+      AUTH_BACKEND_URL: ${AUTH_BACKEND_URL:-}
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-}
+      # Optional SMTP (set in project root .env for Docker; same vars as auth-backend/.env locally)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     volumes:
       - auth-data:/app/data
 

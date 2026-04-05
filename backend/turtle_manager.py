@@ -48,10 +48,12 @@ def _safe_folder_name(sheet_name):
 # Flat structure: when drive has location folders directly at root (no State parent),
 # map each folder name to "State/Location". Takes precedence over hierarchical logic.
 DRIVE_LOCATION_TO_BACKEND_PATH = {
-    "North Topeka": "Kansas/North Topeka",
-    "Lawrence": "Kansas/Lawrence",
+    "Dee Hobelman": "Kansas/Dee Hobelman",
     "Karlyle Woods": "Kansas/Karlyle Woods",
-    "Valencia": "Kansas/Valencia",
+    "Lawrence": "Kansas/Lawrence",
+    "North Topeka": "Kansas/North Topeka",
+    "Other": "Kansas/Other",
+    "West Topeka": "Kansas/West Topeka",
     "CPBS": "NebraskaCPBS/CPBS",
     "Crescent Lake": "NebraskaCL/Crescent Lake",
 }
@@ -376,50 +378,63 @@ class TurtleManager:
         if req_id is None:
             req_id = f"Req_{int(time.time() * 1000)}_{safe_name}_{uuid.uuid4().hex[:6]}"
         packet_dir = os.path.join(self.review_queue_dir, req_id)
-        os.makedirs(packet_dir, exist_ok=True)
-
-        # 1. Copy the raw uploaded image into the packet
-        shutil.copy2(image_path, packet_dir)
-
-        # 2. Run the AI Search to find candidates
-        print(f"🔍 Generating candidates for Review Packet: {req_id}...")
-        results, _ = self.search_for_matches(image_path)
-
-        # 3. Create candidate directory and populate it
         candidates_dir = os.path.join(packet_dir, 'candidate_matches')
-        os.makedirs(candidates_dir, exist_ok=True)
 
-        for rank, match in enumerate(results, start=1):
-            turtle_id = match.get('site_id', 'Unknown')
-            score = int(match.get('score', 0))
-            pt_path = match.get('file_path', '')
+        try:
+            os.makedirs(packet_dir, exist_ok=True)
 
-            # Resolve original image
-            ref_img_path = None
-            if pt_path and pt_path.endswith('.pt'):
-                base_path = pt_path[:-3]
-                for ext in ['.jpg', '.jpeg', '.png']:
-                    if os.path.exists(base_path + ext):
-                        ref_img_path = base_path + ext
-                        break
+            # 1. Copy the raw uploaded image into the packet
+            shutil.copy2(image_path, packet_dir)
 
-            if ref_img_path:
-                ext = os.path.splitext(ref_img_path)[1]
-                conf_int = int(round(match.get('confidence', 0.0) * 100))
-                cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
-                shutil.copy2(ref_img_path, os.path.join(candidates_dir, cand_filename))
+            # 2. Run the AI Search to find candidates
+            print(f"🔍 Generating candidates for Review Packet: {req_id}...")
+            results, _ = self.search_for_matches(image_path)
 
-        # 4. Dump metadata for the frontend
-        meta = user_info if user_info else {}
-        with open(os.path.join(packet_dir, 'metadata.json'), 'w') as f:
-            json.dump(meta, f)
+            # 3. Create candidate directory and populate it
+            os.makedirs(candidates_dir, exist_ok=True)
 
-        # 5. Create additional_images dir (Partner's Dashboard Support)
-        additional_dir = os.path.join(packet_dir, 'additional_images')
-        os.makedirs(additional_dir, exist_ok=True)
+            for rank, match in enumerate(results, start=1):
+                turtle_id = match.get('site_id', 'Unknown')
+                score = int(match.get('score', 0))
+                pt_path = match.get('file_path', '')
 
-        print(f"📦 Review Packet {req_id} created with {len(results)} candidates.")
-        return req_id
+                # Resolve original image
+                ref_img_path = None
+                if pt_path and pt_path.endswith('.pt'):
+                    base_path = pt_path[:-3]
+                    for ext in ['.jpg', '.jpeg', '.png']:
+                        if os.path.exists(base_path + ext):
+                            ref_img_path = base_path + ext
+                            break
+
+                if ref_img_path:
+                    ext = os.path.splitext(ref_img_path)[1]
+                    conf_int = int(round(match.get('confidence', 0.0) * 100))
+                    cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
+                    shutil.copy2(ref_img_path, os.path.join(candidates_dir, cand_filename))
+
+            # 4. Dump metadata for the frontend
+            meta = user_info if user_info else {}
+            with open(os.path.join(packet_dir, 'metadata.json'), 'w') as f:
+                json.dump(meta, f)
+
+            # 5. Create additional_images dir (Partner's Dashboard Support)
+            additional_dir = os.path.join(packet_dir, 'additional_images')
+            os.makedirs(additional_dir, exist_ok=True)
+
+            print(f"📦 Review Packet {req_id} created with {len(results)} candidates.")
+            return req_id
+        except Exception as e:
+            # Background uploads swallow exceptions; without this marker, the API treats
+            # a missing candidate_matches dir as "still matching" forever.
+            if os.path.isdir(packet_dir) and not os.path.isdir(candidates_dir):
+                fail_path = os.path.join(packet_dir, 'match_search_failed.json')
+                try:
+                    with open(fail_path, 'w', encoding='utf-8') as f:
+                        json.dump({'error': str(e)}, f)
+                except OSError:
+                    pass
+            raise
 
     def get_review_queue(self):
         """Scans the 'Review_Queue' folder and returns the list of pending requests."""

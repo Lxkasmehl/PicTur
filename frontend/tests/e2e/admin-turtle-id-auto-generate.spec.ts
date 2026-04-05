@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import {
   loginAsAdmin,
   grantLocationPermission,
@@ -17,6 +17,54 @@ import {
 
 const MOCK_BIOLOGY_ID = 'F42';
 
+/** Admin/staff navigation to Turtle Match only happens after POST /upload returns success + request_id. */
+async function mockAdminUploadNavigatesToMatch(page: Page, requestId: string) {
+  await page.route('**/api/upload**', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        request_id: requestId,
+        uploaded_image_path: `Review_Queue/${requestId}/query.jpg`,
+        matches: [],
+        message: 'Uploaded',
+      }),
+    });
+  });
+}
+
+/** Turtle Match calls GET /api/review-queue/:id; synthetic upload ids are not on the real server. */
+async function mockReviewQueuePacket(page: Page, requestId: string) {
+  const suffix = `/api/review-queue/${encodeURIComponent(requestId)}`;
+  await page.route('**/api/review-queue/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path !== suffix || route.request().method() !== 'GET') {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        item: {
+          request_id: requestId,
+          uploaded_image: `Review_Queue/${requestId}/query.jpg`,
+          metadata: {},
+          additional_images: [],
+          candidates: [],
+          status: 'pending',
+        },
+      }),
+    });
+  });
+}
+
 test.describe('Admin Create New Turtle – auto-generated ID field', () => {
   test.beforeEach(async ({ page }) => {
     await registerKansasGeneralLocationsCatalogMock(page);
@@ -29,8 +77,11 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
   }) => {
     test.setTimeout(90_000);
 
+    await mockAdminUploadNavigatesToMatch(page, 'admin-id-auto-e2e-a');
+    await mockReviewQueuePacket(page, 'admin-id-auto-e2e-a');
+
     // Mock generate-id so the form gets a predictable biology ID preview (match any base URL)
-    await page.route('**/sheets/generate-id', async (route) => {
+    await page.route('**/api/sheets/generate-id', async (route) => {
       if (route.request().method() === 'POST') {
         await route.fulfill({
           status: 200,
@@ -62,8 +113,8 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
       }
     });
 
-    // Create New Turtle uses useBackendLocations and GET /api/locations.
-    // Mock backend paths (State or State/Location); test selects "Kansas".
+    // Admin Turtle Match passes initialAvailableSheets from Redux (GET /api/sheets/sheets),
+    // so the create dialog often skips GET /api/locations. Mock if something still requests it.
     await page.route('**/api/locations', async (route) => {
       if (route.request().method() === 'GET') {
         await route.fulfill({
@@ -93,49 +144,38 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
     });
     await page.waitForSelector('button:has-text("Upload Photo")', { timeout: 5000 });
     await clickUploadPhotoButton(page);
-    await expect(page).toHaveURL(/\/admin\/turtle-match\/[^/]+/, { timeout: 30_000 });
+    await page.waitForURL(/\/admin\/turtle-match\/admin-id-auto-e2e-a$/, { timeout: 30_000 });
     await expect(page.getByRole('heading', { name: /Turtle Match Review/ })).toBeVisible({
       timeout: 15_000,
     });
 
     const createBtn = page.getByRole('button', { name: 'Create New Turtle' });
     await expect(createBtn).toBeVisible({ timeout: 15_000 });
-
-    const locationsResponse = page.waitForResponse(
-      (resp) => resp.url().includes('/api/locations') && resp.status() === 200,
-      { timeout: 15_000 },
-    );
     await createBtn.click();
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Create New Turtle' })).toBeVisible();
-    await locationsResponse;
 
-    // Wait for generate-id request so we know the app requested an ID before asserting the field
-    const generateIdResponse = page.waitForResponse(
-      (resp) => resp.url().includes('generate-id') && resp.status() === 200,
-      { timeout: 20_000 },
-    );
-
-    // Select sheet (Kansas) then sex (F) – this triggers generate-id in the app
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
     await selectSexInCreateTurtleDialog(page, dialog, 'F');
-    await generateIdResponse;
 
-    // Wait for UI outcome: ID field shows auto-generated value and is disabled
+    // UI assertion (covers WebKit): do not race waitForResponse with long unlock chains — that can time out before Sex is editable.
     const idField = dialog.getByLabel('ID', { exact: true });
-    await expect(idField).toHaveValue(MOCK_BIOLOGY_ID, { timeout: 15_000 });
+    await expect(idField).toHaveValue(MOCK_BIOLOGY_ID, { timeout: 25_000 });
     await expect(idField).toBeDisabled();
 
     // Create mode: ID description explains auto-generation (branch: ID always read-only)
     await expect(
-      dialog.getByText('Auto-generated from sex + sequence for this sheet (e.g. M1, F2)'),
+      dialog.getByText('Auto-generated from sex + sequence for this sheet (e.g. M001, F002)'),
     ).toBeVisible();
   });
 
   test('ID preview updates when sex changes (M -> F)', async ({ page }) => {
     test.setTimeout(90_000);
+
+    await mockAdminUploadNavigatesToMatch(page, 'admin-id-auto-e2e-b');
+    await mockReviewQueuePacket(page, 'admin-id-auto-e2e-b');
 
     let callCount = 0;
     await page.route('**/api/sheets/generate-id', async (route) => {
@@ -205,16 +245,11 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
     });
     await page.waitForSelector('button:has-text("Upload Photo")', { timeout: 5000 });
     await clickUploadPhotoButton(page);
-    await expect(page).toHaveURL(/\/admin\/turtle-match\/[^/]+/, { timeout: 30_000 });
+    await page.waitForURL(/\/admin\/turtle-match\/admin-id-auto-e2e-b$/, { timeout: 30_000 });
 
-    const locationsResponse = page.waitForResponse(
-      (resp) => resp.url().includes('/api/locations') && resp.status() === 200,
-      { timeout: 15_000 },
-    );
     await page.getByRole('button', { name: 'Create New Turtle' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
-    await locationsResponse;
 
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
 

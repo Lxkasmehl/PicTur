@@ -9,44 +9,12 @@ import { TURTLE_SHEETS_FORM_FIELDS } from './turtleSheetsDataFormFieldsConfig';
 import type { FieldSpan } from './turtleSheetsDataFormFieldsConfig';
 import { CommunityLocationHint } from './TurtleSheetsDataFormSections';
 import type { TurtleSheetsDataFormFieldsProps } from './TurtleSheetsDataForm.types';
-
-const FORM_FIELD_ORDER: (keyof TurtleSheetsData | '__dates_refound__' | '__community_hint__' | '__notes__')[] = [
-  'id',
-  'id2',
-  'transmitter_id',
-  'transmitter_type',
-  'name',
-  'sex',
-  'species',
-  'date_1st_found',
-  '__dates_refound__',
-  '__community_hint__',
-  'general_location',
-  'location',
-  'health_status',
-  'deceased',
-  'mass_g',
-  'curved_carapace_length_mm',
-  'straight_carapace_length_mm',
-  'carapace_width_mm',
-  'curved_plastron_length_mm',
-  'straight_plastron_length_mm',
-  'plastron_width_mm',
-  'dome_height_mm',
-  'pit',
-  'pic_in_2024_archive',
-  'adopted',
-  'ibutton',
-  'dna_extracted',
-  'ibutton_last_set',
-  'last_assay_date',
-  'transmitter_lifespan',
-  'transmitter_on_date',
-  'radio_replace_date',
-  'transmitter_put_on_by',
-  'old_frequencies',
-  '__notes__',
-];
+import {
+  FULL_SHEET_FORM_FIELD_ORDER,
+  TURTLE_MATCH_PAGE_FORM_ORDER,
+  TURTLE_MATCH_PAGE_UNLOCKABLE_FIELDS,
+} from './turtleSheetsFormLayout';
+import type { TurtleFormOrderKey } from './turtleSheetsFormLayout';
 
 const configByKey = Object.fromEntries(
   TURTLE_SHEETS_FORM_FIELDS.map((c) => [c.key, c]),
@@ -82,10 +50,33 @@ export function TurtleSheetsDataFormFields({
   generalLocationStateLabel = '',
   onCreateGeneralLocation,
   generalLocationSelectRemountKey,
+  matchPageColumnLayout = false,
 }: TurtleSheetsDataFormFieldsProps) {
-  // When moving community turtle to admin, sheet and general_location must be editable without unlock
+  const useMatchEditLocks = matchPageColumnLayout && isFieldModeRestricted;
+
   const effectiveRestrictedForField = (field: keyof TurtleSheetsData) =>
     requireNewSheetForCommunityMatch && field === 'general_location' ? false : isFieldModeRestricted;
+
+  /** Edit match: hard read-only (no unlock). Create match: never; those fields use unlock instead. */
+  const matchReadOnlyDisplay = (field: keyof TurtleSheetsData): boolean => {
+    if (!useMatchEditLocks) return false;
+    if (mode === 'create') return false;
+    if (requireNewSheetForCommunityMatch && field === 'general_location') return false;
+    return !TURTLE_MATCH_PAGE_UNLOCKABLE_FIELDS.has(field);
+  };
+
+  const matchRestrictedForUnlock = (field: keyof TurtleSheetsData): boolean => {
+    if (!useMatchEditLocks) return effectiveRestrictedForField(field);
+    if (requireNewSheetForCommunityMatch && field === 'general_location') return false;
+    if (field === 'id') return false;
+    if (mode === 'create') return true;
+    return TURTLE_MATCH_PAGE_UNLOCKABLE_FIELDS.has(field);
+  };
+
+  const formFieldOrder: TurtleFormOrderKey[] = matchPageColumnLayout
+    ? TURTLE_MATCH_PAGE_FORM_ORDER
+    : FULL_SHEET_FORM_FIELD_ORDER;
+
   return (
     <>
       {primaryId && (
@@ -99,10 +90,32 @@ export function TurtleSheetsDataFormFields({
         </Grid.Col>
       )}
 
-      {FORM_FIELD_ORDER.map((key) => {
+      {formFieldOrder.map((key) => {
         if (key === '__dates_refound__') {
+          if (matchPageColumnLayout) {
+            const cfg = configByKey.dates_refound;
+            const span = toSpan(cfg.span);
+            return (
+              <Grid.Col key='dates_refound_match' span={span}>
+                <TurtleFormField
+                  field='dates_refound'
+                  label={cfg.label}
+                  placeholder={cfg.placeholder}
+                  description={cfg.description}
+                  value={formData.dates_refound || ''}
+                  onChange={(v) => handleChange('dates_refound', v)}
+                  type={cfg.type}
+                  isFieldModeRestricted={matchRestrictedForUnlock('dates_refound')}
+                  isFieldUnlocked={isFieldUnlocked}
+                  requestUnlock={requestUnlock}
+                  readOnlyDisplay={matchReadOnlyDisplay('dates_refound')}
+                  error={errors?.dates_refound}
+                />
+              </Grid.Col>
+            );
+          }
           return (
-            <Grid.Col key="dates_refound" span={{ base: 12, md: 6 }}>
+            <Grid.Col key='dates_refound' span={{ base: 12, md: 6 }}>
               {isFieldModeRestricted ? (
                 <>
                   <TextInput
@@ -122,7 +135,7 @@ export function TurtleSheetsDataFormFields({
                 </>
               ) : (
                 <TextInput
-                  label='Dates Refound'
+                  label='Dates refound'
                   placeholder='Comma-separated dates'
                   value={formData.dates_refound || ''}
                   onChange={(e) => handleChange('dates_refound', e.target.value)}
@@ -135,7 +148,7 @@ export function TurtleSheetsDataFormFields({
         if (key === '__community_hint__') {
           if (!hintLocationFromCommunity && !hintCoordinates) return null;
           return (
-            <Grid.Col key="community_hint" span={12}>
+            <Grid.Col key='community_hint' span={12}>
               <CommunityLocationHint
                 hintLocationFromCommunity={hintLocationFromCommunity}
                 hintCoordinates={hintCoordinates}
@@ -145,8 +158,30 @@ export function TurtleSheetsDataFormFields({
         }
 
         if (key === '__notes__') {
+          if (matchPageColumnLayout) {
+            const cfg = configByKey.notes;
+            const span = toSpan(cfg.span);
+            return (
+              <Grid.Col key='notes_match' span={span}>
+                <TurtleFormField
+                  field='notes'
+                  label={cfg.label}
+                  placeholder={cfg.placeholder}
+                  description={cfg.description}
+                  value={formData.notes || ''}
+                  onChange={(v) => handleChange('notes', v)}
+                  type='textarea'
+                  isFieldModeRestricted={matchRestrictedForUnlock('notes')}
+                  isFieldUnlocked={isFieldUnlocked}
+                  requestUnlock={requestUnlock}
+                  readOnlyDisplay={matchReadOnlyDisplay('notes')}
+                  error={errors?.notes}
+                />
+              </Grid.Col>
+            );
+          }
           return (
-            <Grid.Col key="notes" span={12}>
+            <Grid.Col key='notes' span={12}>
               {isFieldModeRestricted ? (
                 <>
                   <Textarea
@@ -197,6 +232,12 @@ export function TurtleSheetsDataFormFields({
                 ? 'Required for backend path (State/Location).'
                 : config.description;
 
+        const readOnlyDisplayField = useMatchEditLocks && matchReadOnlyDisplay(config.key);
+
+        const restrictedForField = useMatchEditLocks
+          ? matchRestrictedForUnlock(config.key)
+          : effectiveRestrictedForField(config.key);
+
         return (
           <Grid.Col key={config.key} span={span}>
             <TurtleFormField
@@ -205,7 +246,7 @@ export function TurtleSheetsDataFormFields({
               placeholder={config.placeholder}
               description={
                 config.key === 'id' && mode === 'create'
-                  ? 'Auto-generated from sex + sequence for this sheet (e.g. M1, F2)'
+                  ? 'Auto-generated from sex + sequence for this sheet (e.g. M001, F002)'
                   : generalLocationDescription
               }
               infoTooltip={config.infoTooltip}
@@ -213,9 +254,10 @@ export function TurtleSheetsDataFormFields({
               onChange={(v) => handleChange(config.key, v)}
               type={generalLocationAsSelect ? 'select' : config.type}
               selectData={generalLocationAsSelect ? generalLocationOptions : config.selectData}
-              isFieldModeRestricted={effectiveRestrictedForField(config.key)}
+              isFieldModeRestricted={restrictedForField}
               isFieldUnlocked={isFieldUnlocked}
               requestUnlock={requestUnlock}
+              readOnlyDisplay={readOnlyDisplayField}
               disabled={
                 config.key === 'id' ||
                 (generalLocationAsSelect && (generalLocationLocked || generalLocationLoading))

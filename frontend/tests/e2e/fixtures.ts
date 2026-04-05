@@ -182,6 +182,43 @@ const SHEET_SELECT_LABEL = 'Sheet / Location';
 const SHEET_DROPDOWN_TIMEOUT = 20_000;
 
 /**
+ * Turtle Match “Create New Turtle” modal uses unlock-to-edit for most fields. Repeatedly
+ * confirms “Unlock editing” until the labeled control is enabled. No-ops if already enabled
+ * or if no unlock buttons exist (e.g. full Turtle Records form without match layout).
+ */
+export async function unlockUntilFieldEditable(
+  page: Page,
+  dialog: Locator,
+  label: string | RegExp,
+): Promise<void> {
+  const field =
+    typeof label === 'string' ? dialog.getByLabel(label, { exact: true }) : dialog.getByLabel(label);
+  await field.waitFor({ state: 'visible', timeout: SHEET_DROPDOWN_TIMEOUT });
+  for (let i = 0; i < 60; i += 1) {
+    if (await field.isEnabled()) return;
+    // Mantine Grid.Col wraps each field; unlock the control in the same column (not dialog.first(),
+    // which always targets the earliest locked field and breaks when many rows need unlocking).
+    const cell = field.locator('xpath=ancestor::div[contains(@class,"Grid-col")][1]');
+    const unlockInCell = cell.getByRole('button', { name: 'Unlock editing' });
+    const unlockVisible = await unlockInCell.isVisible().catch(() => false);
+    const unlockBtn = unlockVisible
+      ? unlockInCell
+      : dialog.getByRole('button', { name: 'Unlock editing' }).first();
+    if (!(await unlockBtn.isVisible().catch(() => false))) {
+      throw new Error(
+        `Field is disabled but no "Unlock editing" button found (label=${String(label)}, step=${i})`,
+      );
+    }
+    await unlockBtn.click();
+    const confirmModal = page.getByRole('dialog', { name: 'Unlock editing' });
+    await confirmModal.waitFor({ state: 'visible', timeout: 10_000 });
+    await confirmModal.getByRole('button', { name: 'I understand, unlock editing' }).click();
+    await confirmModal.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
+  }
+  throw new Error(`Field still disabled after max unlock steps: ${String(label)}`);
+}
+
+/**
  * In the Create New Turtle dialog, select a sheet (e.g. "Kansas").
  * On mobile we use NativeSelect (native <select>); on desktop, Mantine Select (textbox + listbox).
  * Uses getByLabel so the same helper works for both.
@@ -240,6 +277,7 @@ export async function selectGeneralLocationInCreateTurtleDialog(
   dialog: ReturnType<Page['getByRole']>,
   locationName: string,
 ): Promise<void> {
+  await unlockUntilFieldEditable(page, dialog, GENERAL_LOCATION_LABEL);
   const labeled = dialog.getByLabel(GENERAL_LOCATION_LABEL);
   await labeled.waitFor({ state: 'visible', timeout: GENERAL_LOCATION_DROPDOWN_TIMEOUT });
   const tag = await labeled.evaluate((el) => el.tagName.toUpperCase());
@@ -300,16 +338,16 @@ export async function fillGeneralLocationInCreateTurtleDialog(
 
 /**
  * Kansas option for Create New Turtle E2E — must exist in {@link registerKansasGeneralLocationsCatalogMock}.
- * Prefer this over "Wichita": CI/minimal catalogs often omit Wichita (options come from GET /api/general-locations).
  */
 export const E2E_KANSAS_GENERAL_LOCATION = 'Lawrence';
 
 const E2E_MOCK_KANSAS_GENERAL_LOCATIONS = [
+  'Dee Hobelman',
   'Karlyle Woods',
   'Lawrence',
   'North Topeka',
-  'Valencia',
-  'Wichita',
+  'Other',
+  'West Topeka',
 ] as const;
 
 /**
@@ -361,19 +399,19 @@ export async function pickKansasGeneralLocationInCreateTurtleDialog(
 
 const SEX_SELECT_LABEL = 'Sex';
 const SEX_DROPDOWN_TIMEOUT = 10_000;
-/** Option order in UI (turtleSheetsDataFormFieldsConfig: F, M, J, U). */
-const SEX_OPTION_INDEX: Record<string, number> = { F: 0, M: 1, J: 2, U: 3 };
 
 /**
  * In the Create New Turtle dialog, select Sex (e.g. "F", "M").
  * On mobile we use NativeSelect (native <select>); on desktop, Mantine Select (listbox).
- * Uses keyboard selection for Mantine so options that render outside the viewport (portaled dropdown) still work.
+ * WebKit often omits the accessible name on the portaled listbox; fall back to the topmost
+ * open listbox and click the option by label (same strategy as Sheet / General Location).
  */
 export async function selectSexInCreateTurtleDialog(
   page: Page,
   dialog: ReturnType<Page['getByRole']>,
   value: string,
 ): Promise<void> {
+  await unlockUntilFieldEditable(page, dialog, SEX_SELECT_LABEL);
   const sexSelect = dialog.getByLabel(SEX_SELECT_LABEL);
   await sexSelect.waitFor({ state: 'visible', timeout: SEX_DROPDOWN_TIMEOUT });
 
@@ -385,14 +423,16 @@ export async function selectSexInCreateTurtleDialog(
 
   await sexSelect.scrollIntoViewIfNeeded();
   await sexSelect.click();
-  const listbox = page.getByRole('listbox', { name: SEX_SELECT_LABEL });
+  const namedListbox = page.getByRole('listbox', { name: SEX_SELECT_LABEL });
+  const useNamed = await namedListbox
+    .waitFor({ state: 'visible', timeout: 2500 })
+    .then(() => true)
+    .catch(() => false);
+  const listbox = useNamed ? namedListbox : page.getByRole('listbox').last();
   await listbox.waitFor({ state: 'visible', timeout: SEX_DROPDOWN_TIMEOUT });
-  // Keyboard selection avoids portaled options being outside viewport (no option.click).
-  const optionIndex = SEX_OPTION_INDEX[value];
-  if (optionIndex === undefined) {
-    throw new Error(`Unknown sex value: ${value}`);
-  }
-  await selectComboboxOptionByIndex(page, optionIndex);
-  // Wait for listbox to close so the value is committed and generate-id can run.
+  const option = listbox.getByRole('option', { name: value, exact: true });
+  await option.waitFor({ state: 'visible', timeout: SEX_DROPDOWN_TIMEOUT });
+  await option.scrollIntoViewIfNeeded();
+  await option.click();
   await listbox.waitFor({ state: 'hidden', timeout: SEX_DROPDOWN_TIMEOUT });
 }

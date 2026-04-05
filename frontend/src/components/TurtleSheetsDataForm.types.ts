@@ -33,6 +33,11 @@ export interface TurtleSheetsDataFormProps {
    * Sheet selection is required (admin sheet where the turtle will be stored) and the sheet field is not locked.
    */
   requireNewSheetForCommunityMatch?: boolean;
+  /**
+   * Turtle Match: only a subset of columns is shown; some are read-only and some unlock for edit.
+   * Turtle Records / Sheets Browser: omit or false for full sheet columns.
+   */
+  matchPageColumnLayout?: boolean;
 }
 
 export interface TurtleSheetsDataFormRef {
@@ -70,6 +75,7 @@ export interface TurtleSheetsDataFormFieldsProps {
   onCreateGeneralLocation?: () => void;
   /** Remount General Location select when sheet changes (Mantine Select can show stale label otherwise). */
   generalLocationSelectRemountKey?: string;
+  matchPageColumnLayout?: boolean;
 }
 
 /** Return type of useTurtleSheetsDataForm hook */

@@ -71,6 +71,129 @@ def _sync_confirmed_to_community(data, sheets_data, service, new_location, new_t
         print(f"✅ Community spreadsheet: added turtle {primary_id} to sheet '{sheet_name}'")
 
 
+def format_review_packet_item(packet_dir, request_id):
+    """Build one queue item dict from packet_dir (used by get_review_queue and get_review_packet)."""
+    metadata_path = os.path.join(packet_dir, 'metadata.json')
+    metadata = {}
+    if os.path.exists(metadata_path):
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+
+    additional_images = []
+    additional_dir = os.path.join(packet_dir, 'additional_images')
+
+    def parse_manifest_or_folder(target_dir):
+        results = []
+        manifest_path = os.path.join(target_dir, 'manifest.json')
+        processed_files = set()
+
+        if os.path.isfile(manifest_path):
+            try:
+                with open(manifest_path, 'r') as f:
+                    manifest = json.load(f)
+                for entry in manifest:
+                    fn = entry.get('filename')
+                    kind = entry.get('type', 'other')
+                    if fn:
+                        p = os.path.join(target_dir, fn)
+                        if os.path.isfile(p):
+                            results.append({
+                                'filename': fn,
+                                'type': kind,
+                                'timestamp': entry.get('timestamp'),
+                                'image_path': p,
+                            })
+                            processed_files.add(fn)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        if os.path.isdir(target_dir):
+            for f in sorted(os.listdir(target_dir)):
+                if f != 'manifest.json' and f not in processed_files and f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+                    results.append({
+                        'filename': f,
+                        'type': 'other',
+                        'timestamp': None,
+                        'image_path': os.path.join(target_dir, f),
+                    })
+        return results
+
+    if os.path.isdir(additional_dir):
+        additional_images.extend(parse_manifest_or_folder(additional_dir))
+        for item in sorted(os.listdir(additional_dir)):
+            item_path = os.path.join(additional_dir, item)
+            if os.path.isdir(item_path):
+                additional_images.extend(parse_manifest_or_folder(item_path))
+
+    uploaded_image = None
+    for f in os.listdir(packet_dir):
+        if f.lower().endswith(('.jpg', '.png', '.jpeg')) and f != 'metadata.json' and not f.startswith('.'):
+            uploaded_image = os.path.join(packet_dir, f)
+            break
+
+    candidates_dir = os.path.join(packet_dir, 'candidate_matches')
+    failed_path = os.path.join(packet_dir, 'match_search_failed.json')
+    match_search_failed = os.path.isfile(failed_path)
+    match_search_error = None
+    if match_search_failed:
+        try:
+            with open(failed_path, 'r', encoding='utf-8') as f:
+                fail_data = json.load(f)
+            if isinstance(fail_data, dict):
+                err = (fail_data.get('error') or '').strip()
+                match_search_error = err or None
+        except (json.JSONDecodeError, OSError, TypeError):
+            pass
+        if match_search_error is None:
+            match_search_error = 'Match search failed.'
+
+    # Staff/admin /api/upload builds the packet synchronously before search. If search errors,
+    # candidate_matches is never created; without a failure file (older uploads), the folder
+    # is not "still matching" — classify as failed so the queue shows recovery actions.
+    if (
+        request_id.startswith('admin_')
+        and not os.path.isdir(candidates_dir)
+        and not match_search_failed
+    ):
+        match_search_failed = True
+        match_search_error = (
+            'Match search did not complete for this staff/admin upload. '
+            'Try uploading again, or create a new turtle from this find.'
+        )
+
+    # candidate_matches is created after SuperPoint search succeeds in create_review_packet;
+    # missing dir + no failure marker => matching still running (or legacy stuck community packet).
+    match_search_pending = not os.path.isdir(candidates_dir) and not match_search_failed
+    candidates = []
+    if os.path.isdir(candidates_dir):
+        for candidate_file in sorted(os.listdir(candidates_dir)):
+            if candidate_file.lower().endswith(('.jpg', '.png', '.jpeg')):
+                parts = candidate_file.replace('.jpg', '').replace('.png', '').replace('.jpeg', '').split('_')
+                rank, turtle_id, confidence = 0, 'Unknown', 0
+                for part in parts:
+                    if part.startswith('Rank'):
+                        rank = int(part.replace('Rank', ''))
+                    elif part.startswith('ID'):
+                        turtle_id = part.replace('ID', '')
+                    elif part.startswith('Conf'):
+                        confidence = int(part.replace('Conf', ''))
+                    elif part.startswith('Score'):
+                        confidence = 0
+                candidates.append({'rank': rank, 'turtle_id': turtle_id, 'confidence': confidence, 'image_path': os.path.join(candidates_dir, candidate_file)})
+
+    return {
+        'request_id': request_id,
+        'uploaded_image': uploaded_image,
+        'metadata': metadata,
+        'additional_images': additional_images,
+        'candidates': sorted(candidates, key=lambda x: x['rank']),
+        'match_search_pending': match_search_pending,
+        'match_search_failed': match_search_failed,
+        'match_search_error': match_search_error,
+        'status': 'pending',
+    }
+
+
 def register_review_routes(app):
     """Register review queue routes"""
     
@@ -89,7 +212,7 @@ def register_review_routes(app):
         
         try:
             queue_items = manager_service.manager.get_review_queue()
-            formatted_items = [_format_packet_item(item['path'], item['request_id']) for item in queue_items]
+            formatted_items = [format_review_packet_item(item['path'], item['request_id']) for item in queue_items]
             return jsonify({'success': True, 'items': formatted_items})
         
         except Exception as e:
@@ -166,100 +289,6 @@ def register_review_routes(app):
             return jsonify({'error': err or 'Failed to remove image'}), 400
         return jsonify({'success': True})
 
-    def _format_packet_item(packet_dir, request_id):
-        """Build one queue item dict from packet_dir (used by get_review_queue and get_review_packet)."""
-        metadata_path = os.path.join(packet_dir, 'metadata.json')
-        metadata = {}
-        if os.path.exists(metadata_path):
-            with open(metadata_path, 'r') as f:
-                metadata = json.load(f)
-
-        additional_images = []
-        additional_dir = os.path.join(packet_dir, 'additional_images')
-
-        # --- NEW LOGIC: Helper to parse manifest or folder ---
-        def parse_manifest_or_folder(target_dir):
-            results = []
-            manifest_path = os.path.join(target_dir, 'manifest.json')
-            processed_files = set()
-
-            if os.path.isfile(manifest_path):
-                try:
-                    with open(manifest_path, 'r') as f:
-                        manifest = json.load(f)
-                    for entry in manifest:
-                        fn = entry.get('filename')
-                        kind = entry.get('type', 'other')
-                        if fn:
-                            p = os.path.join(target_dir, fn)
-                            if os.path.isfile(p):
-                                results.append({
-                                    'filename': fn,
-                                    'type': kind,
-                                    'timestamp': entry.get('timestamp'),
-                                    'image_path': p,
-                                })
-                                processed_files.add(fn)
-                except (json.JSONDecodeError, OSError):
-                    pass
-
-            # Fallback: catch images not in manifest (e.g., from tests or legacy uploads)
-            if os.path.isdir(target_dir):
-                for f in sorted(os.listdir(target_dir)):
-                    if f != 'manifest.json' and f not in processed_files and f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                        results.append({
-                            'filename': f,
-                            'type': 'other',
-                            'timestamp': None,
-                            'image_path': os.path.join(target_dir, f),
-                        })
-            return results
-
-        # Execute our folder scanning
-        if os.path.isdir(additional_dir):
-            # 1. Process legacy root folder
-            additional_images.extend(parse_manifest_or_folder(additional_dir))
-
-            # 2. Process our new Date-Stamped subfolders
-            for item in sorted(os.listdir(additional_dir)):
-                item_path = os.path.join(additional_dir, item)
-                if os.path.isdir(item_path):
-                    additional_images.extend(parse_manifest_or_folder(item_path))
-
-        uploaded_image = None
-        for f in os.listdir(packet_dir):
-            if f.lower().endswith(('.jpg', '.png', '.jpeg')) and f != 'metadata.json' and not f.startswith('.'):
-                uploaded_image = os.path.join(packet_dir, f)
-                break
-
-        candidates_dir = os.path.join(packet_dir, 'candidate_matches')
-        candidates = []
-        if os.path.exists(candidates_dir):
-            for candidate_file in sorted(os.listdir(candidates_dir)):
-                if candidate_file.lower().endswith(('.jpg', '.png', '.jpeg')):
-                    parts = candidate_file.replace('.jpg', '').replace('.png', '').replace('.jpeg', '').split('_')
-                    rank, turtle_id, confidence = 0, 'Unknown', 0
-                    for part in parts:
-                        if part.startswith('Rank'):
-                            rank = int(part.replace('Rank', ''))
-                        elif part.startswith('ID'):
-                            turtle_id = part.replace('ID', '')
-                        elif part.startswith('Conf'):
-                            confidence = int(part.replace('Conf', ''))
-                        elif part.startswith('Score'):
-                            # Legacy packets used Score; treat as 0 confidence
-                            confidence = 0
-                    candidates.append({'rank': rank, 'turtle_id': turtle_id, 'confidence': confidence, 'image_path': os.path.join(candidates_dir, candidate_file)})
-
-        return {
-            'request_id': request_id,
-            'uploaded_image': uploaded_image,
-            'metadata': metadata,
-            'additional_images': additional_images,
-            'candidates': sorted(candidates, key=lambda x: x['rank']),
-            'status': 'pending',
-        }
-
     @app.route('/api/review-queue/<request_id>', methods=['GET'])
     @require_admin
     def get_review_packet(request_id):
@@ -271,7 +300,7 @@ def register_review_routes(app):
         packet_dir = os.path.join(manager_service.manager.review_queue_dir, request_id)
         if not os.path.isdir(packet_dir):
             return jsonify({'error': 'Request not found'}), 404
-        item = _format_packet_item(packet_dir, request_id)
+        item = format_review_packet_item(packet_dir, request_id)
         return jsonify({'success': True, 'item': item})
 
     @app.route('/api/flags', methods=['GET'])

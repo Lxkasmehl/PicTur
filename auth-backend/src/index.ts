@@ -12,9 +12,16 @@ const envPath = path.join(__dirname, '../.env');
 const result = dotenv.config({ path: envPath });
 
 if (result.error) {
-  console.log('⚠️  .env file not found or error loading it:', result.error.message);
-  console.log('   Looking for .env at:', envPath);
-  console.log('   Make sure the .env file exists in the auth-backend folder\n');
+  // In Docker, variables come from Compose; there is no file at /app/.env unless mounted.
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET !== 'your-secret-key-change-in-production') {
+    console.log(
+      'ℹ️  No .env file in container (using process environment). OK for Docker Compose.\n'
+    );
+  } else {
+    console.log('⚠️  .env file not found or error loading it:', result.error.message);
+    console.log('   Looking for .env at:', envPath);
+    console.log('   Make sure the .env file exists in the auth-backend folder\n');
+  }
 } else {
   console.log('✅ .env file loaded successfully\n');
 }
