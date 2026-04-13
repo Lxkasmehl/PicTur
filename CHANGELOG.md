@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Frontend favicon & attribution**: Turtle favicon from Flaticon (`frontend/public/favicon.png`) with `rel="icon"` and `apple-touch-icon` in `index.html`; global app footer with required Freepik / www.flaticon.com links and a link to the specific icon for license compliance.
+- **Admin offline backup (ZIP)**: `GET /api/admin/backup/archive` (`scope=all` or `scope=sheet&sheet=…`) returns a ZIP mirroring `data/` plus Google Sheets CSV/JSON exports (`require_admin_only`, not staff). **Google Sheets Browser** shows an admin-only “Offline backup (ZIP)” menu (full archive or current tab). Client: `downloadAdminBackupArchive`, `isAdminRole`.
 
 ### Changed
 

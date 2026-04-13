@@ -9,6 +9,7 @@ import {
   Grid,
   Group,
   Image,
+  Menu,
   Paper,
   ScrollArea,
   Select,
@@ -16,8 +17,17 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
-import { IconDatabase, IconMapPin, IconPhoto, IconSearch, IconSkull } from '@tabler/icons-react';
-import { getImageUrl, getTurtleImages, getTurtlePrimariesBatch, type TurtleImagesResponse } from '../../services/api';
+import { notifications } from '@mantine/notifications';
+import { IconDatabase, IconDownload, IconMapPin, IconPhoto, IconSearch, IconSkull } from '@tabler/icons-react';
+import {
+  downloadAdminBackupArchive,
+  getImageUrl,
+  getTurtleImages,
+  getTurtlePrimariesBatch,
+  isAdminRole,
+  type TurtleImagesResponse,
+} from '../../services/api';
+import { useUser } from '../../hooks/useUser';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
 import { formatSingleDateTokenToUs } from '../../utils/usDateFormat';
@@ -35,9 +45,11 @@ function isSheetsDeceasedYes(v?: string | null): boolean {
 }
 
 export function SheetsBrowserTab() {
+  const { role } = useUser();
   const ctx = useAdminTurtleRecordsContext();
   const [turtleImages, setTurtleImages] = useState<TurtleImagesResponse | null>(null);
   const [primaryImages, setPrimaryImages] = useState<Record<string, string | null>>({});
+  const [backupLoading, setBackupLoading] = useState(false);
   const {
     selectedSheetFilter,
     sheetsListLoading,
@@ -151,6 +163,81 @@ export function SheetsBrowserTab() {
             <Button onClick={() => loadAllTurtles()} loading={turtlesLoading} fullWidth>
               Refresh
             </Button>
+            {isAdminRole(role) && (
+              <>
+                <Menu shadow='md' width={320} withinPortal>
+                  <Menu.Target>
+                    <Button
+                      variant='light'
+                      color='teal'
+                      fullWidth
+                      leftSection={<IconDownload size={16} />}
+                      loading={backupLoading}
+                    >
+                      Offline backup (ZIP)
+                    </Button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Label>Server data folder + Google Sheets</Menu.Label>
+                    <Menu.Item
+                      onClick={async () => {
+                        setBackupLoading(true);
+                        try {
+                          await downloadAdminBackupArchive({ scope: 'all' });
+                          notifications.show({
+                            title: 'Download started',
+                            message: 'Save the ZIP from your browser downloads folder.',
+                            color: 'teal',
+                          });
+                        } catch (e) {
+                          notifications.show({
+                            title: 'Backup failed',
+                            message: e instanceof Error ? e.message : 'Unknown error',
+                            color: 'red',
+                          });
+                        } finally {
+                          setBackupLoading(false);
+                        }
+                      }}
+                    >
+                      Full archive — entire data directory and all sheet tabs
+                    </Menu.Item>
+                    <Menu.Item
+                      disabled={!selectedSheetFilter}
+                      onClick={async () => {
+                        const sheet = selectedSheetFilter;
+                        if (!sheet) return;
+                        setBackupLoading(true);
+                        try {
+                          await downloadAdminBackupArchive({ scope: 'sheet', sheet });
+                          notifications.show({
+                            title: 'Download started',
+                            message: `Backup for tab "${sheet}" is saving to your downloads folder.`,
+                            color: 'teal',
+                          });
+                        } catch (e) {
+                          notifications.show({
+                            title: 'Backup failed',
+                            message: e instanceof Error ? e.message : 'Unknown error',
+                            color: 'red',
+                          });
+                        } finally {
+                          setBackupLoading(false);
+                        }
+                      }}
+                    >
+                      Current location tab only
+                      {selectedSheetFilter
+                        ? ` (${selectedSheetFilter})`
+                        : ' — pick a location above'}
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+                <Text size='xs' c='dimmed'>
+                  Admin only. ZIP includes on-disk data and CSV/JSON sheet snapshots for disaster recovery.
+                </Text>
+              </>
+            )}
             <Divider />
             <Text size='sm' c='dimmed'>
               {filteredTurtles.length} of {allTurtles.length} turtles
