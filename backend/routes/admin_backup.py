@@ -171,7 +171,8 @@ def _build_backup_zip(scope: str, sheet_name: str | None) -> tuple[bytes, str]:
 
 
 def register_admin_backup_routes(app):
-    @app.route("/api/admin/backup/archive", methods=["GET", "OPTIONS"])
+    # Not under /api/admin/* — that prefix is served by the Express auth backend in production.
+    @app.route("/api/backup/archive", methods=["GET", "OPTIONS"])
     @require_admin_only
     def download_admin_backup_archive():
         if request.method == "OPTIONS":

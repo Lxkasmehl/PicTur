@@ -693,7 +693,7 @@ export async function downloadAdminBackupArchive(
 
   try {
     const response = await fetch(
-      `${TURTLE_API_BASE_URL}/admin/backup/archive?${params.toString()}`,
+      `${TURTLE_API_BASE_URL}/backup/archive?${params.toString()}`,
       {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}` },
