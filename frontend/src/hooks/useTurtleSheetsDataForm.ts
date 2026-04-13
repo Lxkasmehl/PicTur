@@ -20,6 +20,7 @@ import type {
   TurtleSheetsDataFormProps,
   UseTurtleSheetsDataFormReturn,
 } from '../components/TurtleSheetsDataForm.types';
+import { normalizeTurtleSheetsDateFieldsToUs } from '../utils/usDateFormat';
 
 export type { UseTurtleSheetsDataFormReturn } from '../components/TurtleSheetsDataForm.types';
 
@@ -98,7 +99,7 @@ export function useTurtleSheetsDataForm(
 
   useEffect(() => {
     if (initialData) {
-      setFormData(initialData);
+      setFormData(normalizeTurtleSheetsDateFieldsToUs(initialData));
       setAdditionalNotes('');
       setAdditionalDatesRefound('');
       setUnlockedFields(new Set());
@@ -723,6 +724,8 @@ export function useTurtleSheetsDataForm(
         useBackendLocations && selectedPathParts.length > 1
           ? selectedState
           : selectedSheetName;
+
+      dataToSave = normalizeTurtleSheetsDateFieldsToUs(dataToSave);
 
       if (onCombinedSubmit) {
         await onCombinedSubmit(dataToSave, sheetNameForSubmit, backendLocationPath);

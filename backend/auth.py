@@ -138,3 +138,28 @@ def require_admin(f):
         request.user = user_data
         return f(*args, **kwargs)
     return decorated_function
+
+
+def require_admin_only(f):
+    """Decorator: role must be admin (not staff) — e.g. full data backup download."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if request.method == 'OPTIONS':
+            return jsonify({}), 200
+
+        success, user_data, error = get_user_from_request()
+        if not success:
+            return jsonify({'error': error or 'Authentication required'}), 401
+
+        if user_data.get('role') != 'admin':
+            return jsonify({'error': 'Admin access required'}), 403
+
+        auth_header = request.headers.get('Authorization')
+        if auth_header:
+            allowed, revoke_error = check_auth_revocation(auth_header)
+            if not allowed:
+                return jsonify({'error': revoke_error or 'Token has been revoked'}), 403
+
+        request.user = user_data
+        return f(*args, **kwargs)
+    return decorated_function

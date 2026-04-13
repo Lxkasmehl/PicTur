@@ -669,3 +669,64 @@ export const listAllTurtlesFromSheets = async (
 
   return await response.json();
 };
+
+/**
+ * Admin-only: download ZIP with backend data/ mirror + Google Sheets CSV/JSON exports.
+ * Triggers a browser file download.
+ */
+export async function downloadAdminBackupArchive(
+  options: { scope: 'all' } | { scope: 'sheet'; sheet: string },
+  timeoutMs = 600000,
+): Promise<void> {
+  const token = getToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+
+  const params = new URLSearchParams({ scope: options.scope });
+  if (options.scope === 'sheet') {
+    params.set('sheet', options.sheet);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(
+      `${TURTLE_API_BASE_URL}/admin/backup/archive?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      },
+    );
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err as { error?: string }).error || 'Backup download failed');
+    }
+
+    const blob = await response.blob();
+    const cd = response.headers.get('Content-Disposition');
+    let filename = 'turtle-backup.zip';
+    const m = cd && /filename="([^"]+)"/.exec(cd);
+    if (m) {
+      filename = m[1];
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw e;
+  }
+}

@@ -10,11 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Frontend favicon & attribution**: Turtle favicon from Flaticon (`frontend/public/favicon.png`) with `rel="icon"` and `apple-touch-icon` in `index.html`; global app footer with required Freepik / www.flaticon.com links and a link to the specific icon for license compliance.
+- **Admin offline backup (ZIP)**: `GET /api/admin/backup/archive` (`scope=all` or `scope=sheet&sheet=…`) returns a ZIP mirroring `data/` plus Google Sheets CSV/JSON exports (`require_admin_only`, not staff). **Google Sheets Browser** shows an admin-only “Offline backup (ZIP)” menu (full archive or current tab). Client: `downloadAdminBackupArchive`, `isAdminRole`.
 
 ### Changed
 
 - **Branding**: App and documentation renamed from TurtleTracker / Turtle Project to **PicTur** (npm packages `picturfrontend`, `pictur-auth-backend`; example paths `pictur`; GitHub repo [`Lxkasmehl/PicTur`](https://github.com/Lxkasmehl/PicTur)).
 - **Frontend**: Default document title set to **PicTur** (replacing “Turtle Frontend”).
+- **Frontend dates**: Google Sheet turtle date fields (e.g. date 1st found, last assay, dates refound, transmitter/radio/iButton dates) are normalized to **MM/DD/YYYY** when the form loads and before save; placeholders use the same hint. Photo card/modal timestamps use US date + 12-hour time instead of `toLocaleString()` (browser locale). Sheets browser titles for microhabitat/condition photos show the folder date in US format.
+- **Frontend**: Default document title set to **Turtle Project** (replacing “Turtle Frontend”).
+
+### Fixed
+
+- **PhotoCard**: Removed unused `onPhotoClick` prop to satisfy ESLint.
+- **Dates refound**: Space-separated refound dates (e.g. `2021-06-15 2022-07-04` without commas) are normalized to US format for every date; previously only the first date was kept and later values were dropped on load/save.
+
+### Testing
+
+- Playwright: `tests/e2e/us-date-format.spec.ts` asserts Turtle Match form fields show **MM/DD/YYYY** when the mocked sheet API returns ISO date strings.
 
 ## [1.1.0] - 2026-04-05 — Observer hub, backups, mortality tooling, and SQLite auth
 
