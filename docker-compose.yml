@@ -3,6 +3,9 @@
 # Then open http://localhost (frontend), Auth API on :3001, PicTur API on :5000
 # Optional: set FRONTEND_PORT in .env (e.g. 8080) if port 80 is in use; then use FRONTEND_URL=http://localhost:8080 for auth.
 
+# Pin project name so container names and `docker compose` state stay stable regardless of clone folder name.
+name: turtleproject
+
 services:
   frontend:
     build:
