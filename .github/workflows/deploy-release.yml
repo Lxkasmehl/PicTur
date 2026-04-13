@@ -23,5 +23,7 @@ jobs:
             set -euo pipefail
             cd "${{ vars.DEPLOY_PATH }}"
             git fetch origin --tags --prune
-            git checkout "${{ github.event.release.tag_name }}"
+            # Discard local edits on the server so checkout cannot fail (e.g. hotfixes or drift).
+            git checkout -f "${{ github.event.release.tag_name }}"
+            git clean -fd
             docker compose up --build -d
