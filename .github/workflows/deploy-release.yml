@@ -33,4 +33,7 @@ jobs:
             # reset --hard matches the tag on disk and drops any local edits (avoids checkout conflicts).
             git reset --hard "$TAG"
             git clean -fd
+            # Stop and remove existing project containers first so names like
+            # turtleproject-backend-1 never conflict with stale/orphan instances.
+            docker compose down --remove-orphans
             docker compose up --build -d
