@@ -15,7 +15,7 @@ def register_health_routes(app):
         manager_status = 'ready' if manager_service.manager is not None else 'loading'
         response = jsonify({
             'status': 'ok', 
-            'message': 'Turtle API is running',
+            'message': 'PicTur API is running',
             'manager': manager_status
         })
         # Ensure proper headers for health check

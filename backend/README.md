@@ -1,4 +1,4 @@
-# Turtle Project Backend
+# PicTur Backend
 
 Flask API Server for the Turtle Identification System.
 
@@ -256,7 +256,7 @@ The backend supports integration with Google Sheets for turtle data management. 
 2. Click "Create Credentials" > "Service Account"
 3. Fill in the service account details:
    - Name: `turtle-sheets-service` (or any name you prefer)
-   - Description: `Service account for Turtle Project Google Sheets integration`
+   - Description: `Service account for PicTur Google Sheets integration`
 4. Click "Create and Continue"
 5. Skip the optional steps and click "Done"
 

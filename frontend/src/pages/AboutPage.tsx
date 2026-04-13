@@ -18,7 +18,7 @@ export default function AboutPage() {
         <Stack gap='lg'>
           <Center>
             <Title order={1} ta='center'>
-              About Turtle Project
+              About PicTur
             </Title>
           </Center>
 

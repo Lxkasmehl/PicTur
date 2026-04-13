@@ -1,6 +1,6 @@
 {
-  "name": "turtle-auth-backend",
-  "description": "Authentication Backend API for Turtle Project",
+  "name": "pictur-auth-backend",
+  "description": "Authentication Backend API for PicTur",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {

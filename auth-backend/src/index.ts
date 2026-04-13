@@ -52,7 +52,7 @@ const allowedOrigins = [
 // This endpoint is used by Playwright to verify the server is ready
 app.get('/api/health', (req, res) => {
   res.status(200).setHeader('Content-Type', 'application/json');
-  res.json({ status: 'ok', message: 'Turtle Auth Backend API is running' });
+  res.json({ status: 'ok', message: 'PicTur Auth Backend API is running' });
 });
 
 // Simple root endpoint for health checks (alternative)

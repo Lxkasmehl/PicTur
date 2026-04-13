@@ -203,7 +203,7 @@ export default function Navigation({ children }: NavigationProps) {
               }}
               onClick={() => handleNavigation('/')}
             >
-              Turtle Project
+              PicTur
             </Text>
             <Badge
               data-testid='role-badge'

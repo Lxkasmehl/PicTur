@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to TurtleTracker will be documented in this file.
+All notable changes to PicTur will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Branding**: App and documentation renamed from TurtleTracker / Turtle Project to **PicTur** (npm packages `picturfrontend`, `pictur-auth-backend`; example paths `pictur`; GitHub repo [`Lxkasmehl/PicTur`](https://github.com/Lxkasmehl/PicTur)).
+- **Frontend**: Default document title set to **PicTur** (replacing “Turtle Frontend”).
 - **Frontend dates**: Google Sheet turtle date fields (e.g. date 1st found, last assay, dates refound, transmitter/radio/iButton dates) are normalized to **MM/DD/YYYY** when the form loads and before save; placeholders use the same hint. Photo card/modal timestamps use US date + 12-hour time instead of `toLocaleString()` (browser locale). Sheets browser titles for microhabitat/condition photos show the folder date in US format.
 - **Frontend**: Default document title set to **Turtle Project** (replacing “Turtle Frontend”).
 
@@ -132,15 +134,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Photo upload and matching**: Admins and community users can upload turtle photos; system returns top matches. Community uploads go to a review queue for admin approval.
 - **Admin features**: Review queue for community uploads with suggested matches; admin can confirm match or create new turtle. Photo upload with immediate top-5 match selection.
 - **Turtle records / data**: Turtle data management with optional Google Sheets integration (service account); auto-generated biology IDs and configurable fields.
-- **Frontend**: React (TypeScript) app with Mantine UI, Tailwind, Leaflet maps; configured for auth and turtle API backends.
+- **Frontend**: React (TypeScript) app with Mantine UI, Tailwind, Leaflet maps; configured for auth and PicTur API backends.
 - **Backend**: Flask API (Python) for photo processing and matching; auth backend for user and session management.
 - **Deployment**: Docker Compose setup for frontend, auth-backend, and backend; persistent volumes for DB, uploads, and review state.
 - **Testing**: Playwright E2E tests (Docker-based) and backend integration tests (pytest); CI workflows for main/develop.
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/TurtleProject/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/Lxkasmehl/TurtleProject/releases/tag/v1.1.0
-[1.0.0]: https://github.com/Lxkasmehl/TurtleProject/releases/tag/v1.0.0
-[0.2.0]: https://github.com/Lxkasmehl/TurtleProject/releases/tag/v0.2.0
-[0.1.0]: https://github.com/Lxkasmehl/TurtleProject/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.1.0
+[1.0.0]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.0.0
+[0.2.0]: https://github.com/Lxkasmehl/PicTur/releases/tag/v0.2.0
+[0.1.0]: https://github.com/Lxkasmehl/PicTur/releases/tag/v0.1.0

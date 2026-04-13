@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Start-CpuCompose {
-    Write-Host "Starting TurtleTracker in CPU mode..."
+    Write-Host "Starting PicTur in CPU mode..."
     docker compose -f docker-compose.yml up --build
     exit $LASTEXITCODE
 }
@@ -28,7 +28,7 @@ if (-not $hasNvidiaRuntime) {
     Start-CpuCompose
 }
 
-Write-Host "NVIDIA runtime detected. Starting TurtleTracker in GPU mode..."
+Write-Host "NVIDIA runtime detected. Starting PicTur in GPU mode..."
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 
 if ($LASTEXITCODE -eq 0) {

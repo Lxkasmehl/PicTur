@@ -1,5 +1,5 @@
 """
-Configuration and environment setup for Turtle Project Flask API
+Configuration and environment setup for PicTur Flask API
 """
 
 import os

@@ -1,5 +1,5 @@
 /**
- * Turtle API – photo upload, review queue, matching
+ * PicTur API – photo upload, review queue, matching
  */
 
 import { getToken, removeToken, TURTLE_API_BASE_URL } from './config';

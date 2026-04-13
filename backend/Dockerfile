@@ -1,4 +1,4 @@
-# TurtleTracker Backend (Flask API, Turtle Matching, Google Sheets)
+# PicTur Backend (Flask API, Turtle Matching, Google Sheets)
 FROM python:3.11-slim
 
 # System deps for OpenCV (libgl1 is the modern replacement for libgl1-mesa-glx on Debian Bookworm+)

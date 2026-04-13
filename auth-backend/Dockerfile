@@ -1,4 +1,4 @@
-# TurtleTracker Auth Backend (Node/Express, JWT, Google OAuth)
+# PicTur Auth Backend (Node/Express, JWT, Google OAuth)
 FROM node:20-alpine AS builder
 
 WORKDIR /app

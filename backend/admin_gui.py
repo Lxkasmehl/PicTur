@@ -325,7 +325,7 @@ class IdentifyWindow:
 class AdminDashboard:
     def __init__(self, root):
         self.root = root
-        self.root.title("🐢 Turtle Project Admin Dashboard")
+        self.root.title("🐢 PicTur Admin Dashboard")
         self.root.geometry("600x600")
         self.root.configure(bg="#f0f0f0")
 

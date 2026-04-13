@@ -25,7 +25,7 @@ const COMMON_PASSWORDS = new Set(
     'welcome', 'admin123', 'root', 'pass', 'test', 'guest', '1234', '12345',
     '123456789', '1234567890', 'qwerty123', 'password2', 'admin1', 'welcome1',
     'Password1', 'Password123', 'Admin123', 'Letmein1', 'Qwerty123', 'Welcome1',
-    'TurtleTracker', 'turtle', 'turtle123',
+    'PicTur', 'pictur', 'pictur123', 'turtle', 'turtle123',
   ].map((p) => p.toLowerCase())
 );
 

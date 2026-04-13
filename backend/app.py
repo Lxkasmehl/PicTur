@@ -1,5 +1,5 @@
 """
-Flask API Server for Turtle Project
+Flask API Server for PicTur
 Handles photo uploads, matching, and review queue
 """
 
@@ -83,13 +83,13 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', '5000'))
 
     try:
-        print("🐢 Starting Turtle API Server...", flush=True)
+        print("🐢 Starting PicTur API Server...", flush=True)
         print(f"🌐 Server will be available at http://localhost:{port}", flush=True)
         if manager_service.manager is not None:
             print(f"📁 Data directory: {manager_service.manager.base_dir}", flush=True)
         sys.stdout.flush()
     except UnicodeEncodeError:
-        print("[TURTLE] Starting Turtle API Server...", flush=True)
+        print("[PICTUR] Starting PicTur API Server...", flush=True)
         print(f"[NET] Server will be available at http://localhost:{port}", flush=True)
         sys.stdout.flush()
 

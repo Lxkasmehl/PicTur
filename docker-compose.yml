@@ -1,6 +1,6 @@
-# TurtleTracker – run frontend, auth-backend, and backend with Docker Compose
+# PicTur – run frontend, auth-backend, and backend with Docker Compose
 # Usage: docker compose up --build
-# Then open http://localhost (frontend), Auth API on :3001, Turtle API on :5000
+# Then open http://localhost (frontend), Auth API on :3001, PicTur API on :5000
 # Optional: set FRONTEND_PORT in .env (e.g. 8080) if port 80 is in use; then use FRONTEND_URL=http://localhost:8080 for auth.
 
 services:

@@ -18,7 +18,7 @@ test.describe('Navigation (public)', () => {
     await navClick(page, 'About');
     await expect(page).toHaveURL('/about');
     await expect(
-      page.getByRole('heading', { name: 'About Turtle Project' }),
+      page.getByRole('heading', { name: 'About PicTur' }),
     ).toBeVisible();
 
     await navClick(page, 'Contact');
@@ -39,7 +39,7 @@ test.describe('Navigation (public)', () => {
     await page.getByRole('button', { name: 'About' }).click();
     await expect(page).toHaveURL('/about');
     await expect(
-      page.getByRole('heading', { name: 'About Turtle Project' }),
+      page.getByRole('heading', { name: 'About PicTur' }),
     ).toBeVisible();
   });
 });
