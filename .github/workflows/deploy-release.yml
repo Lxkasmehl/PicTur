@@ -3,6 +3,12 @@ name: Deploy on GitHub Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to deploy (must exist on origin, e.g. v1.2.3)"
+        required: true
+        type: string
 
 jobs:
   deploy:
@@ -21,9 +27,10 @@ jobs:
           command_timeout: 45m
           script: |
             set -euo pipefail
+            TAG="${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag }}"
             cd "${{ vars.DEPLOY_PATH }}"
             git fetch origin --tags --prune
-            # Discard local edits on the server so checkout cannot fail (e.g. hotfixes or drift).
-            git checkout -f "${{ github.event.release.tag_name }}"
+            # reset --hard matches the tag on disk and drops any local edits (avoids checkout conflicts).
+            git reset --hard "$TAG"
             git clean -fd
             docker compose up --build -d
