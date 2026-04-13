@@ -10,6 +10,7 @@ import {
   Grid,
   Group,
   Image,
+  Menu,
   Modal,
   Paper,
   ScrollArea,
@@ -19,8 +20,10 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import {
   IconDatabase,
+  IconDownload,
   IconMapPin,
   IconPhoto,
   IconSearch,
@@ -29,17 +32,21 @@ import {
   IconZoomIn,
 } from '@tabler/icons-react';
 import {
+  downloadAdminBackupArchive,
   getImageUrl,
   getTurtleImages,
   getTurtlePrimariesBatch,
+  isAdminRole,
   searchTurtleImagesByLabel,
   type TurtleAdditionalLabelSearchMatch,
   type TurtleImageAdditional,
   type TurtleImagesResponse,
 } from '../../services/api';
 import type { TurtleSheetsData } from '../../services/api/sheets';
+import { useUser } from '../../hooks/useUser';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
+import { formatSingleDateTokenToUs } from '../../utils/usDateFormat';
 import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
 
 function turtleKey(turtle: { primary_id?: string | null; id?: string | null; sheet_name?: string | null }) {
@@ -90,6 +97,7 @@ function findTurtleForMatch(
 }
 
 export function SheetsBrowserTab() {
+  const { role } = useUser();
   const ctx = useAdminTurtleRecordsContext();
   const [turtleImages, setTurtleImages] = useState<TurtleImagesResponse | null>(null);
   const [primaryImages, setPrimaryImages] = useState<Record<string, string | null>>({});
@@ -99,7 +107,7 @@ export function SheetsBrowserTab() {
   const [photoSearchLoading, setPhotoSearchLoading] = useState(false);
   const [selectedMatchPath, setSelectedMatchPath] = useState<string | null>(null);
   const [tagSearchLightbox, setTagSearchLightbox] = useState<string | null>(null);
-
+  const [backupLoading, setBackupLoading] = useState(false);
   const {
     selectedSheetFilter,
     sheetsListLoading,
@@ -159,6 +167,17 @@ export function SheetsBrowserTab() {
   const additionalGroups = useMemo(() => {
     const all = turtleImages?.additional ?? [];
     return groupAdditionalByDateFolder(all);
+  }, [turtleImages?.additional]);
+
+  const latestDate = useMemo(() => {
+    const all = turtleImages?.additional ?? [];
+    let latest = '';
+    const dr = /(\d{4}-\d{2}-\d{2})[/\\]/;
+    for (const img of all) {
+      const m = img.path.match(dr);
+      if (m && m[1] > latest) latest = m[1];
+    }
+    return latest;
   }, [turtleImages?.additional]);
 
   const filteredPhotoMatches = useMemo(() => {
@@ -261,6 +280,81 @@ export function SheetsBrowserTab() {
                 <Button onClick={() => loadAllTurtles()} loading={turtlesLoading} fullWidth>
                   Refresh
                 </Button>
+                {isAdminRole(role) && (
+                  <>
+                    <Menu shadow='md' width={320} withinPortal>
+                      <Menu.Target>
+                        <Button
+                          variant='light'
+                          color='teal'
+                          fullWidth
+                          leftSection={<IconDownload size={16} />}
+                          loading={backupLoading}
+                        >
+                          Offline backup (ZIP)
+                        </Button>
+                      </Menu.Target>
+                      <Menu.Dropdown>
+                        <Menu.Label>Server data folder + Google Sheets</Menu.Label>
+                        <Menu.Item
+                          onClick={async () => {
+                            setBackupLoading(true);
+                            try {
+                              await downloadAdminBackupArchive({ scope: 'all' });
+                              notifications.show({
+                                title: 'Download started',
+                                message: 'Save the ZIP from your browser downloads folder.',
+                                color: 'teal',
+                              });
+                            } catch (e) {
+                              notifications.show({
+                                title: 'Backup failed',
+                                message: e instanceof Error ? e.message : 'Unknown error',
+                                color: 'red',
+                              });
+                            } finally {
+                              setBackupLoading(false);
+                            }
+                          }}
+                        >
+                          Full archive — entire data directory and all sheet tabs
+                        </Menu.Item>
+                        <Menu.Item
+                          disabled={!selectedSheetFilter}
+                          onClick={async () => {
+                            const sheet = selectedSheetFilter;
+                            if (!sheet) return;
+                            setBackupLoading(true);
+                            try {
+                              await downloadAdminBackupArchive({ scope: 'sheet', sheet });
+                              notifications.show({
+                                title: 'Download started',
+                                message: `Backup for tab "${sheet}" is saving to your downloads folder.`,
+                                color: 'teal',
+                              });
+                            } catch (e) {
+                              notifications.show({
+                                title: 'Backup failed',
+                                message: e instanceof Error ? e.message : 'Unknown error',
+                                color: 'red',
+                              });
+                            } finally {
+                              setBackupLoading(false);
+                            }
+                          }}
+                        >
+                          Current location tab only
+                          {selectedSheetFilter
+                            ? ` (${selectedSheetFilter})`
+                            : ' — pick a location above'}
+                        </Menu.Item>
+                      </Menu.Dropdown>
+                    </Menu>
+                    <Text size='xs' c='dimmed'>
+                      Admin only. ZIP includes on-disk data and CSV/JSON sheet snapshots for disaster recovery.
+                    </Text>
+                  </>
+                )}
                 <Divider />
                 <Text size='sm' c='dimmed'>
                   {filteredTurtles.length} of {allTurtles.length} turtles
@@ -603,7 +697,7 @@ export function SheetsBrowserTab() {
               ))}
             {turtleId && additionalGroups.length === 0 && (
               <AdditionalImagesSection
-                title='Additional photos'
+                title={`Turtle photos (Microhabitat / Condition)${latestDate ? ` - ${formatSingleDateTokenToUs(latestDate)}` : ''}`}
                 images={[]}
                 turtleId={turtleId}
                 sheetName={sheetName}

@@ -52,7 +52,7 @@ export const TURTLE_SHEETS_FORM_FIELDS: TurtleFormFieldConfig[] = [
     type: 'text',
     span: { base: 12, md: 6 },
   },
-  { key: 'date_1st_found', label: 'Date 1st found', placeholder: 'YYYY-MM-DD', type: 'text', span: { base: 12, md: 6 } },
+  { key: 'date_1st_found', label: 'Date 1st found', placeholder: 'MM/DD/YYYY', type: 'text', span: { base: 12, md: 6 } },
   { key: 'species', label: 'Species', placeholder: 'Species', type: 'text', span: { base: 12, md: 4 } },
   { key: 'name', label: 'Name', placeholder: 'Turtle name', type: 'text', span: { base: 12, md: 4 } },
   { key: 'sex', label: 'Sex', placeholder: 'Select sex', type: 'select', selectData: ['F', 'M', 'J', 'U'], span: { base: 12, md: 4 } },
@@ -60,7 +60,7 @@ export const TURTLE_SHEETS_FORM_FIELDS: TurtleFormFieldConfig[] = [
   {
     key: 'last_assay_date',
     label: 'Last Assay Date',
-    placeholder: 'YYYY-MM-DD',
+    placeholder: 'MM/DD/YYYY',
     description: 'Date last brought in for assays',
     type: 'text',
     span: { base: 12, md: 3 },
