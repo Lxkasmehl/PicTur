@@ -26,6 +26,7 @@ export {
   setUserRole,
   deleteUser,
   isStaffRole,
+  isAdminRole,
 } from './api/auth';
 export { fetchCommunityGameState, saveCommunityGameState } from './api/communityGame';
 export type {
@@ -87,6 +88,7 @@ export {
   createSheet,
   getTurtleNames,
   listAllTurtlesFromSheets,
+  downloadAdminBackupArchive,
 } from './api/sheets';
 export type {
   TurtleSheetsData,

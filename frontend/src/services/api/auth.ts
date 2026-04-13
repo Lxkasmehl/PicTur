@@ -25,6 +25,11 @@ export function isStaffRole(role: string | undefined): role is UserRole {
   return role === 'staff' || role === 'admin';
 }
 
+/** True only for full admin (user management, offline backup download). */
+export function isAdminRole(role: string | undefined): boolean {
+  return role === 'admin';
+}
+
 export interface AuthResponse {
   success: boolean;
   token: string;
