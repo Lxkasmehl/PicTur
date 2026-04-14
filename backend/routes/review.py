@@ -12,6 +12,7 @@ from auth import require_admin
 from services import manager_service
 from services.manager_service import get_sheets_service, get_community_sheets_service
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
+from image_utils import normalize_to_jpeg
 from general_locations_catalog import resolve_general_location_from_sheet_and_value
 
 # Metadata keys to strip when syncing turtle data to community spreadsheet
@@ -248,6 +249,8 @@ def register_review_routes(app):
                 ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
                 temp_path = os.path.join(UPLOAD_FOLDER, f"review_extra_{request_id}_{idx}_{int(time.time())}{ext}")
                 f.save(temp_path)
+                # HEIC/HEIF → JPEG (no-op for other formats)
+                temp_path = normalize_to_jpeg(temp_path)
                 files_with_types.append({'path': temp_path, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
             if not files_with_types:
                 return jsonify({'error': 'No valid image files provided'}), 400

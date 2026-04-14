@@ -1,6 +1,8 @@
 flask==3.0.0
 flask-cors==4.0.0
 Pillow>=10.0
+# HEIC/HEIF support — iPhone photos upload as HEIC by default
+pillow-heif>=0.16.0
 numpy>=1.26.0
 scikit-learn>=1.3.2
 joblib>=1.3.2

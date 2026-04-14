@@ -55,7 +55,9 @@ if 'PORT' not in os.environ:
 
 # Configuration constants
 UPLOAD_FOLDER = tempfile.gettempdir()
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+# heic/heif accepted here but normalized to JPEG by image_utils.normalize_to_jpeg
+# before any downstream code sees the file.
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif'}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 # JWT Configuration - must match auth-backend JWT_SECRET

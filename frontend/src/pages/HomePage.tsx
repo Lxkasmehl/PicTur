@@ -221,7 +221,7 @@ export default function HomePage() {
     if (rejection.errors[0]?.code === 'file-too-large') {
       message = 'File is too large. Maximum: 5MB';
     } else if (rejection.errors[0]?.code === 'file-invalid-type') {
-      message = 'Invalid file type. Allowed: PNG, JPG, JPEG, GIF, WEBP';
+      message = 'Invalid file type. Allowed: PNG, JPG, JPEG, GIF, WEBP, HEIC';
     }
 
     notifications.show({
@@ -391,7 +391,7 @@ export default function HomePage() {
                 Upload Photo
               </Button>
               <Text size='sm' c='dimmed' ta='center' mt='xs'>
-                Supported formats: PNG, JPG, JPEG, GIF, WEBP (max. 5MB)
+                Supported formats: PNG, JPG, JPEG, GIF, WEBP, HEIC (max. 5MB)
               </Text>
             </Stack>
           ) : (
@@ -400,7 +400,7 @@ export default function HomePage() {
               onReject={handleReject}
               maxSize={5 * 1024 * 1024} // 5MB
               accept={{
-                'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp'],
+                'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.heif'],
               }}
               multiple={false}
               disabled={uploadState === 'uploading'}
@@ -433,7 +433,7 @@ export default function HomePage() {
                     ta='center'
                     style={{ display: 'block' }}
                   >
-                    Supported formats: PNG, JPG, JPEG, GIF, WEBP (max. 5MB)
+                    Supported formats: PNG, JPG, JPEG, GIF, WEBP, HEIC (max. 5MB)
                   </Text>
                 </div>
               </Group>

@@ -14,6 +14,7 @@ from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from auth import optional_auth, check_auth_revocation
+from image_utils import normalize_to_jpeg
 from services import manager_service
 
 _IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp')
@@ -109,6 +110,9 @@ def register_upload_routes(app):
             filename = secure_filename(file.filename)
             temp_path = os.path.join(UPLOAD_FOLDER, filename)
             file.save(temp_path)
+            # HEIC/HEIF → JPEG so SuperPoint + frontend can handle it
+            temp_path = normalize_to_jpeg(temp_path)
+            filename = os.path.basename(temp_path)
 
             if not os.path.exists(temp_path):
                 return jsonify({'error': 'Failed to save file'}), 500
@@ -162,6 +166,8 @@ def register_upload_routes(app):
                                 ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
                                 extra_temp = os.path.join(UPLOAD_FOLDER, f"extra_{request_id}_{typ}_{int(time.time())}{ext}")
                                 f.save(extra_temp)
+                                # HEIC/HEIF → JPEG (no-op for other formats)
+                                extra_temp = normalize_to_jpeg(extra_temp)
                                 files_with_types.append({'path': extra_temp, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
 
                 if files_with_types:
@@ -289,6 +295,8 @@ def register_upload_routes(app):
                                 ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
                                 extra_temp = os.path.join(UPLOAD_FOLDER, f"extra_{request_id}_{typ}_{int(time.time())}{ext}")
                                 f.save(extra_temp)
+                                # HEIC/HEIF → JPEG (no-op for other formats)
+                                extra_temp = normalize_to_jpeg(extra_temp)
                                 files_with_types.append({'path': extra_temp, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
 
                 # Run matching and packet creation in the background so the
