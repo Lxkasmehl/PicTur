@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Match thumbnails missing for `.JPG` references (Linux)**: Reference images saved with uppercase extensions (e.g. `F128.JPG`) were not resolving on the production Linux server because `convert_pt_to_image_path` and the related candidate-copy / replace-reference paths hard-coded a lowercase extension list (`['.jpg', '.jpeg', '.png']`) combined with `os.path.exists`. Case-sensitive filesystems silently returned the raw `.pt` path, which the frontend then couldn't render. Added case-insensitive helpers `routes.upload.find_image_for_pt`, `turtle_manager._find_image_next_to_pt`, and `turtle_manager._find_image_in_dir` that scan the containing directory and match the file stem against any supported image extension regardless of case. Windows/NTFS was never affected because its filesystem is case-insensitive.
+- **HEIC upload failures without EXIF**: `image_utils.normalize_to_jpeg` previously passed `img.info.get('exif', b'')` to Pillow's JPEG encoder, but some HEIC files store `'exif'` mapped to `None` rather than omitting the key, bypassing the default and crashing the encoder with `TypeError: object of type 'NoneType' has no len()`. Guarded so `exif=` is only passed to `save()` when actual bytes are present.
+
+### Added
+
+- **HEIC/HEIF upload support**: iPhone photos arrive as HEIC by default and Chrome/Firefox cannot render HEIC natively. New `backend/image_utils.py` registers `pillow-heif` at import time and exposes `normalize_to_jpeg()`, which is a no-op for non-HEIC inputs and otherwise converts in-place to a sibling `.jpg` (quality 95, EXIF preserved — including `DateTimeOriginal` for future history-date aggregation — EXIF rotation applied). Called immediately after every `file.save()` in `routes/upload.py`, `routes/review.py`, and `routes/turtles.py` (5 call sites). `heic`/`heif` added to `config.ALLOWED_EXTENSIONS`; `pillow-heif>=0.16.0` added to `backend/requirements.txt`. Frontend `fileValidation.ts` accepts `image/heic` / `image/heif` with an extension fallback (Chrome/Firefox leave `file.type` blank for HEIC), `HomePage.tsx` Dropzone accept list and user-facing "Supported formats" text updated to include HEIC.
+
+### Testing
+
+- **`backend/tests/test_image_lookup.py` (32 tests)**: Regression coverage for the case-insensitive lookup. Parametrised across `.jpg`/`.JPG`/`.jpeg`/`.JPEG`/`.png`/`.PNG`/`.Jpg`/`.JPg` against all three helpers, plus passthrough / missing-sibling / missing-directory / unrelated-file / alias contract cases.
+- **`backend/tests/test_image_utils.py` (13 tests)**: HEIC normalization coverage. Generates HEIC fixtures programmatically via pillow-heif's bundled encoder to exercise real encode → decode round-trips. Verifies sibling `.jpg` creation, original-file deletion, uppercase `.HEIC` / `.heif` handling, EXIF `DateTimeOriginal` preservation, and multi-tag EXIF round-trip.
+
 ## [1.2.5] - 2026-04-13 — Admin offline backup URL (Flask vs Express)
 
 ### Fixed
