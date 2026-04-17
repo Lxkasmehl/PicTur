@@ -83,16 +83,29 @@ This document describes the backup strategy for the PicTur web app: **Google Spr
 
 3. **After deployment:**
    - On the server: optional fixed host path for backups (e.g. `/srv/pictur/backups`); with default Compose, `./backups` next to `docker-compose.yml` is enough (e.g. `~/PicTur/backups`).
-   - **Cron:** Add a line with **`crontab -e`**. Do **not** paste the whole line into an interactive shell—the first five fields (`0 3 * * *`) are the schedule; the shell would try to run `0` as a command and print `command not found`.
-   - Use an **absolute** path in `cd` (`~` often does not expand under cron). Example (adjust user/project if needed):
+   - **What lands on the host disk?**
+     - **Sheets (CSV/JSON):** `BACKUP_OUTPUT_DIR` inside the container defaults to `/app/backups`, and Compose maps `./backups` there—so these files are **on the host** next to your compose file (not inside the `backend-data` volume).
+     - **Images and `data/` tree:** The app stores uploads under `/app/data`, which uses the **named volume** `backend-data` only. That data is **not** on the host filesystem until you copy it out. Use the repo script `scripts/backup-backend-data.sh` (or the combined `scripts/daily-backup.sh`) so each run creates a dated folder `backups/data/YYYY-MM-DD/` on the host with a full copy of `data/`.
+   - **Cron (one job for everything):** Prefer **`scripts/daily-backup.sh`**: it runs `python -m backup.run` (Sheets) then `backup-backend-data.sh` (images). Add **one** line with **`crontab -e`**. Do **not** paste the whole line into an interactive shell—the first five fields (`0 3 * * *`) are the schedule; the shell would try to run `0` as a command and print `command not found`.
+   - Use an **absolute** path for `COMPOSE_DIR` (`~` often does not expand under cron). Example (adjust paths and log location):
      ```cron
-     0 3 * * * cd /home/lukas/PicTur && /usr/bin/docker compose exec -T backend python -m backup.run >> /home/lukas/pictur-backup.log 2>&1
+     0 3 * * * COMPOSE_DIR=/home/lukas/PicTur/TurtleTracker BACKUP_OUTPUT_DIR=/home/lukas/PicTur/TurtleTracker/backups /home/lukas/PicTur/TurtleTracker/scripts/daily-backup.sh >> /home/lukas/pictur-backup.log 2>&1
+     ```
+     Ensure `BACKUP_OUTPUT_DIR` matches the host directory bind-mounted to `/app/backups` in Compose (default: `<compose dir>/backups`). If you only want Sheets (no image copy), keep the older one-liner with `docker compose exec -T backend python -m backup.run` only.
+   - **Sheets-only cron** (if you split jobs):
+     ```cron
+     0 3 * * * cd /home/lukas/PicTur/TurtleTracker && /usr/bin/docker compose exec -T backend python -m backup.run >> /home/lukas/pictur-backup.log 2>&1
      ```
      `-T` avoids TTY errors when cron runs non-interactively. If `docker` is not at `/usr/bin/docker`, use the path from `which docker` on the server.
-   - **Test the backup manually** (normal shell, no cron fields):
+   - **Test manually** (normal shell):
      ```bash
-     cd /home/lukas/PicTur && /usr/bin/docker compose exec -T backend python -m backup.run
+     cd /home/lukas/PicTur/TurtleTracker && ./scripts/daily-backup.sh
      ```
+     Or test image backup alone:
+     ```bash
+     COMPOSE_DIR=/home/lukas/PicTur/TurtleTracker ./scripts/backup-backend-data.sh
+     ```
+     If the backend container is stopped, `backup-backend-data.sh` tries to read the `backend-data` Docker volume with a short-lived `alpine` container (image pulled once). You can force the volume name with `BACKEND_DATA_VOLUME=turtleproject_backend-data` if needed.
    - Retention: delete old backup folders/files after X days (small script or `find` + cron).
 
 4. **Restore:**

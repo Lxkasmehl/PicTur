@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.8] - 2026-04-16 - Host data/ backups + daily backup scripts
+
+### Added
+
+- **Host backup of backend `data/` (Docker volume)**: `scripts/backup-backend-data.sh` copies `/app/data` from the running backend (or from the `backend-data` volume if the container is down) to `BACKUP_OUTPUT_DIR/data/YYYY-MM-DD/` on the host. `scripts/daily-backup.sh` runs `python -m backup.run` (Sheets CSV/JSON) then the data copy so one cron job covers spreadsheets and images. Documented in **docs/BACKUP.md** and **backend/README.md** (combined `crontab` example with `COMPOSE_DIR` / `BACKUP_OUTPUT_DIR`).
+
 ### CI
 
 - **CUDA requirements parity**: `backend/scripts/check_requirements_cuda_sync.py` ensures `requirements-docker-cuda.txt` lists every pip package from `requirements.txt` except `torch` and `torchvision` (installed separately in `Dockerfile.cuda`). Covered by `backend/tests/test_requirements_cuda_sync.py`; wired as job `cuda-requirements-sync` in **Backend Integration Tests**.
