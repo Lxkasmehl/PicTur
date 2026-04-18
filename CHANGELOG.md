@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Google Sheets new-turtle row / biology ID scan (sparse columns)**: Reading only column **A** (or only the biology **ID** column) for `values.get` can omit rows where that cell is empty but another column in the same row has data. That made `create_turtle_data` compute too small a `next_row` and **overwrite an existing turtle row**, and `get_max_biology_id_number` miss high IDs (e.g. **J666**) so the next ID was too low (e.g. **U637** instead of **U667**). **Append** now uses a range spanning **Primary ID through ID**; **max biology suffix** is scanned from **column A through the ID column** (`A2:…` for the max scan so the header row is not parsed as an ID).
+
+### Testing
+
+- **`backend/tests/fakes/google_sheets_api_fake.py`**: Fake `spreadsheets.values` that models sparse **single-column** `values.get` (rows omitted when that column is empty). Used to assert **behaviour** (which sheet row is written; max biology suffix / next U-ID), not only range strings.
+- **`backend/tests/test_sheets_sparse_column_regression.py`**: Behavioural regression for the admin “new turtle” chat bug — **no overwrite** of an existing row when Primary ID is missing on some lines; **J666 → next U667** (and documents **U637** as max-stuck-at-636). Reverting the `crud`/`migration` fixes should fail these tests; E2E against real Google Sheets is not required for this class of bug.
+
 ## [1.2.9] - 2026-04-17 — Backup dates follow host TZ; daily-backup invokes data script with bash
 
 ### Changed

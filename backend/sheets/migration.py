@@ -83,7 +83,9 @@ def generate_primary_id(service, spreadsheet_id: str, list_sheets_func=None, fin
 def get_max_biology_id_number(service, spreadsheet_id: str, sheet_name: str,
                                get_all_column_indices_func=None) -> int:
     """
-    Scan the "ID" column in the given sheet only and return the highest numeric part.
+    Scan the biology "ID" column and return the highest numeric suffix (shared across M/F/J/U in the tab).
+    Reads columns A through the ID column so rows are not dropped when the API omits sparse single-column
+    ranges (same failure mode as reading only Primary ID column A for row count).
     Accepts F1/F001, F.26, Null.1 (treated as U…), etc., consistent with normalize_biology_id_display.
     Retries on 429 (rate limit) to avoid returning 0 and causing duplicate biology IDs.
 
@@ -108,9 +110,19 @@ def get_max_biology_id_number(service, spreadsheet_id: str, sheet_name: str,
         if id_col_idx is None:
             return 0
 
+        # Do not read the ID column alone: values.get on a single column can omit rows where
+        # that cell is empty even when other columns in the same row have data (same class of
+        # bug as create_turtle_data with A:A only). Read from column A through the rightmost of
+        # Primary ID and ID so row arrays align with column indices and high biology IDs (e.g.
+        # J666) are not missing from the scan.
+        primary_col_idx = column_indices.get('Primary ID')
         escaped_sheet = escape_sheet_name(sheet_name)
-        col_letter = column_index_to_letter(id_col_idx)
-        range_name = f"{escaped_sheet}!{col_letter}2:{col_letter}"
+        prim = primary_col_idx if primary_col_idx is not None else 0
+        start_idx = 0
+        end_idx = max(prim, id_col_idx)
+        col_start = column_index_to_letter(start_idx)
+        col_end = column_index_to_letter(end_idx)
+        range_name = f"{escaped_sheet}!{col_start}2:{col_end}"
         values = []
         last_error = None
         for attempt in range(SHEETS_RATE_LIMIT_MAX_RETRIES + 1):
@@ -140,7 +152,9 @@ def get_max_biology_id_number(service, spreadsheet_id: str, sheet_name: str,
         for row in values:
             if not row:
                 continue
-            raw = row[0] if isinstance(row, list) and len(row) > 0 else row
+            if not isinstance(row, list):
+                continue
+            raw = row[id_col_idx] if len(row) > id_col_idx else ''
             cell = (raw or '').strip()
             if not cell:
                 continue
