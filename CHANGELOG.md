@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.10] - 2026-04-18 — Google Sheets sparse-column reads (new turtle row / max biology ID)
+
 ### Fixed
 
 - **Google Sheets new-turtle row / biology ID scan (sparse columns)**: Reading only column **A** (or only the biology **ID** column) for `values.get` can omit rows where that cell is empty but another column in the same row has data. That made `create_turtle_data` compute too small a `next_row` and **overwrite an existing turtle row**, and `get_max_biology_id_number` miss high IDs (e.g. **J666**) so the next ID was too low (e.g. **U637** instead of **U667**). **Append** now uses a range spanning **Primary ID through ID**; **max biology suffix** is scanned from **column A through the ID column** (`A2:…` for the max scan so the header row is not parsed as an ID).
@@ -224,7 +226,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.9...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.10...HEAD
+[1.2.10]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.10
 [1.2.9]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.9
 [1.2.8]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.8
 [1.2.7]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.7
