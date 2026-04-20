@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Home match-scope favorites (staff)**: Star locations (including “All locations”) in the upload scope `Select`; favorites are grouped (“Favorites” / “More locations”), default scope respects saved order after reload (waits for `GET /locations` before locking selection). Preferences sync to **`GET`/`PUT /api/auth/user-ui-preferences`** (SQLite table `user_ui_preferences` in auth-backend) when logged in, with **localStorage** fallback and one-time migration from cache if the profile is empty.
 - **Additional turtle photos**: Optional **tags** on extra images (manifest); types **carapace**, **condition**, **microhabitat**, and **other**; admin APIs `GET /api/turtles/images/search-labels` and `PATCH /api/turtles/images/additional-labels`; integration tests in `test_turtles_routes.py`.
 - **Admin UI**: Staged upload with per-image type and tags; inline tag editing on saved photos (turtle folders); **Sheets browser** “Photo tags” mode with grouped results and larger previews; home/upload flow sends tagged extras via `extra_*` + `extra_labels_*`.
 
@@ -57,7 +58,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **CUDA requirements parity**: `backend/scripts/check_requirements_cuda_sync.py` ensures `requirements-docker-cuda.txt` lists every pip package from `requirements.txt` except `torch` and `torchvision` (installed separately in `Dockerfile.cuda`). Covered by `backend/tests/test_requirements_cuda_sync.py`; wired as job `cuda-requirements-sync` in **Backend Integration Tests**.
 - **Production GPU image smoke**: Job `backend-cuda-image-smoke` builds `backend/Dockerfile.cuda` (GitHub Actions cache for Docker layers) and runs `python3 -c "import app"` inside the image so missing dependencies and import-time crashes in the same stack as production deploy surface before merge. Runs in parallel with the existing integration job after the sync check; Playwright/E2E Compose still uses the CPU `Dockerfile`, so this closes the Dockerfile.cuda gap.
-
 
 ## [1.2.7] - 2026-04-16 - Add pillow-heif to CUDA image and libheif runtime deps
 

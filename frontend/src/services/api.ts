@@ -29,6 +29,11 @@ export {
   isAdminRole,
 } from './api/auth';
 export { fetchCommunityGameState, saveCommunityGameState } from './api/communityGame';
+export {
+  fetchUserUiPreferences,
+  saveUserUiPreferences,
+  type UserUiPreferences,
+} from './api/userPreferences';
 export type {
   User,
   UserRole,

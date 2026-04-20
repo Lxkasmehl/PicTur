@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import BetterSqlite3 from 'better-sqlite3';
 import type { Database } from 'better-sqlite3';
 import type { CommunityGamePersistedPayload } from '../types/communityGame.js';
+import type { UserUiPreferencesPayload } from '../types/userUiPreferences.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,6 +74,18 @@ function migrateEmailVerificationsUsedAt(database: Database): void {
   if (!cols.some((c) => c.name === 'used_at')) {
     database.exec(`ALTER TABLE email_verifications ADD COLUMN used_at TEXT`);
   }
+}
+
+/** Per-user JSON preferences (match-scope favorites, etc.). */
+function migrateUserUiPreferencesTable(database: Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS user_ui_preferences (
+      user_id INTEGER NOT NULL PRIMARY KEY,
+      data TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
 }
 
 function setAutoincrementSeq(database: Database, table: string, maxId: number): void {
@@ -221,6 +234,7 @@ function maybeMigrateLegacyJson(database: Database): void {
 const db: Database = new BetterSqlite3(dbPath);
 initSchema(db);
 migrateEmailVerificationsUsedAt(db);
+migrateUserUiPreferencesTable(db);
 maybeMigrateLegacyJson(db);
 
 export function getCommunityGameForUser(userId: number): CommunityGamePersistedPayload | null {
@@ -243,6 +257,46 @@ export function saveCommunityGameForUser(
   const payload = JSON.stringify(data);
   db.prepare(
     `INSERT INTO community_game (user_id, data, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`
+  ).run(userId, payload, now);
+}
+
+function defaultUiPreferences(): UserUiPreferencesPayload {
+  return { homeMatchScopeFavorites: [] };
+}
+
+function parseUiPreferencesJson(raw: string): UserUiPreferencesPayload | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return null;
+    const o = parsed as Record<string, unknown>;
+    const v = o.homeMatchScopeFavorites;
+    if (!Array.isArray(v)) return null;
+    const out: string[] = [];
+    for (const item of v) {
+      if (typeof item !== 'string') return null;
+      out.push(item);
+    }
+    return { homeMatchScopeFavorites: out };
+  } catch {
+    return null;
+  }
+}
+
+export function getUserUiPreferences(userId: number): UserUiPreferencesPayload {
+  const row = db
+    .prepare('SELECT data FROM user_ui_preferences WHERE user_id = ?')
+    .get(userId) as { data: string } | undefined;
+  if (!row?.data) return defaultUiPreferences();
+  const parsed = parseUiPreferencesJson(row.data);
+  return parsed ?? defaultUiPreferences();
+}
+
+export function saveUserUiPreferences(userId: number, data: UserUiPreferencesPayload): void {
+  const now = new Date().toISOString();
+  const payload = JSON.stringify(data);
+  db.prepare(
+    `INSERT INTO user_ui_preferences (user_id, data, updated_at) VALUES (?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`
   ).run(userId, payload, now);
 }

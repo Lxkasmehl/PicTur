@@ -9,7 +9,9 @@ import {
   Select,
   Loader,
   Modal,
+  ActionIcon,
 } from '@mantine/core';
+import type { ComboboxData, ComboboxItem, ComboboxItemGroup } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import type { FileRejection, FileWithPath } from '@mantine/dropzone';
 import { notifications } from '@mantine/notifications';
@@ -22,15 +24,21 @@ import {
   IconCamera,
   IconInfoCircle,
   IconSkull,
+  IconStar,
+  IconStarFilled,
 } from '@tabler/icons-react';
-import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { validateFile } from '../utils/fileValidation';
 import { useUser } from '../hooks/useUser';
 import { usePhotoUpload } from '../hooks/usePhotoUpload';
 import { isStaffRole } from '../services/api/auth';
 import { PreviewCard } from '../components/PreviewCard';
 import { InstructionsModal } from '../components/InstructionsModal';
-import { getLocations } from '../services/api';
+import {
+  getLocations,
+  fetchUserUiPreferences,
+  saveUserUiPreferences,
+} from '../services/api';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   recordCommunitySighting,
@@ -41,9 +49,37 @@ import { SightingRewardsModal } from '../components/game/SightingRewardsModal';
 import { ObserverHomeSummary } from '../components/game/ObserverHomeSummary';
 import { ObserverGamificationTeaser } from '../components/game/ObserverGamificationTeaser';
 import { MarkDeceasedPanel } from '../components/MarkDeceasedPanel';
+import {
+  loadHomeMatchScopeFavorites,
+  saveHomeMatchScopeFavorites,
+} from '../utils/homeMatchScopeFavorites';
 
 const MATCH_ALL_VALUE = '__all__';
 const SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue', 'Incidental_Finds', 'Incidental Places', 'benchmarks'];
+
+function isComboboxItemGroup(x: ComboboxData[number]): x is ComboboxItemGroup {
+  return typeof x === 'object' && x !== null && 'group' in x && 'items' in x;
+}
+
+/** Flatten grouped Select data for validation / value checks. */
+function flattenMatchScopeOptions(data: ComboboxData): ComboboxItem[] {
+  const out: ComboboxItem[] = [];
+  for (const entry of data) {
+    if (typeof entry === 'string') {
+      out.push({ value: entry, label: entry });
+      continue;
+    }
+    if (isComboboxItemGroup(entry)) {
+      for (const it of entry.items) {
+        if (typeof it === 'string') out.push({ value: it, label: it });
+        else out.push(it);
+      }
+      continue;
+    }
+    out.push(entry);
+  }
+  return out;
+}
 
 export default function HomePage() {
   const dispatch = useAppDispatch();
@@ -60,6 +96,19 @@ export default function HomePage() {
   const [availableLocations, setAvailableLocations] = useState<string[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(false);
   const [selectedMatchSheet, setSelectedMatchSheet] = useState<string>(MATCH_ALL_VALUE);
+  const [favoriteLocations, setFavoriteLocations] = useState<string[]>([]);
+  /** Staff + logged in: wait for GET /user-ui-preferences before applying match-scope defaults. */
+  const [matchScopePrefsHydrated, setMatchScopePrefsHydrated] = useState(false);
+
+  // Before first paint as staff: mark locations as loading so match-scope init does not
+  // commit "All locations" while GET /locations is still in flight (same tick as useEffect).
+  useLayoutEffect(() => {
+    if (isStaff) {
+      setLocationsLoading(true);
+    } else {
+      setLocationsLoading(false);
+    }
+  }, [isStaff]);
 
   // Auto-open instructions on first visit
   useEffect(() => {
@@ -91,18 +140,55 @@ export default function HomePage() {
           a.localeCompare(b, undefined, { sensitivity: 'base' }),
         );
         setAvailableLocations(list);
-        setSelectedMatchSheet((prev) => {
-          if (prev !== MATCH_ALL_VALUE) return prev;
-          const firstKansas = list.find((p) => p.startsWith('Kansas/'));
-          const firstWithSlash = list.find((p) => p.includes('/'));
-          return firstKansas || firstWithSlash || list[0] || MATCH_ALL_VALUE;
-        });
       })
       .catch(() => setAvailableLocations([]))
       .finally(() => setLocationsLoading(false));
   }, [isStaff]);
 
-  const matchScopeOptions = useMemo(() => {
+  // Load favorites: auth profile when logged in (staff), else local cache.
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!isStaff) {
+      setFavoriteLocations(loadHomeMatchScopeFavorites());
+      setMatchScopePrefsHydrated(true);
+      return;
+    }
+    if (!isLoggedIn) {
+      setFavoriteLocations(loadHomeMatchScopeFavorites());
+      setMatchScopePrefsHydrated(true);
+      return;
+    }
+
+    let cancelled = false;
+    setMatchScopePrefsHydrated(false);
+    void fetchUserUiPreferences()
+      .then((prefs) => {
+        if (cancelled) return;
+        let list = prefs?.homeMatchScopeFavorites ?? [];
+        if (list.length === 0) {
+          const local = loadHomeMatchScopeFavorites();
+          if (local.length > 0) {
+            list = local;
+            void saveUserUiPreferences({ homeMatchScopeFavorites: list }).catch(() => {});
+          }
+        }
+        setFavoriteLocations(list);
+        saveHomeMatchScopeFavorites(list);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const local = loadHomeMatchScopeFavorites();
+        setFavoriteLocations(local);
+      })
+      .finally(() => {
+        if (!cancelled) setMatchScopePrefsHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authChecked, isStaff, isLoggedIn]);
+
+  const canonicalMatchScopeOptions = useMemo(() => {
     const byState = new Map<string, Set<string>>();
 
     for (const path of availableLocations) {
@@ -121,7 +207,7 @@ export default function HomePage() {
     const orderedStates = Array.from(byState.keys()).sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: 'base' }),
     );
-    const options: { value: string; label: string }[] = [];
+    const options: ComboboxItem[] = [];
 
     for (const state of orderedStates) {
       const stateLocations = Array.from(byState.get(state) ?? []).sort((a, b) =>
@@ -143,13 +229,123 @@ export default function HomePage() {
     return options;
   }, [availableLocations]);
 
-  // Keep a real option selected: Mantine Select looks empty if `value` is missing from `data`.
-  useEffect(() => {
-    if (!isStaff || matchScopeOptions.length === 0) return;
-    if (!matchScopeOptions.some((o) => o.value === selectedMatchSheet)) {
-      setSelectedMatchSheet(matchScopeOptions[0].value);
+  const matchScopeOptions = useMemo((): ComboboxData => {
+    const canonical = canonicalMatchScopeOptions;
+    const validIds = new Set(canonical.map((o) => o.value));
+    const seen = new Set<string>();
+    const favoriteOrdered: ComboboxItem[] = [];
+    for (const v of favoriteLocations) {
+      if (!validIds.has(v) || seen.has(v)) continue;
+      seen.add(v);
+      const item = canonical.find((o) => o.value === v);
+      if (item) favoriteOrdered.push(item);
     }
-  }, [isStaff, matchScopeOptions, selectedMatchSheet]);
+    const rest = canonical.filter((o) => !seen.has(o.value));
+    if (favoriteOrdered.length === 0) {
+      return rest;
+    }
+    return [
+      { group: 'Favorites', items: favoriteOrdered },
+      { group: 'More locations', items: rest },
+    ];
+  }, [canonicalMatchScopeOptions, favoriteLocations]);
+
+  const matchScopeFlatOptions = useMemo(
+    () => flattenMatchScopeOptions(matchScopeOptions),
+    [matchScopeOptions],
+  );
+
+  useEffect(() => {
+    if (!matchScopePrefsHydrated) return;
+    saveHomeMatchScopeFavorites(favoriteLocations);
+    if (!isStaff || !isLoggedIn) return;
+    const t = window.setTimeout(() => {
+      void saveUserUiPreferences({ homeMatchScopeFavorites: favoriteLocations }).catch(() => {});
+    }, 450);
+    return () => clearTimeout(t);
+  }, [favoriteLocations, matchScopePrefsHydrated, isStaff, isLoggedIn]);
+
+  const matchScopeSelectionReady = useRef(false);
+
+  useEffect(() => {
+    if (!isStaff) matchScopeSelectionReady.current = false;
+  }, [isStaff]);
+
+  useEffect(() => {
+    if (matchScopePrefsHydrated) {
+      matchScopeSelectionReady.current = false;
+    }
+  }, [matchScopePrefsHydrated]);
+
+  // Drop favorites that no longer exist on the server (paths removed).
+  // While GET /locations is in flight, canonical options omit real folders — do not prune yet
+  // or we strip saved favorites (e.g. Kansas) before paths are known.
+  useEffect(() => {
+    if (!isStaff || locationsLoading || canonicalMatchScopeOptions.length === 0) return;
+    const validIds = new Set(canonicalMatchScopeOptions.map((o) => o.value));
+    setFavoriteLocations((prev) => {
+      const next = prev.filter((id) => validIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [isStaff, locationsLoading, canonicalMatchScopeOptions]);
+
+  // First time real folder locations are known: default to all locations, or first saved favorite.
+  useEffect(() => {
+    if (!isStaff || !matchScopePrefsHydrated || matchScopeFlatOptions.length === 0 || matchScopeSelectionReady.current)
+      return;
+
+    // Wait for folder list: prefs often resolve before GET /locations; without this we lock
+    // "All locations" and/or prune favorites while Kansas is not in `data` yet.
+    if (locationsLoading) return;
+
+    if (availableLocations.length === 0) {
+      const validIds = new Set(matchScopeFlatOptions.map((o) => o.value));
+      const validFavs = favoriteLocations.filter((f) => validIds.has(f));
+      setSelectedMatchSheet(validFavs.length > 0 ? validFavs[0] : MATCH_ALL_VALUE);
+      matchScopeSelectionReady.current = true;
+      return;
+    }
+
+    const validIds = new Set(matchScopeFlatOptions.map((o) => o.value));
+    const validFavs = favoriteLocations.filter((f) => validIds.has(f));
+    setSelectedMatchSheet(validFavs.length > 0 ? validFavs[0] : MATCH_ALL_VALUE);
+    matchScopeSelectionReady.current = true;
+  }, [
+    isStaff,
+    matchScopePrefsHydrated,
+    locationsLoading,
+    availableLocations.length,
+    matchScopeFlatOptions,
+    favoriteLocations,
+  ]);
+
+  // Keep selection valid when options or favorites change after init.
+  useEffect(() => {
+    if (!isStaff || !matchScopePrefsHydrated || matchScopeFlatOptions.length === 0 || !matchScopeSelectionReady.current)
+      return;
+    const validIds = new Set(matchScopeFlatOptions.map((o) => o.value));
+    const validFavs = favoriteLocations.filter((f) => validIds.has(f));
+
+    setSelectedMatchSheet((prev) => {
+      if (!validIds.has(prev)) {
+        if (validFavs.length > 0) return validFavs[0];
+        return MATCH_ALL_VALUE;
+      }
+      if (validFavs.length === 0) return prev;
+      if (prev === MATCH_ALL_VALUE) return prev;
+      if (validFavs.includes(prev)) return prev;
+      return validFavs[0];
+    });
+  }, [isStaff, matchScopePrefsHydrated, matchScopeFlatOptions, favoriteLocations]);
+
+  const toggleMatchScopeFavorite = useCallback((value: string) => {
+    setFavoriteLocations((prev) => {
+      const exists = prev.includes(value);
+      if (exists) return prev.filter((v) => v !== value);
+      queueMicrotask(() => setSelectedMatchSheet(value));
+      return [value, ...prev.filter((v) => v !== value)];
+    });
+  }, []);
 
   const matchSheetForUpload = isStaff
     ? selectedMatchSheet === MATCH_ALL_VALUE
@@ -339,13 +535,44 @@ export default function HomePage() {
                   allowDeselect={false}
                   required
                   disabled={uploadState === 'uploading'}
+                  renderOption={({ option }) => {
+                    const isFav = favoriteLocations.includes(option.value);
+                    return (
+                      <Group justify='space-between' gap='xs' wrap='nowrap' w='100%'>
+                        <Text size='sm' style={{ flex: 1, minWidth: 0 }}>
+                          {option.label}
+                        </Text>
+                        <ActionIcon
+                          type='button'
+                          variant='subtle'
+                          size='sm'
+                          aria-label={
+                            isFav ? 'Remove from match-scope favorites' : 'Add to match-scope favorites'
+                          }
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleMatchScopeFavorite(option.value);
+                          }}
+                        >
+                          {isFav ? (
+                            <IconStarFilled size={16} color='var(--mantine-color-yellow-5)' />
+                          ) : (
+                            <IconStar size={16} />
+                          )}
+                        </ActionIcon>
+                      </Group>
+                    );
+                  }}
                 />
               )}
               <Text size='xs' c='dimmed'>
                 Location: tested against that location, all Community Turtles and all
                 Incidental Finds. &quot;Community Turtles only&quot;: only community
                 uploads. &quot;All locations&quot;: everything (all locations, Community,
-                Incidental Finds).
+                Incidental Finds). Use the star to pin rows to the top (saved to your
+                account when logged in, with a local fallback); starring selects that
+                scope unless you choose another option.
               </Text>
             </Stack>
           )}
