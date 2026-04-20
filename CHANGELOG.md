@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Additional turtle photos**: Optional **tags** on extra images (manifest); types **carapace**, **condition**, **microhabitat**, and **other**; admin APIs `GET /api/turtles/images/search-labels` and `PATCH /api/turtles/images/additional-labels`; integration tests in `test_turtles_routes.py`.
+- **Admin UI**: Staged upload with per-image type and tags; inline tag editing on saved photos (turtle folders); **Sheets browser** “Photo tags” mode with grouped results and larger previews; home/upload flow sends tagged extras via `extra_*` + `extra_labels_*`.
+
+### Changed
+
+- **CORS**: `PATCH` included in allowed methods for cross-origin tag updates.
+- **Upload route**: Shared `_collect_extra_upload_files` parses `extra_carapace_*`, `extra_other_*`, and per-index labels.
+- **Turtle additional photos**: POST stores `original_filename`; when images are merged into turtle folders, the stored file name uses the upload’s original basename instead of only the temp path. Integration test for review-queue carapace + labels; HTTP test client supports `PATCH`.
+
 ## [1.2.11] - 2026-04-18 — Biology ID parsing with trailing sheet notes
 
 ### Fixed
@@ -50,7 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.7] - 2026-04-16 - Add pillow-heif to CUDA image and libheif runtime deps
 
-### Fixed 
+### Fixed
 
 - **GPU backend crash on startup (production)**: `Dockerfile.cuda` installs only `backend/requirements-docker-cuda.txt`, which did not include `pillow-heif` after HEIC support landed in `requirements.txt`. `app.py` imports upload routes → `image_utils` → `pillow_heif` at startup, so the container exited with `ModuleNotFoundError` and the API never stayed up. Added `pillow-heif>=0.16.0` to `requirements-docker-cuda.txt`. Installed **`libheif1`** and **`libde265-0`** via `apt` in `Dockerfile` and `Dockerfile.cuda` so the HEIF stack has runtime libraries inside the image (no host-level installs required).
 

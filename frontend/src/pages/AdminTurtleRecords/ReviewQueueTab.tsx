@@ -76,7 +76,7 @@ export function ReviewQueueTab() {
 
   // Load selected candidate turtle's existing additional images when a match is selected (must run before any early return)
   useEffect(() => {
-    if (!selectedCandidate || !selectedItem) {
+    if (!selectedCandidate || !selectedItem?.request_id) {
       setSelectedCandidateTurtleImages(null);
       return;
     }
@@ -322,6 +322,7 @@ export function ReviewQueueTab() {
                   imagePath: a.image_path,
                   filename: a.filename,
                   type: a.type,
+                  labels: a.labels,
                 }))}
                 requestId={selectedItem.request_id}
                 onRefresh={() => refreshQueueItem(selectedItem.request_id)}
@@ -336,6 +337,7 @@ export function ReviewQueueTab() {
                     imagePath: a.path,
                     filename: a.path.split(/[/\\]/).pop() ?? a.path,
                     type: a.type,
+                    labels: a.labels,
                   }))}
                   turtleId={selectedCandidate}
                   sheetName={fullSheetName}

@@ -14,6 +14,7 @@ from services.manager_service import get_sheets_service, get_community_sheets_se
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from image_utils import normalize_to_jpeg
 from general_locations_catalog import resolve_general_location_from_sheet_and_value
+from additional_image_labels import normalize_label_list, parse_labels_from_form
 
 # Metadata keys to strip when syncing turtle data to community spreadsheet
 _COMMUNITY_SYNC_STRIP_KEYS = ('sheet_name', 'row_index')
@@ -98,12 +99,16 @@ def format_review_packet_item(packet_dir, request_id):
                     if fn:
                         p = os.path.join(target_dir, fn)
                         if os.path.isfile(p):
-                            results.append({
+                            row = {
                                 'filename': fn,
                                 'type': kind,
                                 'timestamp': entry.get('timestamp'),
                                 'image_path': p,
-                            })
+                            }
+                            lbs = entry.get('labels')
+                            if lbs:
+                                row['labels'] = normalize_label_list(lbs)
+                            results.append(row)
                             processed_files.add(fn)
             except (json.JSONDecodeError, OSError):
                 pass
@@ -114,6 +119,7 @@ def format_review_packet_item(packet_dir, request_id):
                     results.append({
                         'filename': f,
                         'type': 'other',
+                        'labels': [],
                         'timestamp': None,
                         'image_path': os.path.join(target_dir, f),
                     })
@@ -237,8 +243,9 @@ def register_review_routes(app):
                     continue
                 idx = key.replace('file_', '')
                 typ = request.form.get(f'type_{idx}', 'other').strip().lower()
-                if typ not in ('microhabitat', 'condition', 'other'):
+                if typ not in ('microhabitat', 'condition', 'carapace', 'other'):
                     typ = 'other'
+                lbs = parse_labels_from_form(request.form, idx)
                 if not allowed_file(f.filename):
                     continue
                 f.seek(0, os.SEEK_END)
@@ -251,7 +258,10 @@ def register_review_routes(app):
                 f.save(temp_path)
                 # HEIC/HEIF → JPEG (no-op for other formats)
                 temp_path = normalize_to_jpeg(temp_path)
-                files_with_types.append({'path': temp_path, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
+                item = {'path': temp_path, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
+                if lbs:
+                    item['labels'] = lbs
+                files_with_types.append(item)
             if not files_with_types:
                 return jsonify({'error': 'No valid image files provided'}), 400
             success, msg = manager_service.manager.add_additional_images_to_packet(request_id, files_with_types)

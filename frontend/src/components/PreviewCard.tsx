@@ -1,4 +1,5 @@
 import {
+  Box,
   Card,
   Stack,
   Group,
@@ -16,6 +17,8 @@ import {
   Select,
   Divider,
   Paper,
+  TagsInput,
+  Modal,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { Transition } from '@mantine/core';
@@ -29,12 +32,14 @@ import {
   IconCurrentLocation,
   IconFlag,
   IconPhotoPlus,
+  IconZoomIn,
 } from '@tabler/icons-react';
 import { useState, useEffect, useRef } from 'react';
 import type { FileWithPath } from '@mantine/dropzone';
 import type { LocationHint, UploadExtraFile } from '../services/api';
 import { MapPicker } from './MapPicker';
 import { validateFile } from '../utils/fileValidation';
+import { notifications } from '@mantine/notifications';
 
 interface PreviewCardProps {
   preview: string | null;
@@ -93,6 +98,8 @@ export function PreviewCard({
   const [stillAtLocation, setStillAtLocation] = useState<'yes' | 'no' | null>(null);
   const [manualLat, setManualLat] = useState('');
   const [manualLon, setManualLon] = useState('');
+  const [extraPreviewUrls, setExtraPreviewUrls] = useState<string[]>([]);
+  const [lightboxObjectUrl, setLightboxObjectUrl] = useState<string | null>(null);
   const isMobile = useMediaQuery('(max-width: 576px)');
 
   const prevStillAtLocation = useRef<'yes' | 'no' | null>(null);
@@ -119,6 +126,14 @@ export function PreviewCard({
     if (setPhysicalFlag) setPhysicalFlag(null);
     if (setExtraFiles) setExtraFiles([]);
   }, [fileKey, setLocationHint, setCollectedToLab, setPhysicalFlag, setExtraFiles]);
+
+  useEffect(() => {
+    const urls = extraFiles.map((ef) => URL.createObjectURL(ef.file));
+    setExtraPreviewUrls(urls);
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [extraFiles]);
 
   if (!preview) return null;
 
@@ -156,16 +171,51 @@ export function PreviewCard({
               </Text>
             )}
 
-            {/* Additional photos (microhabitat, condition) – for both community and admin */}
+            {/* Additional photos – per-image type, tags, preview, lightbox (same idea as Admin additional photos) */}
             {uploadState === 'idle' && setExtraFiles && (
               <Paper p='sm' withBorder radius='md'>
                 <Text fw={600} size='sm' mb='xs'>
                   Additional photos (optional)
                 </Text>
-                <Text size='xs' c='dimmed' mb='xs'>
-                  Add as many microhabitat and/or condition photos as you like. Select files below; remove any with the trash icon.
+                <Text size='xs' c='dimmed' mb='sm'>
+                  Add photos first. For each row set type and tags, preview with a click, remove if wrong. These
+                  upload with your main photo.
                 </Text>
-                <Group gap='xs' mb='xs'>
+                <Group gap='xs' mb='sm'>
+                  <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
+                    Carapace
+                    <input
+                      type='file'
+                      accept='image/*'
+                      multiple
+                      hidden
+                      onChange={(e) => {
+                        const list = e.target.files;
+                        if (!list?.length) return;
+                        const valid: UploadExtraFile[] = [];
+                        for (let i = 0; i < list.length; i++) {
+                          const file = list[i];
+                          const validation = validateFile(file);
+                          if (validation.isValid) {
+                            valid.push({
+                              type: 'carapace',
+                              file,
+                              labels: [],
+                              localId: crypto.randomUUID(),
+                            });
+                          } else if (validation.error) {
+                            notifications.show({
+                              title: 'Invalid file',
+                              message: validation.error,
+                              color: 'red',
+                            });
+                          }
+                        }
+                        if (valid.length) setExtraFiles((prev) => [...prev, ...valid]);
+                        e.target.value = '';
+                      }}
+                    />
+                  </Button>
                   <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
                     Microhabitat
                     <input
@@ -180,7 +230,20 @@ export function PreviewCard({
                         for (let i = 0; i < list.length; i++) {
                           const file = list[i];
                           const validation = validateFile(file);
-                          if (validation.isValid) valid.push({ type: 'microhabitat', file });
+                          if (validation.isValid) {
+                            valid.push({
+                              type: 'microhabitat',
+                              file,
+                              labels: [],
+                              localId: crypto.randomUUID(),
+                            });
+                          } else if (validation.error) {
+                            notifications.show({
+                              title: 'Invalid file',
+                              message: validation.error,
+                              color: 'red',
+                            });
+                          }
                         }
                         if (valid.length) setExtraFiles((prev) => [...prev, ...valid]);
                         e.target.value = '';
@@ -201,7 +264,54 @@ export function PreviewCard({
                         for (let i = 0; i < list.length; i++) {
                           const file = list[i];
                           const validation = validateFile(file);
-                          if (validation.isValid) valid.push({ type: 'condition', file });
+                          if (validation.isValid) {
+                            valid.push({
+                              type: 'condition',
+                              file,
+                              labels: [],
+                              localId: crypto.randomUUID(),
+                            });
+                          } else if (validation.error) {
+                            notifications.show({
+                              title: 'Invalid file',
+                              message: validation.error,
+                              color: 'red',
+                            });
+                          }
+                        }
+                        if (valid.length) setExtraFiles((prev) => [...prev, ...valid]);
+                        e.target.value = '';
+                      }}
+                    />
+                  </Button>
+                  <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
+                    Other
+                    <input
+                      type='file'
+                      accept='image/*'
+                      multiple
+                      hidden
+                      onChange={(e) => {
+                        const list = e.target.files;
+                        if (!list?.length) return;
+                        const valid: UploadExtraFile[] = [];
+                        for (let i = 0; i < list.length; i++) {
+                          const file = list[i];
+                          const validation = validateFile(file);
+                          if (validation.isValid) {
+                            valid.push({
+                              type: 'other',
+                              file,
+                              labels: [],
+                              localId: crypto.randomUUID(),
+                            });
+                          } else if (validation.error) {
+                            notifications.show({
+                              title: 'Invalid file',
+                              message: validation.error,
+                              color: 'red',
+                            });
+                          }
                         }
                         if (valid.length) setExtraFiles((prev) => [...prev, ...valid]);
                         e.target.value = '';
@@ -210,29 +320,112 @@ export function PreviewCard({
                   </Button>
                 </Group>
                 {extraFiles.length > 0 && (
-                  <Stack gap='xs'>
-                    {(['microhabitat', 'condition'] as const).map((t) => {
-                      const ofType = extraFiles.map((ef, i) => ({ ef, i })).filter(({ ef }) => ef.type === t);
-                      if (ofType.length === 0) return null;
+                  <Stack gap='md'>
+                    {extraFiles.map((ef, index) => {
+                      const thumb = extraPreviewUrls[index];
                       return (
-                        <Stack key={t} gap={4}>
-                          <Text size='xs' fw={500} c='dimmed' tt='capitalize'>{t}</Text>
-                          <Group gap='xs' wrap='wrap'>
-                            {ofType.map(({ ef, i }) => (
-                              <Badge key={i} size='sm' variant='light' rightSection={
-                                <Button size='xs' variant='subtle' color='red' p={2} style={{ minWidth: 20 }} onClick={() => setExtraFiles((prev) => prev.filter((_, idx) => idx !== i))}>
-                                  <IconTrash size={12} />
-                                </Button>
-                              }>
+                        <Paper key={ef.localId ?? `${index}-${ef.file.name}`} p='xs' withBorder radius='md'>
+                          <Group align='flex-start' wrap='nowrap' gap='sm'>
+                            <Box
+                              style={{
+                                width: 72,
+                                height: 72,
+                                borderRadius: 8,
+                                overflow: 'hidden',
+                                flexShrink: 0,
+                                cursor: thumb ? 'pointer' : 'default',
+                                border: '1px solid var(--mantine-color-default-border)',
+                              }}
+                              onClick={() => thumb && setLightboxObjectUrl(thumb)}
+                            >
+                              {thumb ? (
+                                <Image src={thumb} alt='' w={72} h={72} fit='cover' />
+                              ) : (
+                                <Center w={72} h={72} bg='gray.1' />
+                              )}
+                            </Box>
+                            <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>
+                              <Select
+                                size='xs'
+                                label='Type'
+                                data={[
+                                  { value: 'carapace', label: 'Carapace' },
+                                  { value: 'microhabitat', label: 'Microhabitat' },
+                                  { value: 'condition', label: 'Condition' },
+                                  { value: 'other', label: 'Other' },
+                                ]}
+                                value={ef.type}
+                                onChange={(v) => {
+                                  if (!v) return;
+                                  setExtraFiles((prev) =>
+                                    prev.map((row, i) =>
+                                      i === index ? { ...row, type: v as UploadExtraFile['type'] } : row,
+                                    ),
+                                  );
+                                }}
+                              />
+                              <TagsInput
+                                size='xs'
+                                label='Tags for this photo'
+                                placeholder='e.g. burned, dry'
+                                value={ef.labels ?? []}
+                                onChange={(tags) =>
+                                  setExtraFiles((prev) =>
+                                    prev.map((row, i) => (i === index ? { ...row, labels: tags } : row)),
+                                  )
+                                }
+                              />
+                              <Text size='xs' c='dimmed' lineClamp={1}>
                                 {ef.file.name}
-                              </Badge>
-                            ))}
+                              </Text>
+                            </Stack>
+                            <Stack gap={4}>
+                              <Button
+                                size='xs'
+                                variant='subtle'
+                                color='gray'
+                                p={4}
+                                title='Large preview'
+                                disabled={!thumb}
+                                onClick={() => thumb && setLightboxObjectUrl(thumb)}
+                              >
+                                <IconZoomIn size={16} />
+                              </Button>
+                              <Button
+                                size='xs'
+                                variant='subtle'
+                                color='red'
+                                p={4}
+                                title='Remove'
+                                onClick={() =>
+                                  setExtraFiles((prev) => prev.filter((_, idx) => idx !== index))
+                                }
+                              >
+                                <IconTrash size={16} />
+                              </Button>
+                            </Stack>
                           </Group>
-                        </Stack>
+                        </Paper>
                       );
                     })}
                   </Stack>
                 )}
+                <Modal
+                  opened={!!lightboxObjectUrl}
+                  onClose={() => setLightboxObjectUrl(null)}
+                  title='Preview'
+                  size='lg'
+                  centered
+                >
+                  {lightboxObjectUrl && (
+                    <Image
+                      src={lightboxObjectUrl}
+                      alt='Additional'
+                      fit='contain'
+                      style={{ maxHeight: '80vh' }}
+                    />
+                  )}
+                </Modal>
               </Paper>
             )}
 

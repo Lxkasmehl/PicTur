@@ -135,7 +135,10 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
       mimeType: 'image/jpeg',
       buffer: getTestImageBuffer(),
     });
-    await expect(page.getByText('Added', { exact: true })).toBeVisible({ timeout: 10_000 });
+    // Staged upload: pick file → review row → explicit upload (no immediate POST / no "Added" toast).
+    await expect(fromUploadSection.getByText(/Review before upload/i)).toBeVisible({ timeout: 10_000 });
+    await fromUploadSection.getByRole('button', { name: /Upload 1 photo/i }).click();
+    await expect(page.getByText('Uploaded', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(fromUploadSection.getByRole('img').first()).toBeVisible({ timeout: 5000 });
 
     const removeBtn = fromUploadSection.getByRole('button', { name: 'Remove' }).first();
@@ -180,7 +183,9 @@ test.describe('Admin Turtle Records (Sheets Browser)', () => {
       mimeType: 'image/jpeg',
       buffer: getTestImageBuffer(),
     });
-    await expect(page.getByText('Added', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(photosSection.getByText(/Review before upload/i)).toBeVisible({ timeout: 10_000 });
+    await photosSection.getByRole('button', { name: /Upload 1 photo/i }).click();
+    await expect(page.getByText('Uploaded', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(photosSection.getByRole('img').first()).toBeVisible({ timeout: 5000 });
 
     const removeBtn = photosSection.getByRole('button', { name: 'Remove' }).first();

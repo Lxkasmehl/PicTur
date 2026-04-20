@@ -11,6 +11,10 @@ from auth import require_admin
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from image_utils import normalize_to_jpeg
 from services import manager_service
+from additional_image_labels import (
+    normalize_label_list,
+    parse_labels_from_form,
+)
 
 
 def register_turtle_routes(app):
@@ -22,7 +26,7 @@ def register_turtle_routes(app):
         """
         Get image paths for a turtle: primary (ref_data), additional (microhabitat/condition), loose.
         Query: turtle_id (required), sheet_name (optional, for disambiguation).
-        Returns: { primary: path | null, additional: [ { path, type } ], loose: [ path ] }
+        Returns: { primary: path | null, additional: [ { path, type, labels?, ... } ], loose: [ path ] }
         """
         if not manager_service.manager_ready.wait(timeout=5):
             return jsonify({'error': 'TurtleManager is still initializing'}), 503
@@ -73,12 +77,16 @@ def register_turtle_routes(app):
                         if fn:
                             p = os.path.join(target_dir, fn)
                             if os.path.isfile(p):
-                                results.append({
+                                row = {
                                     'path': p,
                                     'type': kind,
                                     'timestamp': entry.get('timestamp'),
                                     'uploaded_by': entry.get('uploaded_by'),
-                                })
+                                }
+                                lbs = entry.get('labels')
+                                if lbs:
+                                    row['labels'] = normalize_label_list(lbs)
+                                results.append(row)
                                 processed_files.add(fn)
                 except (json.JSONDecodeError, OSError):
                     pass
@@ -90,6 +98,7 @@ def register_turtle_routes(app):
                         results.append({
                             'path': os.path.join(target_dir, f),
                             'type': 'other',
+                            'labels': [],
                             'timestamp': None,
                             'uploaded_by': None,
                         })
@@ -118,6 +127,53 @@ def register_turtle_routes(app):
             'additional': additional,
             'loose': loose,
         })
+
+    @app.route('/api/turtles/images/search-labels', methods=['GET'])
+    @require_admin
+    def search_turtle_images_by_label():
+        """
+        Find additional images whose labels match query (substring, case-insensitive).
+        Query: q (required)
+        """
+        if not manager_service.manager_ready.wait(timeout=5):
+            return jsonify({'error': 'TurtleManager is still initializing'}), 503
+        if manager_service.manager is None:
+            return jsonify({'error': 'TurtleManager not available'}), 500
+        q = (request.args.get('q') or '').strip()
+        if not q:
+            return jsonify({'error': 'q required'}), 400
+        matches = manager_service.manager.search_additional_images_by_label(q)
+        return jsonify({'matches': matches})
+
+    @app.route('/api/turtles/images/additional-labels', methods=['PATCH'])
+    @require_admin
+    def patch_turtle_additional_image_labels():
+        """
+        Update labels on one additional image (manifest entry). Admin only.
+        JSON: { turtle_id, filename, sheet_name?, labels: string[] }
+        """
+        if not manager_service.manager_ready.wait(timeout=5):
+            return jsonify({'error': 'TurtleManager is still initializing'}), 503
+        if manager_service.manager is None:
+            return jsonify({'error': 'TurtleManager not available'}), 500
+        data = request.get_json(silent=True) or {}
+        turtle_id = (data.get('turtle_id') or '').strip()
+        filename = (data.get('filename') or '').strip()
+        sheet_name = (data.get('sheet_name') or '').strip() or None
+        labels = data.get('labels')
+        if not turtle_id:
+            return jsonify({'error': 'turtle_id required'}), 400
+        if not filename:
+            return jsonify({'error': 'filename required'}), 400
+        if labels is not None and not isinstance(labels, list):
+            return jsonify({'error': 'labels must be an array of strings'}), 400
+        lbs = normalize_label_list(labels if isinstance(labels, list) else [])
+        ok, err = manager_service.manager.update_turtle_additional_image_labels(
+            turtle_id, filename, sheet_name, lbs
+        )
+        if not ok:
+            return jsonify({'error': err or 'Failed to update labels'}), 400
+        return jsonify({'success': True})
 
     @app.route('/api/turtles/images/primaries', methods=['POST'])
     @require_admin
@@ -185,7 +241,7 @@ def register_turtle_routes(app):
     def add_turtle_additional_images():
         """
         Add microhabitat/condition images to an existing turtle folder (Admin only).
-        Form: file_0, type_0, file_1, type_1, ... (type: microhabitat | condition | other), optional sheet_name.
+        Form: file_0, type_0, labels_0, ... (type: microhabitat | condition | carapace | other), optional sheet_name.
         """
         if not manager_service.manager_ready.wait(timeout=5):
             return jsonify({'error': 'TurtleManager is still initializing'}), 503
@@ -205,8 +261,9 @@ def register_turtle_routes(app):
                     continue
                 idx = key.replace('file_', '')
                 typ = (request.form.get(f'type_{idx}') or 'other').strip().lower()
-                if typ not in ('microhabitat', 'condition', 'other'):
+                if typ not in ('microhabitat', 'condition', 'carapace', 'other'):
                     typ = 'other'
+                lbs = parse_labels_from_form(request.form, idx)
                 if not allowed_file(f.filename):
                     continue
                 f.seek(0, os.SEEK_END)
@@ -214,7 +271,8 @@ def register_turtle_routes(app):
                 f.seek(0)
                 if size > MAX_FILE_SIZE:
                     continue
-                ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
+                orig_safe = secure_filename(f.filename) or ''
+                ext = os.path.splitext(orig_safe)[1] or '.jpg'
                 temp_path = os.path.join(
                     UPLOAD_FOLDER,
                     f"turtle_extra_{turtle_id}_{idx}_{int(time.time())}{ext}".replace(os.sep, '_'),
@@ -222,11 +280,16 @@ def register_turtle_routes(app):
                 f.save(temp_path)
                 # HEIC/HEIF → JPEG (no-op for other formats)
                 temp_path = normalize_to_jpeg(temp_path)
-                files_with_types.append({
+                orig_base = os.path.basename(orig_safe) if orig_safe else f'upload{ext}'
+                item = {
                     'path': temp_path,
                     'type': typ,
                     'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-                })
+                    'original_filename': orig_base,
+                }
+                if lbs:
+                    item['labels'] = lbs
+                files_with_types.append(item)
             if not files_with_types:
                 return jsonify({'error': 'No valid image files provided'}), 400
             success, msg = manager_service.manager.add_additional_images_to_turtle(

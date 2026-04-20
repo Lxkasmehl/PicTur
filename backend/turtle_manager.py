@@ -12,6 +12,12 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
 
+from additional_image_labels import (
+    label_query_matches,
+    normalize_additional_type,
+    normalize_label_list,
+)
+
 # --- IMPORT THE BRAIN (SUPERPOINT/LIGHTGLUE) ---
 try:
     from turtles.image_processing import brain
@@ -744,8 +750,8 @@ class TurtleManager:
 
         for item in files_with_types:
             src = item.get('path')
-            typ = (item.get('type') or 'other').lower()
-            if typ not in ('microhabitat', 'condition', 'other'): typ = 'other'
+            typ = normalize_additional_type(item.get('type'))
+            lbs = normalize_label_list(item.get('labels'))
             ts = item.get('timestamp') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             if not src or not os.path.isfile(src): continue
             ext = os.path.splitext(src)[1] or '.jpg'
@@ -753,8 +759,15 @@ class TurtleManager:
             safe_name = "".join(c for c in safe_name if c.isalnum() or c in '._-')
             dest = os.path.join(date_dir, safe_name)
             shutil.copy2(src, dest)
-            manifest.append(
-                {"filename": safe_name, "type": typ, "timestamp": ts, "original_source": os.path.basename(src)})
+            entry = {
+                'filename': safe_name,
+                'type': typ,
+                'timestamp': ts,
+                'original_source': os.path.basename(src),
+            }
+            if lbs:
+                entry['labels'] = lbs
+            manifest.append(entry)
 
         with open(manifest_path, 'w') as f:
             json.dump(manifest, f, indent=4)
@@ -871,18 +884,133 @@ class TurtleManager:
 
         for item in files_with_types:
             src = item.get('path')
-            typ = (item.get('type') or 'other').lower()
+            typ = normalize_additional_type(item.get('type'))
+            lbs = normalize_label_list(item.get('labels'))
             ts = item.get('timestamp') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             if not src or not os.path.isfile(src): continue
-            safe_name = f"{typ}_{int(time.time() * 1000)}_{os.path.basename(src)}"
+            raw_name = item.get('original_filename')
+            name_suffix = os.path.basename(raw_name) if raw_name else os.path.basename(src)
+            safe_name = f"{typ}_{int(time.time() * 1000)}_{name_suffix}"
             safe_name = "".join(c for c in safe_name if c.isalnum() or c in '._-')
             dest = os.path.join(date_dir, safe_name)
             shutil.copy2(src, dest)
-            manifest.append({"filename": safe_name, "type": typ, "timestamp": ts})
+            entry = {"filename": safe_name, "type": typ, "timestamp": ts}
+            if lbs:
+                entry["labels"] = lbs
+            manifest.append(entry)
 
         with open(manifest_path, 'w') as f:
             json.dump(manifest, f, indent=4)
         return True, "OK"
+
+    def update_turtle_additional_image_labels(self, turtle_id, filename, sheet_name, labels):
+        """Set labels on one manifest entry (additional_images)."""
+        turtle_dir = self._get_turtle_folder(turtle_id, sheet_name)
+        if not turtle_dir or not os.path.isdir(turtle_dir):
+            return False, "Turtle folder not found"
+        if not filename or os.path.basename(filename) != filename:
+            return False, "Invalid filename"
+        lbs = normalize_label_list(labels)
+        additional_dir = os.path.join(turtle_dir, 'additional_images')
+        if not os.path.isdir(additional_dir):
+            return False, "No additional images folder"
+
+        def try_update(target_dir):
+            manifest_path = os.path.join(target_dir, 'manifest.json')
+            if not os.path.isfile(manifest_path):
+                return False
+            file_path = os.path.join(target_dir, filename)
+            if not os.path.isfile(file_path):
+                return False
+            try:
+                with open(manifest_path, 'r') as f:
+                    manifest = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                return False
+            changed = False
+            for entry in manifest:
+                if entry.get('filename') == filename:
+                    entry['labels'] = lbs
+                    changed = True
+                    break
+            if not changed:
+                return False
+            try:
+                with open(manifest_path, 'w') as f:
+                    json.dump(manifest, f, indent=4)
+            except OSError:
+                return False
+            return True
+
+        if try_update(additional_dir):
+            return True, None
+        for date_folder in os.listdir(additional_dir):
+            date_dir = os.path.join(additional_dir, date_folder)
+            if os.path.isdir(date_dir) and try_update(date_dir):
+                return True, None
+        return False, "Image not found in manifest"
+
+    def search_additional_images_by_label(self, query):
+        """
+        Scan all turtle additional_images manifests for entries whose labels match query (substring, case-insensitive).
+        Excludes Review_Queue. Returns list of dicts with turtle_id, sheet_name (folder path), path, filename, type, labels, timestamp.
+        """
+        q = (query or '').strip()
+        if not q:
+            return []
+        matches = []
+        skip_top = {'Review_Queue', 'benchmarks'}
+        for root, dirs, files in os.walk(self.base_dir):
+            if os.path.basename(root) != 'additional_images':
+                continue
+            rel = os.path.relpath(root, self.base_dir)
+            first = rel.split(os.sep)[0] if rel else ''
+            if first in skip_top:
+                continue
+            turtle_dir = os.path.dirname(root)
+            turtle_id = os.path.basename(turtle_dir)
+            sheet_name = os.path.relpath(turtle_dir, self.base_dir)
+
+            def scan_manifest_in(dir_path):
+                manifest_path = os.path.join(dir_path, 'manifest.json')
+                if not os.path.isfile(manifest_path):
+                    return
+                try:
+                    with open(manifest_path, 'r') as f:
+                        manifest = json.load(f)
+                except (json.JSONDecodeError, OSError):
+                    return
+                if not isinstance(manifest, list):
+                    return
+                for entry in manifest:
+                    fn = entry.get('filename')
+                    if not fn:
+                        continue
+                    labels = entry.get('labels')
+                    if not label_query_matches(labels, q):
+                        continue
+                    p = os.path.join(dir_path, fn)
+                    if not os.path.isfile(p):
+                        continue
+                    kind = normalize_additional_type(entry.get('type'))
+                    matches.append({
+                        'turtle_id': turtle_id,
+                        'sheet_name': sheet_name.replace(os.sep, '/'),
+                        'path': p,
+                        'filename': fn,
+                        'type': kind,
+                        'labels': normalize_label_list(labels),
+                        'timestamp': entry.get('timestamp'),
+                    })
+
+            scan_manifest_in(root)
+            for item in sorted(os.listdir(root)):
+                sub = os.path.join(root, item)
+                if os.path.isdir(sub):
+                    scan_manifest_in(sub)
+
+        matches.sort(key=lambda m: (m.get('sheet_name') or '', m.get('turtle_id') or '', m.get('filename') or ''))
+        return matches
 
     def remove_additional_image_from_turtle(self, turtle_id, filename, sheet_name=None):
         turtle_dir = self._get_turtle_folder(turtle_id, sheet_name)
