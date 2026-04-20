@@ -175,7 +175,10 @@ def format_review_packet_item(packet_dir, request_id):
     if os.path.isdir(candidates_dir):
         for candidate_file in sorted(os.listdir(candidates_dir)):
             if candidate_file.lower().endswith(('.jpg', '.png', '.jpeg')):
-                parts = candidate_file.replace('.jpg', '').replace('.png', '').replace('.jpeg', '').split('_')
+                # Strip extension case-insensitively (.JPG was left on parts, breaking int() for Rank/Conf).
+                root, ext = os.path.splitext(candidate_file)
+                base_name = root if ext.lower() in ('.jpg', '.jpeg', '.png') else candidate_file
+                parts = base_name.split('_')
                 rank, turtle_id, confidence = 0, 'Unknown', 0
                 for part in parts:
                     if part.startswith('Rank'):

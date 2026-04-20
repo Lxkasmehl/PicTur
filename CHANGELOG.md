@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.13] - 2026-04-20 — Review queue candidate filenames with uppercase extensions
+
+### Fixed
+
+- **`GET /api/review-queue` HTTP 500** when a packet’s `candidate_matches` images use an uppercase extension (e.g. **`Rank1_IDT42_Conf85.JPG`**). Parsing stripped only lowercase `.jpg`/`.png`/`.jpeg`, so `Conf`/`Rank` segments still contained **`.JPG`** and `int()` raised **`invalid literal for int() with base 10: '85.JPG'`**. **`format_review_packet_item`** now removes the extension with **`os.path.splitext`** and a case-insensitive suffix check before splitting on **`_`**.
+
+### Testing
+
+- **`backend/tests/test_review_packet_format.py`**: **`test_candidate_uppercase_jpg_extension_parsed`** asserts **`Rank1_IDT42_Conf85.JPG`** yields the same rank, turtle id, and confidence as the lowercase **`.jpg`** case.
+
 ## [1.2.12] - 2026-04-20 — Upload favorites, extra photo tags, admin Sheets browser
 
 ### Added
@@ -250,7 +260,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.12...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.13...HEAD
+[1.2.13]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.13
 [1.2.12]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.12
 [1.2.11]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.11
 [1.2.10]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.10

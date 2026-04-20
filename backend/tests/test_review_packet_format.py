@@ -85,3 +85,17 @@ def test_match_search_pending_false_with_ranked_candidate(packet_dir):
     assert item["candidates"][0]["turtle_id"] == "T42"
     assert item["candidates"][0]["rank"] == 1
     assert item["candidates"][0]["confidence"] == 85
+
+
+def test_candidate_uppercase_jpg_extension_parsed(packet_dir):
+    """candidate_matches files may use .JPG; parsing must not pass '23.JPG' to int()."""
+    packet_dir.mkdir()
+    cm = packet_dir / "candidate_matches"
+    cm.mkdir()
+    _write_minimal_jpeg(str(packet_dir / "query.jpg"))
+    _write_minimal_jpeg(str(cm / "Rank1_IDT42_Conf85.JPG"))
+    item = format_review_packet_item(str(packet_dir), "Req_unit_test_packet")
+    assert len(item["candidates"]) == 1
+    assert item["candidates"][0]["rank"] == 1
+    assert item["candidates"][0]["turtle_id"] == "T42"
+    assert item["candidates"][0]["confidence"] == 85
