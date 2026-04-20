@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.12] - 2026-04-20 — Upload favorites, extra photo tags, admin Sheets browser
+
 ### Added
 
 - **Home match-scope favorites (staff)**: Star locations (including “All locations”) in the upload scope `Select`; favorites are grouped (“Favorites” / “More locations”), default scope respects saved order after reload (waits for `GET /locations` before locking selection). Preferences sync to **`GET`/`PUT /api/auth/user-ui-preferences`** (SQLite table `user_ui_preferences` in auth-backend) when logged in, with **localStorage** fallback and one-time migration from cache if the profile is empty.
@@ -248,7 +250,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.11...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.12...HEAD
+[1.2.12]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.12
 [1.2.11]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.11
 [1.2.10]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.10
 [1.2.9]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.9
