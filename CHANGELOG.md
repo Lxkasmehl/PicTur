@@ -18,6 +18,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Upload route**: Shared `_collect_extra_upload_files` parses `extra_carapace_*`, `extra_other_*`, and per-index labels.
 - **Turtle additional photos**: POST stores `original_filename`; when images are merged into turtle folders, the stored file name uses the upload’s original basename instead of only the temp path. Integration test for review-queue carapace + labels; HTTP test client supports `PATCH`.
 
+## [1.2.11] - 2026-04-18 — Biology ID parsing with trailing sheet notes
+
+### Fixed
+
+- **Max biology ID when the ID cell includes extra text**: Only values matching a strict “letter + digits only” pattern were counted toward the highest numeric suffix. Real sheet cells often append notes (e.g. **`J666 (UT1 4/13/2026)`**, **`M637 (UT 713 …)`**), so those rows were skipped and the next ID could be far too low (e.g. **637** while **666** already existed). **`get_max_biology_id_number`** now treats every **M/F/J/U** + digits token in the cell (and a leading ID before spaces or parentheses) so the shared sequence advances correctly (e.g. **U667** after **J666**). **`normalize_biology_id_display`** strips the same leading ID for canonical **MFJU** + three-digit form.
+
+### Testing
+
+- **`backend/tests/test_sheets_sparse_column_regression.py`**: Cases where **J666** appears with a **(UT …)** suffix; **`generate_biology_id`** yields **U667**.
+- **`backend/tests/test_value_normalize_and_biology.py`**: Parametrised normalize cases for annotated IDs.
+
+## [1.2.10] - 2026-04-18 — Google Sheets sparse-column reads (new turtle row / max biology ID)
+
+### Fixed
+
+- **Google Sheets new-turtle row / biology ID scan (sparse columns)**: Reading only column **A** (or only the biology **ID** column) for `values.get` can omit rows where that cell is empty but another column in the same row has data. That made `create_turtle_data` compute too small a `next_row` and **overwrite an existing turtle row**, and `get_max_biology_id_number` miss high IDs (e.g. **J666**) so the next ID was too low (e.g. **U637** instead of **U667**). **Append** now uses a range spanning **Primary ID through ID**; **max biology suffix** is scanned from **column A through the ID column** (`A2:…` for the max scan so the header row is not parsed as an ID).
+
+### Testing
+
+- **`backend/tests/fakes/google_sheets_api_fake.py`**: Fake `spreadsheets.values` that models sparse **single-column** `values.get` (rows omitted when that column is empty). Used to assert **behaviour** (which sheet row is written; max biology suffix / next U-ID), not only range strings.
+- **`backend/tests/test_sheets_sparse_column_regression.py`**: Behavioural regression for the admin “new turtle” chat bug — **no overwrite** of an existing row when Primary ID is missing on some lines; **J666 → next U667** (and documents **U637** as max-stuck-at-636). Reverting the `crud`/`migration` fixes should fail these tests; E2E against real Google Sheets is not required for this class of bug.
+
 ## [1.2.9] - 2026-04-17 — Backup dates follow host TZ; daily-backup invokes data script with bash
 
 ### Changed
@@ -226,7 +248,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.9...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.11...HEAD
+[1.2.11]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.11
+[1.2.10]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.10
 [1.2.9]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.9
 [1.2.8]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.8
 [1.2.7]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.7

@@ -4,7 +4,7 @@ CRUD operations for Google Sheets turtle data
 
 from typing import Dict, List, Optional, Any
 from googleapiclient.errors import HttpError
-from .helpers import escape_sheet_name, get_sheet_name_for_region
+from .helpers import escape_sheet_name, get_sheet_name_for_region, column_index_to_letter
 from .columns import COLUMN_MAPPING
 from .row_formatting import apply_deceased_row_background, is_deceased_yes
 from . import sheet_management
@@ -138,16 +138,32 @@ def create_turtle_data(service, spreadsheet_id: str, turtle_data: Dict[str, Any]
             print(f"ERROR in create_turtle_data: No column headers for sheet '{sheet_name}'")
             return None
         
-        # Get the next available row (find last row with data)
+        # Next row must not be derived from column A alone: values.get on a single column
+        # stops at the last non-empty cell *in that column*. Rows with an empty Primary ID
+        # but a filled biology ID (ID column) would be missing, len(values) too small, and
+        # the following update() would overwrite an existing turtle row.
         escaped_sheet = escape_sheet_name(sheet_name)
-        range_name = f"{escaped_sheet}!A:A"
+        primary_col = column_indices.get('Primary ID')
+        id_col = column_indices.get('ID')
+        if primary_col is not None and id_col is not None:
+            start_idx, end_idx = min(primary_col, id_col), max(primary_col, id_col)
+        elif primary_col is not None:
+            start_idx = end_idx = primary_col
+        elif id_col is not None:
+            start_idx = end_idx = id_col
+        else:
+            # Canonical sheet: Primary ID = A, ID = C — span at least through biology ID column
+            start_idx, end_idx = 0, 2
+        span_range = (
+            f"{escaped_sheet}!{column_index_to_letter(start_idx)}:{column_index_to_letter(end_idx)}"
+        )
         result = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
-            range=range_name
+            range=span_range,
         ).execute()
-        
+
         values = result.get('values', [])
-        next_row = len(values) + 1 if values else 2  # Start at row 2 (row 1 is headers)
+        next_row = len(values) + 1 if values else 2  # Row 1 is headers
         
         # Build the row data
         # First, get the maximum column index we need
