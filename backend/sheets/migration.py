@@ -14,10 +14,12 @@ from .sheet_management import ensure_primary_id_column
 BIOLOGY_ID_PATTERN = re.compile(r'^[A-Za-z](\d+)$')
 _NULL_BIOLOGY_PATTERN = re.compile(r'(?i)^null[.\s]*(\d+)$')
 _LETTER_DOT_DIGITS_PATTERN = re.compile(r'(?i)^([mfju])[.\s]+(\d+)$')
+# Any M/F/J/U + digits in the cell (handles "J666 (UT1 …)", notes like "duplicate with M542", "F46/F74")
+_MFJU_EMBEDDED_PATTERN = re.compile(r'(?i)\b([MFJU])(\d+)\b')
 
 
-def _parse_biology_id_parts(cell: str) -> Optional[Tuple[str, int]]:
-    """Return (M/F/J/U, sequence number) if cell looks like a biology ID, else None."""
+def _parse_biology_id_parts_exact_cell(cell: str) -> Optional[Tuple[str, int]]:
+    """Parse when the cell is only a biology ID (or legacy Null / F.26 forms), no trailing notes."""
     c = (cell or '').strip()
     if not c:
         return None
@@ -36,6 +38,21 @@ def _parse_biology_id_parts(cell: str) -> Optional[Tuple[str, int]]:
     return None
 
 
+def _parse_biology_id_parts(cell: str) -> Optional[Tuple[str, int]]:
+    """Return (M/F/J/U, sequence number) if cell looks like a biology ID, else None."""
+    c = (cell or '').strip()
+    if not c:
+        return None
+    exact = _parse_biology_id_parts_exact_cell(c)
+    if exact:
+        return exact
+    # Sheet often has free text after the ID, e.g. "M637 (UT 713 7/16/25)" or "J666 (UT1 4/13/2026)".
+    m = re.match(r'(?i)^\s*([MFJU])(\d+)\b', c)
+    if m:
+        return m.group(1).upper(), int(m.group(2))
+    return None
+
+
 def normalize_biology_id_display(cell: str) -> str:
     """
     Canonical form: one of MFJU + three-digit sequence (F001, M026).
@@ -49,11 +66,22 @@ def normalize_biology_id_display(cell: str) -> str:
 
 
 def _biology_id_sequence_number(cell: str) -> Optional[int]:
-    """Numeric suffix for max-ID scan (shared sequence across M/F/J/U in a tab)."""
-    parsed = _parse_biology_id_parts(cell)
-    if not parsed:
+    """
+    Highest numeric suffix in this cell for max-ID scan (shared sequence across M/F/J/U in a tab).
+    Includes every MFJU+digits token (so annotated IDs and "F46/F74" both contribute the right max).
+    """
+    c = (cell or '').strip()
+    if not c:
         return None
-    return parsed[1]
+    nums: list[int] = []
+    for m in _MFJU_EMBEDDED_PATTERN.finditer(c):
+        nums.append(int(m.group(2)))
+    exact = _parse_biology_id_parts_exact_cell(c)
+    if exact:
+        nums.append(exact[1])
+    if not nums:
+        return None
+    return max(nums)
 
 
 def generate_primary_id(service, spreadsheet_id: str, list_sheets_func=None, find_row_by_primary_id_func=None,
@@ -83,8 +111,10 @@ def generate_primary_id(service, spreadsheet_id: str, list_sheets_func=None, fin
 def get_max_biology_id_number(service, spreadsheet_id: str, sheet_name: str,
                                get_all_column_indices_func=None) -> int:
     """
-    Scan the "ID" column in the given sheet only and return the highest numeric part.
-    Accepts F1/F001, F.26, Null.1 (treated as U…), etc., consistent with normalize_biology_id_display.
+    Scan the biology "ID" column and return the highest numeric suffix (shared across M/F/J/U in the tab).
+    Reads columns A through the ID column so rows are not dropped when the API omits sparse single-column
+    ranges (same failure mode as reading only Primary ID column A for row count).
+    Accepts F1/F001, F.26, Null.1 (treated as U…), IDs with trailing notes like ``J666 (UT1 …)``, etc.
     Retries on 429 (rate limit) to avoid returning 0 and causing duplicate biology IDs.
 
     Args:
@@ -108,9 +138,19 @@ def get_max_biology_id_number(service, spreadsheet_id: str, sheet_name: str,
         if id_col_idx is None:
             return 0
 
+        # Do not read the ID column alone: values.get on a single column can omit rows where
+        # that cell is empty even when other columns in the same row have data (same class of
+        # bug as create_turtle_data with A:A only). Read from column A through the rightmost of
+        # Primary ID and ID so row arrays align with column indices and high biology IDs (e.g.
+        # J666) are not missing from the scan.
+        primary_col_idx = column_indices.get('Primary ID')
         escaped_sheet = escape_sheet_name(sheet_name)
-        col_letter = column_index_to_letter(id_col_idx)
-        range_name = f"{escaped_sheet}!{col_letter}2:{col_letter}"
+        prim = primary_col_idx if primary_col_idx is not None else 0
+        start_idx = 0
+        end_idx = max(prim, id_col_idx)
+        col_start = column_index_to_letter(start_idx)
+        col_end = column_index_to_letter(end_idx)
+        range_name = f"{escaped_sheet}!{col_start}2:{col_end}"
         values = []
         last_error = None
         for attempt in range(SHEETS_RATE_LIMIT_MAX_RETRIES + 1):
@@ -140,7 +180,9 @@ def get_max_biology_id_number(service, spreadsheet_id: str, sheet_name: str,
         for row in values:
             if not row:
                 continue
-            raw = row[0] if isinstance(row, list) and len(row) > 0 else row
+            if not isinstance(row, list):
+                continue
+            raw = row[id_col_idx] if len(row) > id_col_idx else ''
             cell = (raw or '').strip()
             if not cell:
                 continue

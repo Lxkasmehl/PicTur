@@ -17,6 +17,8 @@ from sheets.value_normalize import format_field_value_for_sheet, normalize_turtl
         ('null 5', 'U005'),
         ('F.26', 'F026'),
         ('J.3', 'J003'),
+        ('J666 (UT1 4/13/2026)', 'J666'),
+        ('M637 (UT 713 7/16/25)', 'M637'),
     ],
 )
 def test_normalize_biology_id_display(raw, expected):
