@@ -123,6 +123,35 @@ def test_add_additional_images_success(client, review_packet_dir, tmp_path):
     assert "filename" in added
 
 
+def test_add_additional_images_carapace_with_labels(client, review_packet_dir, tmp_path):
+    """POST with type carapace and labels_0; GET packet lists normalized labels."""
+    request_id, _ = review_packet_dir
+    img_path = str(tmp_path / "cap_labeled.jpg")
+    _make_dummy_image(img_path)
+    with open(img_path, "rb") as f:
+        file_data = f.read()
+    r = client.post(
+        f"/api/review-queue/{request_id}/additional-images",
+        data={
+            "file_0": ("cap_labeled.jpg", BytesIO(file_data)),
+            "type_0": "carapace",
+            "labels_0": "shell crack, e2e_review_label",
+        },
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["success"] is True
+
+    r2 = client.get(f"/api/review-queue/{request_id}")
+    assert r2.status_code == 200
+    item = r2.json()["item"]
+    cap = next((a for a in item["additional_images"] if a.get("type") == "carapace"), None)
+    assert cap is not None
+    labels = cap.get("labels") or []
+    assert any("crack" in str(x).lower() for x in labels)
+    assert any("e2e_review_label" in str(x) for x in labels)
+
+
 def test_remove_additional_image_no_filename(client, review_packet_dir):
     """DELETE additional-images with no filename in body returns 400."""
     request_id, _ = review_packet_dir

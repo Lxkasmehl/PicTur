@@ -695,6 +695,7 @@ export default function AdminTurtleMatchPage() {
                         imagePath: a.image_path,
                         filename: a.filename,
                         type: a.type,
+                        labels: a.labels,
                       }))}
                       requestId={imageId}
                       onRefresh={async () => {
@@ -717,6 +718,7 @@ export default function AdminTurtleMatchPage() {
                         imagePath: a.path,
                         filename: a.path.split(/[/\\]/).pop() ?? a.path,
                         type: a.type,
+                        labels: a.labels,
                       }))}
                       turtleId={selectedMatch}
                       sheetName={selectedMatchData?.location?.split('/')[0]?.trim() ?? null}

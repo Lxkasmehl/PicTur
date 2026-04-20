@@ -28,10 +28,11 @@ export interface LocationHint {
   source: 'gps' | 'manual';
 }
 
-/** Additional image (microhabitat, condition) in a review packet */
+/** Additional image (microhabitat, condition, carapace) in a review packet */
 export interface AdditionalImage {
   filename: string;
   type: string;
+  labels?: string[];
   timestamp?: string;
   image_path: string;
 }
@@ -109,8 +110,12 @@ export interface UploadFlagOptions {
 }
 
 export interface UploadExtraFile {
-  type: 'microhabitat' | 'condition';
+  type: 'microhabitat' | 'condition' | 'carapace' | 'other';
   file: File;
+  /** Stored as searchable tags on the additional image (same request as upload). */
+  labels?: string[];
+  /** Client-only stable key for list previews (not sent to API). */
+  localId?: string;
 }
 
 export interface ApproveReviewResponse {
@@ -160,6 +165,9 @@ export const uploadTurtlePhoto = async (
   if (extraFiles?.length) {
     extraFiles.forEach((ef, i) => {
       formData.append(`extra_${ef.type}_${i}`, ef.file);
+      if (ef.labels?.length) {
+        formData.append(`extra_labels_${i}`, ef.labels.join(', '));
+      }
     });
   }
 
@@ -215,10 +223,14 @@ export const getReviewQueue = async (): Promise<ReviewQueueResponse> => {
   return await response.json();
 };
 
-// Add additional images (microhabitat, condition) to a review packet (Admin only)
+// Add additional images to a review packet (Admin only)
 export const uploadReviewPacketAdditionalImages = async (
   requestId: string,
-  files: Array<{ type: 'microhabitat' | 'condition'; file: File }>,
+  files: Array<{
+    type: 'microhabitat' | 'condition' | 'carapace' | 'other';
+    file: File;
+    labels?: string[];
+  }>,
 ): Promise<{ success: boolean; message?: string }> => {
   const token = getToken();
   const headers: Record<string, string> = {};
@@ -227,6 +239,9 @@ export const uploadReviewPacketAdditionalImages = async (
   files.forEach((f, i) => {
     formData.append(`file_${i}`, f.file);
     formData.append(`type_${i}`, f.type);
+    if (f.labels?.length) {
+      formData.append(`labels_${i}`, f.labels.join(', '));
+    }
   });
   const response = await fetch(
     `${TURTLE_API_BASE_URL}/review-queue/${encodeURIComponent(requestId)}/additional-images`,
@@ -384,8 +399,20 @@ export const getImageUrl = (imagePath: string): string => {
 export interface TurtleImageAdditional {
   path: string;
   type: string;
+  /** Free-form tags (e.g. burned, injury) for filtering in Sheets browser */
+  labels?: string[];
   timestamp?: string | null;
   uploaded_by?: string | null;
+}
+
+export interface TurtleAdditionalLabelSearchMatch {
+  turtle_id: string;
+  sheet_name: string;
+  path: string;
+  filename: string;
+  type: string;
+  labels: string[];
+  timestamp?: string | null;
 }
 
 export interface TurtleImagesResponse {
@@ -414,6 +441,52 @@ export const getTurtleImages = async (
   return await response.json();
 };
 
+/** Find additional images whose labels match q (substring, case-insensitive). Admin only. */
+export const searchTurtleImagesByLabel = async (
+  q: string,
+): Promise<{ matches: TurtleAdditionalLabelSearchMatch[] }> => {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const params = new URLSearchParams({ q: q.trim() });
+  const response = await fetch(
+    `${TURTLE_API_BASE_URL}/turtles/images/search-labels?${params.toString()}`,
+    { method: 'GET', headers },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Search failed' }));
+    throw new Error(err.error || 'Search failed');
+  }
+  return await response.json();
+};
+
+/** Update labels on one additional image (manifest). Admin only. */
+export const updateTurtleAdditionalImageLabels = async (
+  turtleId: string,
+  filename: string,
+  labels: string[],
+  sheetName?: string | null,
+): Promise<void> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const body: Record<string, unknown> = {
+    turtle_id: turtleId,
+    filename,
+    labels,
+  };
+  if (sheetName) body.sheet_name = sheetName;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/images/additional-labels`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Failed to update labels' }));
+    throw new Error(err.error || 'Failed to update labels');
+  }
+};
+
 /** Batch get primary (plastron) image paths for multiple turtles (Admin only). */
 export const getTurtlePrimariesBatch = async (
   turtles: Array<{ turtle_id: string; sheet_name?: string | null }>,
@@ -433,10 +506,15 @@ export const getTurtlePrimariesBatch = async (
   return await response.json();
 };
 
-/** Add microhabitat/condition images to a turtle folder (Admin only). */
+/** Add microhabitat/condition/carapace images to a turtle folder (Admin only). */
 export const uploadTurtleAdditionalImages = async (
   turtleId: string,
-  files: Array<{ type: 'microhabitat' | 'condition'; file: File }>,
+  files: Array<{
+    type: 'microhabitat' | 'condition' | 'carapace' | 'other';
+    file: File;
+    /** Applied to this file only (comma-separated sent as labels_i) */
+    labels?: string[];
+  }>,
   sheetName?: string | null,
 ): Promise<{ success: boolean; message?: string }> => {
   const token = getToken();
@@ -448,6 +526,9 @@ export const uploadTurtleAdditionalImages = async (
   files.forEach((f, i) => {
     formData.append(`file_${i}`, f.file);
     formData.append(`type_${i}`, f.type);
+    if (f.labels?.length) {
+      formData.append(`labels_${i}`, f.labels.join(', '));
+    }
   });
   const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/images/additional`, {
     method: 'POST',

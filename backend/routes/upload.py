@@ -3,6 +3,7 @@ Photo upload endpoint
 """
 
 import os
+import re
 import shutil
 import json
 import sys
@@ -16,6 +17,54 @@ from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from auth import optional_auth, check_auth_revocation
 from image_utils import normalize_to_jpeg
 from services import manager_service
+from additional_image_labels import normalize_additional_type, parse_labels_from_form
+
+_EXTRA_UPLOAD_KEY = re.compile(
+    r'^extra_(microhabitat|condition|carapace|other)_(\d+)$', re.IGNORECASE
+)
+
+
+def _collect_extra_upload_files(request, request_id):
+    """
+    Parse extra_microhabitat_0, extra_labels_0, etc. from multipart form.
+    Returns list of dicts suitable for add_additional_images_to_packet.
+    """
+    files_with_types = []
+    entries = []
+    for key in request.files.keys():
+        m = _EXTRA_UPLOAD_KEY.match(key)
+        if not m:
+            continue
+        f = request.files[key]
+        if not f or not f.filename:
+            continue
+        if not allowed_file(f.filename):
+            continue
+        idx = int(m.group(2))
+        typ_raw = m.group(1)
+        entries.append((idx, typ_raw, key, f))
+    entries.sort(key=lambda e: e[0])
+    for idx, typ_raw, key, f in entries:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(0)
+        if size > MAX_FILE_SIZE:
+            continue
+        typ = normalize_additional_type(typ_raw)
+        lbs = parse_labels_from_form(request.form, str(idx), key_prefix='extra_labels')
+        ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
+        extra_temp = os.path.join(UPLOAD_FOLDER, f"extra_{request_id}_{typ}_{int(time.time())}{ext}")
+        f.save(extra_temp)
+        extra_temp = normalize_to_jpeg(extra_temp)
+        item = {
+            'path': extra_temp,
+            'type': typ,
+            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        }
+        if lbs:
+            item['labels'] = lbs
+        files_with_types.append(item)
+    return files_with_types
 
 _IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp')
 
@@ -151,24 +200,8 @@ def register_upload_routes(app):
                 with open(os.path.join(additional_dir, 'manifest.json'), 'w') as f:
                     json.dump([], f)
 
-                # Process additional partner frontend files
-                files_with_types = []
-                for key in list(request.files.keys()):
-                    if key.startswith('extra_') and key != 'file':
-                        rest = key.replace('extra_', '', 1).strip().lower()
-                        typ = 'microhabitat' if rest.startswith('microhabitat') else 'condition' if rest.startswith('condition') else 'other'
-                        f = request.files[key]
-                        if f and f.filename and allowed_file(f.filename):
-                            f.seek(0, os.SEEK_END)
-                            size = f.tell()
-                            f.seek(0)
-                            if size <= MAX_FILE_SIZE:
-                                ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
-                                extra_temp = os.path.join(UPLOAD_FOLDER, f"extra_{request_id}_{typ}_{int(time.time())}{ext}")
-                                f.save(extra_temp)
-                                # HEIC/HEIF → JPEG (no-op for other formats)
-                                extra_temp = normalize_to_jpeg(extra_temp)
-                                files_with_types.append({'path': extra_temp, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
+                # Process additional partner frontend files (microhabitat / condition / carapace + optional labels)
+                files_with_types = _collect_extra_upload_files(request, request_id)
 
                 if files_with_types:
                     manager_service.manager.add_additional_images_to_packet(request_id, files_with_types)
@@ -281,23 +314,7 @@ def register_upload_routes(app):
                 request_id = f"Req_{int(time.time() * 1000)}_{safe_name}_{uuid.uuid4().hex[:6]}"
 
                 # Save extra files to disk now (must happen inside request context)
-                files_with_types = []
-                for key in list(request.files.keys()):
-                    if key.startswith('extra_') and key != 'file':
-                        rest = key.replace('extra_', '', 1).strip().lower()
-                        typ = 'microhabitat' if rest.startswith('microhabitat') else 'condition' if rest.startswith('condition') else 'other'
-                        f = request.files[key]
-                        if f and f.filename and allowed_file(f.filename):
-                            f.seek(0, os.SEEK_END)
-                            size = f.tell()
-                            f.seek(0)
-                            if size <= MAX_FILE_SIZE:
-                                ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
-                                extra_temp = os.path.join(UPLOAD_FOLDER, f"extra_{request_id}_{typ}_{int(time.time())}{ext}")
-                                f.save(extra_temp)
-                                # HEIC/HEIF → JPEG (no-op for other formats)
-                                extra_temp = normalize_to_jpeg(extra_temp)
-                                files_with_types.append({'path': extra_temp, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
+                files_with_types = _collect_extra_upload_files(request, request_id)
 
                 # Run matching and packet creation in the background so the
                 # community member is not blocked waiting for AI processing

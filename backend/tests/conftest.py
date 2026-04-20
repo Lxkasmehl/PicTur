@@ -72,6 +72,13 @@ class BackendApiClient:
             r = requests.post(self._url(path), data=data, headers=headers, timeout=30, **kwargs)
         return _response_with_get_json(r)
 
+    def patch(self, path: str, json=None, content_type=None, **kwargs) -> requests.Response:
+        headers = dict(self._headers)
+        if content_type:
+            headers["Content-Type"] = content_type
+        r = requests.patch(self._url(path), json=json, headers=headers, timeout=30, **kwargs)
+        return _response_with_get_json(r)
+
     def delete(self, path: str, json=None, content_type=None, **kwargs) -> requests.Response:
         headers = dict(self._headers)
         if content_type:
