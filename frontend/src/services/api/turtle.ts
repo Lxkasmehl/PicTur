@@ -227,7 +227,7 @@ export const getReviewQueue = async (): Promise<ReviewQueueResponse> => {
 export const uploadReviewPacketAdditionalImages = async (
   requestId: string,
   files: Array<{
-    type: 'microhabitat' | 'condition' | 'carapace' | 'other';
+    type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'other';
     file: File;
     labels?: string[];
   }>,
