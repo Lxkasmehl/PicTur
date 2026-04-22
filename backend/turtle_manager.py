@@ -91,6 +91,17 @@ def _safe_folder_name(sheet_name):
     return out or "_"
 
 
+def _location_dir_from_sheet_name(sheet_name):
+    """Turn a sheet/location string (e.g. Kansas/Topeka) into a relative path under data/."""
+    if not sheet_name or not isinstance(sheet_name, str):
+        return None
+    raw = sheet_name.strip().replace("\\", "/")
+    parts = [_safe_folder_name(p) for p in raw.split("/") if str(p).strip()]
+    if not parts:
+        return None
+    return os.path.join(*parts)
+
+
 # --- FLASH DRIVE INGEST: Map drive folder names to backend folder names ---
 # When folder names on the flash drive don't match backend/Google Sheets, add mappings here.
 # Ingest will route files to the correct backend State/Location based on these maps.
@@ -736,6 +747,125 @@ class TurtleManager:
                 return root
         return None
 
+    def resolve_turtle_dir_for_sheet_upload(self, turtle_id, sheet_name):
+        """
+        Resolve or create the on-disk turtle folder for admin uploads from the Sheets browser.
+
+        When ``sheet_name`` is set (e.g. Kansas/Topeka), prefers ``data/<sheet...>/<turtle_id>/``.
+        If that path does not exist but another folder named ``turtle_id`` is found elsewhere,
+        returns the existing folder (same behaviour as a plain search). If nothing exists,
+        creates ``data/<sheet...>/<turtle_id>/`` with ``ref_data`` and ``loose_images``.
+        """
+        if not turtle_id:
+            return None
+        rel = _location_dir_from_sheet_name(sheet_name) if sheet_name else None
+        if rel:
+            explicit = os.path.join(self.base_dir, rel, turtle_id)
+            if os.path.isdir(explicit):
+                return explicit
+            for root, dirs, files in os.walk(self.base_dir):
+                if os.path.basename(root) == turtle_id:
+                    return root
+            os.makedirs(os.path.join(explicit, "ref_data"), exist_ok=True)
+            os.makedirs(os.path.join(explicit, "loose_images"), exist_ok=True)
+            return explicit
+        return self._get_turtle_folder(turtle_id, None)
+
+    def _create_identifier_plastron(self, turtle_id, query_image, ref_dir, loose_dir):
+        """Write first ref_data/<turtle_id>.* + .pt from an image file (caller ensures no identifier)."""
+        os.makedirs(ref_dir, exist_ok=True)
+        os.makedirs(loose_dir, exist_ok=True)
+        new_ext = os.path.splitext(query_image)[1] or ".jpg"
+        dest_image = os.path.join(ref_dir, f"{turtle_id}{new_ext}")
+        dest_pt = os.path.join(ref_dir, f"{turtle_id}.pt")
+        if os.path.exists(dest_pt):
+            try:
+                os.remove(dest_pt)
+            except OSError:
+                pass
+        if os.path.exists(dest_image):
+            try:
+                os.remove(dest_image)
+            except OSError:
+                pass
+        shutil.copy2(query_image, dest_image)
+        if not brain.process_and_save(dest_image, dest_pt):
+            try:
+                if os.path.isfile(dest_image):
+                    os.remove(dest_image)
+            except OSError:
+                pass
+            return False, "Failed to extract features for identifier image"
+        self.refresh_database_index()
+        return True, "Identifier plastron set"
+
+    def _replace_identifier_plastron(self, turtle_id, query_image, ref_dir, loose_dir):
+        """Archive old master image, replace .pt + master image (same staging flow as review approve)."""
+        os.makedirs(ref_dir, exist_ok=True)
+        os.makedirs(loose_dir, exist_ok=True)
+        old_pt_path = os.path.join(ref_dir, f"{turtle_id}.pt")
+        old_img_path = _find_image_in_dir(ref_dir, turtle_id)
+        op_ts = int(time.time() * 1000)
+        new_ext = os.path.splitext(query_image)[1] or ".jpg"
+        staged_master_path = os.path.join(ref_dir, f"{turtle_id}_staged_{op_ts}{new_ext}")
+        staged_pt_path = os.path.join(ref_dir, f"{turtle_id}_staged_{op_ts}.pt")
+        shutil.copy2(query_image, staged_master_path)
+        staged_ok = brain.process_and_save(staged_master_path, staged_pt_path)
+        if not staged_ok:
+            try:
+                if os.path.exists(staged_master_path):
+                    os.remove(staged_master_path)
+                if os.path.exists(staged_pt_path):
+                    os.remove(staged_pt_path)
+            except OSError:
+                pass
+            return False, f"Failed to extract features for replacement image of {turtle_id}"
+        if old_img_path:
+            archive_name = f"Archived_Master_{op_ts}{os.path.splitext(old_img_path)[1]}"
+            shutil.move(old_img_path, os.path.join(loose_dir, archive_name))
+        if os.path.exists(old_pt_path):
+            os.remove(old_pt_path)
+        new_master_path = os.path.join(ref_dir, f"{turtle_id}{new_ext}")
+        new_pt_path = os.path.join(ref_dir, f"{turtle_id}.pt")
+        if os.path.exists(new_master_path):
+            os.remove(new_master_path)
+        shutil.move(staged_master_path, new_master_path)
+        shutil.move(staged_pt_path, new_pt_path)
+        obs_name = f"Obs_{int(time.time())}_{os.path.basename(query_image)}"
+        shutil.copy2(query_image, os.path.join(loose_dir, obs_name))
+        self.refresh_database_index()
+        return True, "Identifier plastron replaced"
+
+    def set_identifier_plastron_from_path(self, turtle_id, query_image, sheet_name, mode):
+        """
+        Set or replace the SuperPoint identifier (ref_data master image + .pt).
+
+        ``mode``: ``set_if_missing`` (error if already present) or ``replace`` (create or upgrade).
+        ``sheet_name`` should be the turtle's location path when the folder may not exist yet.
+        """
+        if mode not in ("set_if_missing", "replace"):
+            return False, "Invalid mode"
+        turtle_dir = self.resolve_turtle_dir_for_sheet_upload(turtle_id, sheet_name)
+        if not turtle_dir:
+            return False, (
+                "Turtle folder not found. For a new sheet-only row, pass sheet_name (location) "
+                "so the backend can create data/<location>/<turtle_id>/."
+            )
+        ref_dir = os.path.join(turtle_dir, "ref_data")
+        loose_dir = os.path.join(turtle_dir, "loose_images")
+        os.makedirs(ref_dir, exist_ok=True)
+        os.makedirs(loose_dir, exist_ok=True)
+        has_id = os.path.isfile(os.path.join(ref_dir, f"{turtle_id}.pt")) or bool(
+            _find_image_in_dir(ref_dir, turtle_id)
+        )
+        if mode == "set_if_missing" and has_id:
+            return False, (
+                "This turtle already has an identifier plastron. Use replace mode, or upload "
+                "a non-identifier plastron under Additional photos as type Plastron (additional)."
+            )
+        if not has_id:
+            return self._create_identifier_plastron(turtle_id, query_image, ref_dir, loose_dir)
+        return self._replace_identifier_plastron(turtle_id, query_image, ref_dir, loose_dir)
 
     def add_additional_images_to_packet(self, request_id, files_with_types):
         packet_dir = self._resolve_packet_dir(request_id)
@@ -872,8 +1002,9 @@ class TurtleManager:
             return False, str(e)
 
     def add_additional_images_to_turtle(self, turtle_id, files_with_types, sheet_name=None):
-        turtle_dir = self._get_turtle_folder(turtle_id, sheet_name)
-        if not turtle_dir or not os.path.isdir(turtle_dir): return False, "Turtle folder not found"
+        turtle_dir = self.resolve_turtle_dir_for_sheet_upload(turtle_id, sheet_name)
+        if not turtle_dir or not os.path.isdir(turtle_dir):
+            return False, "Turtle folder not found"
         today_str = time.strftime('%Y-%m-%d')
         date_dir = os.path.join(turtle_dir, 'additional_images', today_str)
         os.makedirs(date_dir, exist_ok=True)

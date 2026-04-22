@@ -3,7 +3,9 @@
 import json
 from typing import Any, List, Optional
 
-VALID_ADDITIONAL_TYPES = frozenset({'microhabitat', 'condition', 'carapace', 'other'})
+VALID_ADDITIONAL_TYPES = frozenset(
+    {'microhabitat', 'condition', 'carapace', 'plastron', 'other'}
+)
 
 
 def normalize_additional_type(raw: Optional[str]) -> str:

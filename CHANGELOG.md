@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Sheets browser — plastron workflows**: Set a first-time identifier plastron for sheet-only turtles (creates `data/<location>/<turtle_id>/` when needed), replace the existing SuperPoint reference (old master archived to `loose_images`), or upload an **extra** underside photo as **Plastron (additional)** in the manifest (does not create or replace `.pt`). New admin API **`POST /api/turtles/images/identifier-plastron`** (`turtle_id`, `file`, `mode`: `set_if_missing` | `replace`, optional `sheet_name`). Additional-image type **`plastron`** is allowed server-side. **`POST /api/turtles/images/additional`** now creates the turtle folder from `sheet_name` when it was missing (same resolver), so microhabitat uploads work for new rows too.
+
+### Testing
+
+- **`backend/tests/test_turtle_plastron_upload.py`**: folder resolution, first identifier, set-if-missing conflict, replace archives old master, additional upload creates folder (brain `process_and_save` mocked to write a dummy `.pt`).
+
 ## [1.2.13] - 2026-04-20 — Review queue candidate filenames with uppercase extensions
 
 ### Fixed

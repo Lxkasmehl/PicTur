@@ -506,11 +506,38 @@ export const getTurtlePrimariesBatch = async (
   return await response.json();
 };
 
-/** Add microhabitat/condition/carapace images to a turtle folder (Admin only). */
+/** Set or replace ref_data identifier plastron (.pt + master image). Admin only. */
+export const uploadTurtleIdentifierPlastron = async (
+  turtleId: string,
+  file: File,
+  sheetName: string | null | undefined,
+  mode: 'set_if_missing' | 'replace',
+): Promise<{ success: boolean; message?: string }> => {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const formData = new FormData();
+  formData.append('turtle_id', turtleId);
+  formData.append('file', file);
+  formData.append('mode', mode);
+  if (sheetName) formData.append('sheet_name', sheetName);
+  const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/images/identifier-plastron`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Failed to update identifier plastron' }));
+    throw new Error(err.error || 'Failed to update identifier plastron');
+  }
+  return await response.json();
+};
+
+/** Add microhabitat/condition/carapace/plastron (additional) images to a turtle folder (Admin only). */
 export const uploadTurtleAdditionalImages = async (
   turtleId: string,
   files: Array<{
-    type: 'microhabitat' | 'condition' | 'carapace' | 'other';
+    type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'other';
     file: File;
     /** Applied to this file only (comma-separated sent as labels_i) */
     labels?: string[];
