@@ -241,7 +241,8 @@ def register_turtle_routes(app):
     def add_turtle_additional_images():
         """
         Add microhabitat/condition images to an existing turtle folder (Admin only).
-        Form: file_0, type_0, labels_0, ... (type: microhabitat | condition | carapace | other), optional sheet_name.
+        Form: file_0, type_0, labels_0, ... (type: microhabitat | condition | carapace | plastron | other),
+        optional sheet_name. When the folder is missing, sheet_name creates data/<location>/<turtle_id>/ .
         """
         if not manager_service.manager_ready.wait(timeout=5):
             return jsonify({'error': 'TurtleManager is still initializing'}), 503
@@ -261,7 +262,7 @@ def register_turtle_routes(app):
                     continue
                 idx = key.replace('file_', '')
                 typ = (request.form.get(f'type_{idx}') or 'other').strip().lower()
-                if typ not in ('microhabitat', 'condition', 'carapace', 'other'):
+                if typ not in ('microhabitat', 'condition', 'carapace', 'plastron', 'other'):
                     typ = 'other'
                 lbs = parse_labels_from_form(request.form, idx)
                 if not allowed_file(f.filename):
@@ -314,3 +315,65 @@ def register_turtle_routes(app):
                     except OSError:
                         pass
             return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/turtles/images/identifier-plastron', methods=['POST'])
+    @require_admin
+    def upload_turtle_identifier_plastron():
+        """
+        Set or replace the identifier (ref_data) plastron image and regenerate the .pt tensor.
+
+        Form: turtle_id (required), file (required), mode = set_if_missing | replace (required),
+        sheet_name (required when the turtle folder does not exist yet — e.g. sheet-only row).
+
+        set_if_missing: fails if ref_data already has an identifier for this turtle_id.
+        replace: archives the previous master image to loose_images when present, then sets the new one.
+        """
+        if not manager_service.manager_ready.wait(timeout=5):
+            return jsonify({'error': 'TurtleManager is still initializing'}), 503
+        if manager_service.manager is None:
+            return jsonify({'error': 'TurtleManager not available'}), 500
+
+        turtle_id = (request.form.get('turtle_id') or request.args.get('turtle_id') or '').strip()
+        sheet_name = (request.form.get('sheet_name') or request.args.get('sheet_name') or '').strip() or None
+        mode = (request.form.get('mode') or request.args.get('mode') or '').strip().lower()
+        if not turtle_id:
+            return jsonify({'error': 'turtle_id required'}), 400
+        if mode not in ('set_if_missing', 'replace'):
+            return jsonify({'error': 'mode must be set_if_missing or replace'}), 400
+
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        f = request.files['file']
+        if not f or not f.filename:
+            return jsonify({'error': 'No file provided'}), 400
+        if not allowed_file(f.filename):
+            return jsonify({'error': 'Invalid file type'}), 400
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(0)
+        if size > MAX_FILE_SIZE:
+            return jsonify({'error': 'File too large'}), 400
+
+        orig_safe = secure_filename(f.filename) or ''
+        ext = os.path.splitext(orig_safe)[1] or '.jpg'
+        temp_path = os.path.join(
+            UPLOAD_FOLDER,
+            f"turtle_idplastron_{turtle_id}_{int(time.time())}{ext}".replace(os.sep, '_'),
+        )
+        try:
+            f.save(temp_path)
+            temp_path = normalize_to_jpeg(temp_path)
+            ok, msg = manager_service.manager.set_identifier_plastron_from_path(
+                turtle_id, temp_path, sheet_name, mode
+            )
+            if not ok:
+                return jsonify({'error': msg or 'Failed to update identifier plastron'}), 400
+            return jsonify({'success': True, 'message': msg or 'Identifier plastron updated'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        finally:
+            if os.path.isfile(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass

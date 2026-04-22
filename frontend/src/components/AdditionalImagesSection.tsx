@@ -30,7 +30,7 @@ import {
 } from '../services/api';
 import { notifications } from '@mantine/notifications';
 
-export type AdditionalPhotoKind = 'microhabitat' | 'condition' | 'carapace' | 'other';
+export type AdditionalPhotoKind = 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'other';
 
 /** Single additional image for display (packet or turtle). */
 export interface AdditionalImageDisplay {
@@ -52,23 +52,35 @@ interface AdditionalImagesSectionProps {
   hideAddButtons?: boolean;
 }
 
-const TYPE_ORDER: AdditionalPhotoKind[] = ['carapace', 'microhabitat', 'condition', 'other'];
+const TYPE_ORDER: AdditionalPhotoKind[] = ['carapace', 'plastron', 'microhabitat', 'condition', 'other'];
 
 const KIND_OPTIONS = [
   { value: 'carapace', label: 'Carapace' },
+  { value: 'plastron', label: 'Plastron (additional)' },
   { value: 'microhabitat', label: 'Microhabitat' },
   { value: 'condition', label: 'Condition' },
   { value: 'other', label: 'Other' },
-];
+] as const;
+
+/** Turtle-record additional photos support plastron-extra in manifest; review packets use a narrower type set. */
+const KIND_OPTIONS_REVIEW_PACKET = KIND_OPTIONS.filter((o) => o.value !== 'plastron');
 
 function normalizeKind(t: string): AdditionalPhotoKind {
   const s = (t || 'other').toLowerCase();
-  if (s === 'microhabitat' || s === 'condition' || s === 'carapace' || s === 'other') return s;
+  if (
+    s === 'microhabitat' ||
+    s === 'condition' ||
+    s === 'carapace' ||
+    s === 'plastron' ||
+    s === 'other'
+  )
+    return s;
   return 'other';
 }
 
 function kindSectionLabel(k: AdditionalPhotoKind): string {
   if (k === 'other') return 'Other';
+  if (k === 'plastron') return 'Plastron (additional)';
   return k;
 }
 
@@ -76,7 +88,7 @@ type StagedRow = {
   id: string;
   file: File;
   previewUrl: string;
-  type: 'carapace' | 'microhabitat' | 'condition' | 'other';
+  type: 'carapace' | 'plastron' | 'microhabitat' | 'condition' | 'other';
   labels: string[];
 };
 
@@ -100,8 +112,10 @@ export function AdditionalImagesSection({
 
   const isPacket = !!requestId;
   const isTurtle = !!turtleId;
+  const supportsPlastronExtra = !isPacket;
   const canEdit = (isPacket || isTurtle) && !disabled;
   const canEditLabels = isTurtle && !disabled;
+  const stagingKindOptions = supportsPlastronExtra ? KIND_OPTIONS : KIND_OPTIONS_REVIEW_PACKET;
 
   useEffect(() => {
     return () => {
@@ -268,8 +282,15 @@ export function AdditionalImagesSection({
         </Text>
         {!embedded && (
           <Text size="xs" c="dimmed">
-            Add photos first, set type and tags per image, then upload. Click a thumbnail to enlarge. Tags are
-            searchable under Admin → Turtle records → Sheets → Photo tags.
+            Add photos first, set type and tags per image, then upload.
+            {supportsPlastronExtra ? (
+              <>
+                {' '}
+                Plastron (additional) keeps an extra underside shot in the manifest only (it does not replace
+                the SuperPoint .pt reference).
+              </>
+            ) : null}{' '}
+            Tags are searchable under Admin → Turtle records → Sheets → Photo tags.
           </Text>
         )}
 
@@ -298,6 +319,27 @@ export function AdditionalImagesSection({
                   }}
                 />
               </Button>
+              {supportsPlastronExtra && (
+                <Button
+                  size="sm"
+                  variant="light"
+                  leftSection={<IconPhotoPlus size={14} />}
+                  component="label"
+                  disabled={disabled || uploading}
+                >
+                  Plastron (extra)
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      addFilesToStaging('plastron', e.target.files);
+                      e.target.value = '';
+                    }}
+                  />
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="light"
@@ -397,7 +439,7 @@ export function AdditionalImagesSection({
                           <Select
                             size="xs"
                             label="Type"
-                            data={KIND_OPTIONS}
+                            data={[...stagingKindOptions]}
                             value={row.type}
                             onChange={(v) =>
                               v && updateStaged(row.id, { type: v as StagedRow['type'] })

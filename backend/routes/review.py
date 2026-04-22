@@ -246,7 +246,7 @@ def register_review_routes(app):
                     continue
                 idx = key.replace('file_', '')
                 typ = request.form.get(f'type_{idx}', 'other').strip().lower()
-                if typ not in ('microhabitat', 'condition', 'carapace', 'other'):
+                if typ not in ('microhabitat', 'condition', 'carapace', 'plastron', 'other'):
                     typ = 'other'
                 lbs = parse_labels_from_form(request.form, idx)
                 if not allowed_file(f.filename):

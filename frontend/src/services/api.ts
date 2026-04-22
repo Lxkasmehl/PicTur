@@ -59,6 +59,7 @@ export {
   getTurtleImages,
   getTurtlePrimariesBatch,
   uploadTurtleAdditionalImages,
+  uploadTurtleIdentifierPlastron,
   deleteTurtleAdditionalImage,
   searchTurtleImagesByLabel,
   updateTurtleAdditionalImageLabels,

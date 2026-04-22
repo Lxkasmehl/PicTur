@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionIcon,
   Badge,
@@ -37,6 +37,7 @@ import {
   getTurtleImages,
   getTurtlePrimariesBatch,
   isAdminRole,
+  uploadTurtleIdentifierPlastron,
   searchTurtleImagesByLabel,
   type TurtleAdditionalLabelSearchMatch,
   type TurtleImageAdditional,
@@ -47,6 +48,7 @@ import { useUser } from '../../hooks/useUser';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
 import { formatSingleDateTokenToUs } from '../../utils/usDateFormat';
+import { validateFile } from '../../utils/fileValidation';
 import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
 
 function turtleKey(turtle: { primary_id?: string | null; id?: string | null; sheet_name?: string | null }) {
@@ -108,6 +110,8 @@ export function SheetsBrowserTab() {
   const [selectedMatchPath, setSelectedMatchPath] = useState<string | null>(null);
   const [tagSearchLightbox, setTagSearchLightbox] = useState<string | null>(null);
   const [backupLoading, setBackupLoading] = useState(false);
+  const [identifierSubmitting, setIdentifierSubmitting] = useState(false);
+  const identifierFileInputRef = useRef<HTMLInputElement>(null);
   const {
     selectedSheetFilter,
     sheetsListLoading,
@@ -675,6 +679,126 @@ export function SheetsBrowserTab() {
       <Grid.Col span={{ base: 12, md: 8 }}>
         {selectedTurtle ? (
           <Stack gap='md'>
+            {turtleId && (
+              <Paper shadow='sm' p='md' radius='md' withBorder>
+                <Stack gap='sm'>
+                  <Text fw={600} size='sm'>
+                    Identifier plastron (SuperPoint reference)
+                  </Text>
+                  <Text size='xs' c='dimmed'>
+                    Matching uses ref_data with this turtle id (image plus .pt tensor). Replace archives the
+                    previous master into loose_images. A second underside photo only: use Plastron (extra) under
+                    additional photos below.
+                  </Text>
+                  {!sheetName && !turtleImages?.primary ? (
+                    <Text size='xs' c='orange'>
+                      This row has no sheet/location path yet. Set the first identifier after the turtle has a
+                      location so the backend can create{' '}
+                      <code>{'data/<location>/<turtle id>/'}</code> on disk.
+                    </Text>
+                  ) : null}
+                  <Group align='flex-start' wrap='wrap' gap='md'>
+                    <Box
+                      style={{
+                        width: 160,
+                        borderRadius: 8,
+                        overflow: 'hidden',
+                        border: '1px solid var(--mantine-color-default-border)',
+                        minHeight: 100,
+                        backgroundColor: 'var(--mantine-color-gray-0)',
+                      }}
+                    >
+                      {turtleImages?.primary ? (
+                        <Image
+                          src={getImageUrl(turtleImages.primary)}
+                          alt='Identifier plastron'
+                          fit='contain'
+                          style={{ width: '100%', height: 'auto', display: 'block' }}
+                        />
+                      ) : (
+                        <Center p='md' style={{ minHeight: 100 }}>
+                          <Text size='xs' c='dimmed' ta='center'>
+                            No identifier image yet — typical for a new sheet-only row.
+                          </Text>
+                        </Center>
+                      )}
+                    </Box>
+                    <Stack gap='xs' style={{ flex: '1 1 12rem' }}>
+                      <input
+                        ref={identifierFileInputRef}
+                        type='file'
+                        accept='image/*'
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.currentTarget.value = '';
+                          if (!file || !turtleId) return;
+                          const check = validateFile(file);
+                          if (!check.isValid) {
+                            if (check.error) {
+                              notifications.show({
+                                title: 'Invalid file',
+                                message: check.error,
+                                color: 'red',
+                              });
+                            }
+                            return;
+                          }
+                          void (async () => {
+                            setIdentifierSubmitting(true);
+                            try {
+                              await uploadTurtleIdentifierPlastron(
+                                turtleId,
+                                file,
+                                sheetName,
+                                turtleImages?.primary ? 'replace' : 'set_if_missing',
+                              );
+                              notifications.show({
+                                title: 'Saved',
+                                message: turtleImages?.primary
+                                  ? 'Identifier plastron replaced; search index updated.'
+                                  : 'Identifier plastron set; search index updated.',
+                                color: 'green',
+                              });
+                              const res = await getTurtleImages(turtleId, sheetName);
+                              setTurtleImages(res);
+                              if (selectedTurtle) {
+                                const pr = await getTurtlePrimariesBatch([
+                                  { turtle_id: turtleId, sheet_name: sheetName },
+                                ]);
+                                const p = pr.images[0]?.primary ?? null;
+                                setPrimaryImages((prev) => ({
+                                  ...prev,
+                                  [turtleKey(selectedTurtle)]: p,
+                                }));
+                              }
+                            } catch (err) {
+                              notifications.show({
+                                title: 'Error',
+                                message: err instanceof Error ? err.message : 'Upload failed',
+                                color: 'red',
+                              });
+                            } finally {
+                              setIdentifierSubmitting(false);
+                            }
+                          })();
+                        }}
+                      />
+                      <Button
+                        size='sm'
+                        variant='light'
+                        leftSection={<IconPhoto size={16} />}
+                        loading={identifierSubmitting}
+                        disabled={!turtleId || (!sheetName && !turtleImages?.primary)}
+                        onClick={() => identifierFileInputRef.current?.click()}
+                      >
+                        {turtleImages?.primary ? 'Replace identifier…' : 'Set identifier…'}
+                      </Button>
+                    </Stack>
+                  </Group>
+                </Stack>
+              </Paper>
+            )}
             {turtleId &&
               additionalGroups.map(({ label, items }) => (
                 <AdditionalImagesSection
