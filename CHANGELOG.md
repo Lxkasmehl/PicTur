@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.14] - 2026-04-22 — Sheets plastron workflows (identifier uploads, additional plastron)
+
 ### Added
 
 - **Sheets browser — plastron workflows**: Set a first-time identifier plastron for sheet-only turtles (creates `data/<location>/<turtle_id>/` when needed), replace the existing SuperPoint reference (old master archived to `loose_images`), or upload an **extra** underside photo as **Plastron (additional)** in the manifest (does not create or replace `.pt`). New admin API **`POST /api/turtles/images/identifier-plastron`** (`turtle_id`, `file`, `mode`: `set_if_missing` | `replace`, optional `sheet_name`). Additional-image type **`plastron`** is allowed server-side. **`POST /api/turtles/images/additional`** now creates the turtle folder from `sheet_name` when it was missing (same resolver), so microhabitat uploads work for new rows too.
@@ -268,7 +270,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.13...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.14...HEAD
+[1.2.14]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.14
 [1.2.13]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.13
 [1.2.12]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.12
 [1.2.11]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.11
