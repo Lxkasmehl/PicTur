@@ -90,3 +90,44 @@ def test_add_additional_creates_folder_when_only_sheet(mgr, tmp_path):
     assert ok is True
     add_dir = os.path.join(mgr.base_dir, "StateX", "PlaceY", "T4", "additional_images")
     assert os.path.isdir(add_dir)
+
+
+def test_get_turtle_folder_prefers_real_ref_data_over_empty_hint(mgr):
+    """
+    Partial sheet_name can make data/Kansas/T42 exist empty while real turtle is Kansas/Topeka/T42.
+    _get_turtle_folder must not stop at the empty hinted path.
+    """
+    empty = os.path.join(mgr.base_dir, "Kansas", "T99", "ref_data")
+    real_ref = os.path.join(mgr.base_dir, "Kansas", "Topeka", "T99", "ref_data")
+    os.makedirs(empty, exist_ok=True)
+    os.makedirs(real_ref, exist_ok=True)
+    with open(os.path.join(real_ref, "T99.jpg"), "wb") as f:
+        f.write(b"\xff\xd8\xff x")
+    with open(os.path.join(real_ref, "T99.pt"), "wb") as f:
+        f.write(b"pt")
+
+    picked = mgr._get_turtle_folder("T99", "Kansas")
+    assert os.path.normpath(picked) == os.path.normpath(
+        os.path.join(mgr.base_dir, "Kansas", "Topeka", "T99")
+    )
+
+
+def test_resolve_finds_nested_when_hint_is_state_only(mgr):
+    ref = os.path.join(mgr.base_dir, "Kansas", "North Topeka", "T88", "ref_data")
+    os.makedirs(ref, exist_ok=True)
+    with open(os.path.join(ref, "T88.jpg"), "wb") as f:
+        f.write(b"\xff\xd8\xff")
+    d = mgr.resolve_turtle_dir_for_sheet_upload("T88", "Kansas")
+    assert "North Topeka" in d.replace("\\", "/")
+    assert d.replace("\\", "/").rstrip("/").endswith("T88")
+
+
+def test_resolve_no_shallow_folder_when_state_has_site_layout(mgr):
+    """Do not create data/Kansas/<newid>/ when Kansas/<Site>/<id>/ is the real layout."""
+    ref_other = os.path.join(mgr.base_dir, "Kansas", "North Topeka", "X1", "ref_data")
+    os.makedirs(ref_other, exist_ok=True)
+    with open(os.path.join(ref_other, "X1.pt"), "wb") as f:
+        f.write(b"pt")
+    d = mgr.resolve_turtle_dir_for_sheet_upload("BRANDNEW99", "Kansas")
+    assert d is None
+    assert not os.path.isdir(os.path.join(mgr.base_dir, "Kansas", "BRANDNEW99"))

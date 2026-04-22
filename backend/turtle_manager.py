@@ -77,6 +77,44 @@ def _find_image_in_dir(dir_path, stem):
             return os.path.join(dir_path, fname)
     return None
 
+
+def _ref_data_folder_score(turtle_dir, turtle_id):
+    """
+    How strong is ref_data under this turtle folder (for disambiguation).
+
+    Used when ``data/<hint>/<turtle_id>/`` exists but is empty while the real turtle lives
+    deeper (e.g. ``data/Kansas/Topeka/T42``): we must not stop at the empty hinted path.
+    """
+    ref_dir = os.path.join(turtle_dir, "ref_data")
+    if not os.path.isdir(ref_dir):
+        return 0
+    tid = turtle_id or ""
+    if tid and os.path.isfile(os.path.join(ref_dir, f"{tid}.pt")):
+        return 3
+    if tid and _find_image_in_dir(ref_dir, tid):
+        return 2
+    try:
+        for f in sorted(os.listdir(ref_dir)):
+            if f.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".webp")):
+                return 2
+    except OSError:
+        return 0
+    try:
+        if os.listdir(ref_dir):
+            return 1
+    except OSError:
+        pass
+    return 0
+
+
+def _is_turtle_data_folder(path):
+    """True if ``path`` looks like a turtle folder (has ``ref_data``)."""
+    try:
+        return bool(path and os.path.isdir(path) and os.path.isdir(os.path.join(path, "ref_data")))
+    except OSError:
+        return False
+
+
 # Characters invalid in folder names (Windows + common Unix); replaced with _ when syncing sheet names to disk
 _FOLDER_NAME_INVALID = r'\/:*?"<>|'
 
@@ -767,14 +805,111 @@ class TurtleManager:
     # --- PARTNER'S HELPER AND TRACKING FUNCTIONS (KEPT 100%) ---
 
     def _get_turtle_folder(self, turtle_id, location_hint=None):
-        """Resolve turtle folder path by turtle_id and optional location_hint."""
-        if location_hint and location_hint != "Unknown":
-            possible_path = os.path.join(self.base_dir, location_hint, turtle_id)
-            if os.path.exists(possible_path):
-                return possible_path
-        for root, dirs, files in os.walk(self.base_dir):
-            if os.path.basename(root) == turtle_id:
-                return root
+        """
+        Resolve turtle folder path by turtle_id and optional location_hint.
+
+        If ``join(base_dir, hint, turtle_id)`` exists it used to win unconditionally, which breaks
+        when that directory is an empty shell (e.g. partial path) while the real data lives under
+        a deeper location discovered by walking. We pick the candidate with the strongest ref_data.
+        """
+        if not turtle_id or not isinstance(turtle_id, str):
+            return None
+        tid = turtle_id.strip()
+        if not tid:
+            return None
+
+        candidates = []
+        real_seen = set()
+
+        def add_candidate(path):
+            if not path or not os.path.isdir(path):
+                return
+            try:
+                rp = os.path.realpath(path)
+            except OSError:
+                return
+            if rp in real_seen:
+                return
+            real_seen.add(rp)
+            candidates.append(path)
+
+        hinted_path = None
+        if location_hint and str(location_hint).strip() and location_hint != "Unknown":
+            hinted_path = os.path.join(self.base_dir, location_hint, tid)
+            add_candidate(hinted_path)
+
+        try:
+            for root, dirs, files in os.walk(self.base_dir):
+                if os.path.basename(root) == tid:
+                    add_candidate(root)
+        except OSError:
+            pass
+
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+
+        scored = [(_ref_data_folder_score(p, tid), p) for p in candidates]
+        max_score = max(s for s, _ in scored)
+        best = [p for s, p in scored if s == max_score]
+        if len(best) == 1:
+            return best[0]
+        if hinted_path and os.path.isdir(hinted_path):
+            try:
+                hr = os.path.realpath(hinted_path)
+                for p in best:
+                    if os.path.realpath(p) == hr:
+                        return hinted_path
+            except OSError:
+                pass
+        return sorted(best)[0]
+
+    def _state_dir_has_site_subfolders(self, state_path):
+        """
+        True when ``state_path`` has intermediate site folders (each containing turtle dirs).
+
+        Used to avoid creating ``data/Kansas/<primary_id>/`` when real layout is
+        ``data/Kansas/North Topeka/<biology_id>/``.
+        """
+        if not state_path or not os.path.isdir(state_path):
+            return False
+        try:
+            for child in os.listdir(state_path):
+                site = os.path.join(state_path, child)
+                if not os.path.isdir(site):
+                    continue
+                if _is_turtle_data_folder(site):
+                    continue
+                try:
+                    for sub in os.listdir(site):
+                        q = os.path.join(site, sub)
+                        if _is_turtle_data_folder(q):
+                            return True
+                except OSError:
+                    continue
+        except OSError:
+            pass
+        return False
+
+    def _find_turtle_under_single_state_segment(self, state_segment, tid):
+        """``data/<State>/<tid>`` (flat) or ``data/<State>/<Site>/<tid>`` (nested)."""
+        state_path = _resolved_path_under_base(self.base_dir, state_segment)
+        if not state_path or not os.path.isdir(state_path):
+            return None
+        direct = os.path.join(state_path, tid)
+        if _is_turtle_data_folder(direct):
+            return direct
+        try:
+            for child in sorted(os.listdir(state_path)):
+                site = os.path.join(state_path, child)
+                if not os.path.isdir(site):
+                    continue
+                nested = os.path.join(site, tid)
+                if _is_turtle_data_folder(nested):
+                    return nested
+        except OSError:
+            pass
         return None
 
     def resolve_turtle_dir_for_sheet_upload(self, turtle_id, sheet_name):
@@ -798,9 +933,18 @@ class TurtleManager:
                 return None
             if os.path.isdir(explicit):
                 return explicit
+            rel_parts = [p for p in rel.replace("\\", "/").split("/") if str(p).strip()]
+            if len(rel_parts) == 1:
+                nested = self._find_turtle_under_single_state_segment(rel_parts[0], tid)
+                if nested:
+                    return nested
             for root, dirs, files in os.walk(self.base_dir):
                 if os.path.basename(root) == tid:
                     return root
+            if len(rel_parts) == 1:
+                state_only = _resolved_path_under_base(self.base_dir, rel_parts[0])
+                if state_only and self._state_dir_has_site_subfolders(state_only):
+                    return None
             os.makedirs(os.path.join(explicit, "ref_data"), exist_ok=True)
             os.makedirs(os.path.join(explicit, "loose_images"), exist_ok=True)
             return explicit
@@ -883,8 +1027,9 @@ class TurtleManager:
         turtle_dir = self.resolve_turtle_dir_for_sheet_upload(turtle_id, sheet_name)
         if not turtle_dir:
             return False, (
-                "Turtle folder not found. For a new sheet-only row, pass sheet_name (location) "
-                "so the backend can create data/<location>/<turtle_id>/."
+                "Turtle folder not found. Use the full disk path as sheet_name (e.g. Kansas/North Topeka), "
+                "not the Google tab name alone when sites live under the state. Set General location + Location "
+                "on the row, or fix stray empty folders under data/<State>/."
             )
         ref_dir = os.path.join(turtle_dir, "ref_data")
         loose_dir = os.path.join(turtle_dir, "loose_images")
@@ -1039,7 +1184,12 @@ class TurtleManager:
     def add_additional_images_to_turtle(self, turtle_id, files_with_types, sheet_name=None):
         turtle_dir = self.resolve_turtle_dir_for_sheet_upload(turtle_id, sheet_name)
         if not turtle_dir or not os.path.isdir(turtle_dir):
-            return False, "Turtle folder not found"
+            return (
+                False,
+                "Turtle folder not found. For multi-site states pass State/Site as sheet_name "
+                "(same as General location + Location); the backend will not create turtles directly under "
+                "data/<State>/ when site folders already exist.",
+            )
         today_str = time.strftime('%Y-%m-%d')
         date_dir = os.path.join(turtle_dir, 'additional_images', today_str)
         os.makedirs(date_dir, exist_ok=True)

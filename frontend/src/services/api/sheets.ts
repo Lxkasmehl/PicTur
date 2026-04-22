@@ -57,6 +57,23 @@ export interface TurtleSheetsData {
   dome_height_mm?: string;
 }
 
+/**
+ * Folder hint for turtle image APIs: matches `data/<…>/` on disk.
+ * The spreadsheet tab (`sheet_name`) is often only the state (e.g. `Kansas`); real paths use
+ * `general_location` + `location` (e.g. `Kansas/North Topeka`), same as review-queue `state/location`.
+ */
+export function turtleDataFolderHint(
+  t: Pick<TurtleSheetsData, 'sheet_name' | 'general_location' | 'location'>,
+): string | null {
+  const gl = (t.general_location || '').trim().replace(/\\/g, '/');
+  const loc = (t.location || '').trim().replace(/\\/g, '/');
+  const sheet = (t.sheet_name || '').trim();
+  if (gl && loc) return `${gl}/${loc}`;
+  if (gl && !loc) return gl;
+  if (!gl && loc) return loc;
+  return sheet || null;
+}
+
 export interface GetTurtleSheetsDataResponse {
   success: boolean;
   data?: TurtleSheetsData;

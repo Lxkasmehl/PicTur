@@ -43,7 +43,7 @@ import {
   type TurtleImageAdditional,
   type TurtleImagesResponse,
 } from '../../services/api';
-import type { TurtleSheetsData } from '../../services/api/sheets';
+import { turtleDataFolderHint, type TurtleSheetsData } from '../../services/api/sheets';
 import { useUser } from '../../hooks/useUser';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
@@ -51,10 +51,10 @@ import { formatSingleDateTokenToUs } from '../../utils/usDateFormat';
 import { validateFile } from '../../utils/fileValidation';
 import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
 
-function turtleKey(turtle: { primary_id?: string | null; id?: string | null; sheet_name?: string | null }) {
+function turtleKey(turtle: TurtleSheetsData) {
   const id = turtle.primary_id || turtle.id || '';
-  const sheet = turtle.sheet_name ?? '';
-  return `${id}|${sheet}`;
+  const hint = turtleDataFolderHint(turtle) ?? '';
+  return `${id}|${hint}`;
 }
 
 function isSheetsDeceasedYes(v?: string | null): boolean {
@@ -129,17 +129,18 @@ export function SheetsBrowserTab() {
   } = ctx;
 
   const turtleId = selectedTurtle?.primary_id || selectedTurtle?.id;
-  const sheetName = selectedTurtle?.sheet_name ?? null;
+  /** Matches `data/<path>/` on disk (not the Google tab name alone). */
+  const dataPathHint = selectedTurtle ? turtleDataFolderHint(selectedTurtle) : null;
 
   useEffect(() => {
     if (!turtleId) {
       setTurtleImages(null);
       return;
     }
-    getTurtleImages(turtleId, sheetName)
+    getTurtleImages(turtleId, dataPathHint)
       .then(setTurtleImages)
       .catch(() => setTurtleImages(null));
-  }, [turtleId, sheetName]);
+  }, [turtleId, dataPathHint]);
 
   useEffect(() => {
     if (filteredTurtles.length === 0) {
@@ -149,7 +150,7 @@ export function SheetsBrowserTab() {
     const turtles = filteredTurtles
       .map((t) => ({
         turtle_id: t.primary_id || t.id || '',
-        sheet_name: t.sheet_name ?? null,
+        sheet_name: turtleDataFolderHint(t) ?? t.sheet_name ?? null,
       }))
       .filter((t) => t.turtle_id);
     if (turtles.length === 0) {
@@ -690,11 +691,15 @@ export function SheetsBrowserTab() {
                     previous master into loose_images. A second underside photo only: use Plastron (extra) under
                     additional photos below.
                   </Text>
-                  {!sheetName && !turtleImages?.primary ? (
+                  {!turtleImages?.primary &&
+                  selectedTurtle &&
+                  !(String(selectedTurtle.general_location || '').trim() &&
+                    String(selectedTurtle.location || '').trim()) ? (
                     <Text size='xs' c='orange'>
-                      This row has no sheet/location path yet. Set the first identifier after the turtle has a
-                      location so the backend can create{' '}
-                      <code>{'data/<location>/<turtle id>/'}</code> on disk.
+                      Fill <strong>General location</strong> and <strong>Location</strong> on this row (research
+                      site, e.g. North Topeka). The backend path is{' '}
+                      <code>{'data/<general>/<location>/<turtle id>/'}</code> — without both, uploads can land under
+                      the tab name only and break the folder layout.
                     </Text>
                   ) : null}
                   <Group align='flex-start' wrap='wrap' gap='md'>
@@ -750,7 +755,7 @@ export function SheetsBrowserTab() {
                               await uploadTurtleIdentifierPlastron(
                                 turtleId,
                                 file,
-                                sheetName,
+                                dataPathHint,
                                 turtleImages?.primary ? 'replace' : 'set_if_missing',
                               );
                               notifications.show({
@@ -760,11 +765,11 @@ export function SheetsBrowserTab() {
                                   : 'Identifier plastron set; search index updated.',
                                 color: 'green',
                               });
-                              const res = await getTurtleImages(turtleId, sheetName);
+                              const res = await getTurtleImages(turtleId, dataPathHint);
                               setTurtleImages(res);
                               if (selectedTurtle) {
                                 const pr = await getTurtlePrimariesBatch([
-                                  { turtle_id: turtleId, sheet_name: sheetName },
+                                  { turtle_id: turtleId, sheet_name: dataPathHint },
                                 ]);
                                 const p = pr.images[0]?.primary ?? null;
                                 setPrimaryImages((prev) => ({
@@ -789,7 +794,7 @@ export function SheetsBrowserTab() {
                         variant='light'
                         leftSection={<IconPhoto size={16} />}
                         loading={identifierSubmitting}
-                        disabled={!turtleId || (!sheetName && !turtleImages?.primary)}
+                        disabled={!turtleId || (!dataPathHint && !turtleImages?.primary)}
                         onClick={() => identifierFileInputRef.current?.click()}
                       >
                         {turtleImages?.primary ? 'Replace identifier…' : 'Set identifier…'}
@@ -811,10 +816,10 @@ export function SheetsBrowserTab() {
                     labels: a.labels,
                   }))}
                   turtleId={turtleId}
-                  sheetName={sheetName}
+                  sheetName={dataPathHint}
                   onRefresh={async () => {
                     if (!turtleId) return;
-                    const res = await getTurtleImages(turtleId, sheetName);
+                    const res = await getTurtleImages(turtleId, dataPathHint);
                     setTurtleImages(res);
                   }}
                 />
@@ -824,10 +829,10 @@ export function SheetsBrowserTab() {
                 title={`Turtle photos (Microhabitat / Condition)${latestDate ? ` - ${formatSingleDateTokenToUs(latestDate)}` : ''}`}
                 images={[]}
                 turtleId={turtleId}
-                sheetName={sheetName}
+                sheetName={dataPathHint}
                 onRefresh={async () => {
                   if (!turtleId) return;
-                  const res = await getTurtleImages(turtleId, sheetName);
+                  const res = await getTurtleImages(turtleId, dataPathHint);
                   setTurtleImages(res);
                 }}
               />

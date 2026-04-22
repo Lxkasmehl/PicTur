@@ -98,6 +98,7 @@ export {
   getTurtleNames,
   listAllTurtlesFromSheets,
   downloadAdminBackupArchive,
+  turtleDataFolderHint,
 } from './api/sheets';
 export type {
   TurtleSheetsData,

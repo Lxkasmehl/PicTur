@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.16] - 2026-04-23 — Sheets folder resolution (primary path + state/site layout)
+
+### Fixed
+
+- **`_get_turtle_folder` / Sheets primary thumbnails**: If `data/<sheet_name hint>/<turtle_id>/` existed as an empty (or weak) folder while the real turtle data lived deeper (e.g. `data/Kansas/Topeka/T42`), the API returned **`primary: null`** and the UI showed **Set identifier** for everyone. Resolution now scores **`ref_data`** (`.pt` / reference image) across all matching folders and picks the strongest match instead of trusting the hinted path alone.
+- **Sheets browser vs disk layout (Kansas etc.)**: The spreadsheet tab name (`sheet_name`, e.g. `Kansas`) is not the same as the filesystem path when turtles live under **`data/Kansas/<site>/<biology id>/`**. The Sheets UI now passes **`general_location` + `location`** as the folder hint (same idea as review queue `state/location`). **`resolve_turtle_dir_for_sheet_upload`** resolves **`State/turtle_id`** by scanning **`State/<site>/turtle_id`**, and **does not** auto-create **`data/State/<new primary id>/`** when the state directory already has site-style subfolders (prevents stray `Kansas/T177…/` trees).
+
 ## [1.2.15] - 2026-04-22 — Primary ID sync before nightly Sheets backup
 
 ### Changed
@@ -21,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Testing
 
-- **`backend/tests/test_turtle_plastron_upload.py`**: folder resolution, first identifier, set-if-missing conflict, replace archives old master, additional upload creates folder (brain `process_and_save` mocked to write a dummy `.pt`).
+- **`backend/tests/test_turtle_plastron_upload.py`**: folder resolution, first identifier, set-if-missing conflict, replace archives old master, additional upload creates folder (brain `process_and_save` mocked to write a dummy `.pt`); **`test_get_turtle_folder_prefers_real_ref_data_over_empty_hint`**; **`test_resolve_finds_nested_when_hint_is_state_only`** / **`test_resolve_no_shallow_folder_when_state_has_site_layout`** for state-only hints vs nested layout.
 
 ## [1.2.13] - 2026-04-20 — Review queue candidate filenames with uppercase extensions
 
@@ -276,7 +283,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.15...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.16...HEAD
+[1.2.16]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.16
 [1.2.15]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.15
 [1.2.14]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.14
 [1.2.13]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.13
