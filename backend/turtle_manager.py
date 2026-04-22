@@ -96,10 +96,40 @@ def _location_dir_from_sheet_name(sheet_name):
     if not sheet_name or not isinstance(sheet_name, str):
         return None
     raw = sheet_name.strip().replace("\\", "/")
-    parts = [_safe_folder_name(p) for p in raw.split("/") if str(p).strip()]
+    parts = []
+    for p in raw.split("/"):
+        if not str(p).strip():
+            continue
+        seg = _safe_folder_name(p)
+        if seg in (".", ".."):
+            continue
+        parts.append(seg)
     if not parts:
         return None
     return os.path.join(*parts)
+
+
+def _resolved_path_under_base(base_dir, *relative_parts):
+    """realpath(join(base_dir, *parts)); return it only if it stays under realpath(base_dir).
+
+    Blocks ``..``, absolute segments in *relative_parts*, and symlink escapes before makedirs.
+    """
+    if not relative_parts:
+        return None
+    if any(p is None or p == "" for p in relative_parts):
+        return None
+    try:
+        candidate = os.path.join(base_dir, *relative_parts)
+    except (TypeError, ValueError):
+        return None
+    real_base = os.path.realpath(base_dir)
+    real_candidate = os.path.realpath(candidate)
+    try:
+        if os.path.commonpath([real_candidate, real_base]) != real_base:
+            return None
+    except ValueError:
+        return None
+    return real_candidate
 
 
 # --- FLASH DRIVE INGEST: Map drive folder names to backend folder names ---
@@ -756,20 +786,25 @@ class TurtleManager:
         returns the existing folder (same behaviour as a plain search). If nothing exists,
         creates ``data/<sheet...>/<turtle_id>/`` with ``ref_data`` and ``loose_images``.
         """
-        if not turtle_id:
+        if not turtle_id or not isinstance(turtle_id, str):
+            return None
+        tid = turtle_id.strip()
+        if not tid or os.path.isabs(tid) or "/" in tid or "\\" in tid or tid in (".", ".."):
             return None
         rel = _location_dir_from_sheet_name(sheet_name) if sheet_name else None
         if rel:
-            explicit = os.path.join(self.base_dir, rel, turtle_id)
+            explicit = _resolved_path_under_base(self.base_dir, rel, tid)
+            if not explicit:
+                return None
             if os.path.isdir(explicit):
                 return explicit
             for root, dirs, files in os.walk(self.base_dir):
-                if os.path.basename(root) == turtle_id:
+                if os.path.basename(root) == tid:
                     return root
             os.makedirs(os.path.join(explicit, "ref_data"), exist_ok=True)
             os.makedirs(os.path.join(explicit, "loose_images"), exist_ok=True)
             return explicit
-        return self._get_turtle_folder(turtle_id, None)
+        return self._get_turtle_folder(tid, None)
 
     def _create_identifier_plastron(self, turtle_id, query_image, ref_dir, loose_dir):
         """Write first ref_data/<turtle_id>.* + .pt from an image file (caller ensures no identifier)."""
