@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.15] - 2026-04-22 — Primary ID sync before nightly Sheets backup
+
+### Changed
+
+- **`python -m backup.run`** (used by **`scripts/daily-backup.sh`**): Before exporting CSV/JSON, runs the same **Primary ID migration** as backend startup for the **admin** and **community** spreadsheets when needed (biology **ID** present, **Primary ID** empty). Nightly backups therefore include complete Primary IDs without restarting the API container.
+
 ## [1.2.14] - 2026-04-22 — Sheets plastron workflows (identifier uploads, additional plastron)
 
 ### Added
@@ -270,7 +276,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.14...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.15...HEAD
+[1.2.15]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.15
 [1.2.14]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.14
 [1.2.13]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.13
 [1.2.12]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.12

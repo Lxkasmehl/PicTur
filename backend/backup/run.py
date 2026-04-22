@@ -8,6 +8,9 @@ Optional BACKUP_DATE=YYYY-MM-DD (set by scripts/daily-backup.sh from the host cl
 if unset, uses the container's local date (datetime.now()).
 Writes to BACKUP_OUTPUT_DIR/sheets/YYYY-MM-DD/ with one CSV per sheet
 and optional one JSON file per spreadsheet.
+
+Before exporting, assigns Primary IDs for admin/community spreadsheets when
+migration is needed (biology ID set, Primary ID empty), matching backend startup.
 """
 
 import csv
@@ -82,6 +85,26 @@ def _export_spreadsheet(service, label: str, date_str: str, out_dir: Path, expor
     return {'sheets': len(all_data), 'errors': errors}
 
 
+def _ensure_primary_ids_before_export(admin_svc, community_svc) -> None:
+    """
+    Assign Primary IDs for rows that have biology ID but empty Primary ID (same logic as backend startup).
+    Runs before CSV/JSON export so nightly backups always include complete IDs without a backend restart.
+    """
+    for label, svc in (('admin', admin_svc), ('community', community_svc)):
+        if not svc:
+            continue
+        try:
+            if not svc.needs_migration():
+                continue
+            print(f"Backup: {label} spreadsheet — assigning Primary IDs where missing…")
+            stats = svc.migrate_ids_to_primary_ids()
+            total = sum(stats.values()) if stats else 0
+            if total:
+                print(f"Backup: {label} — migrated {total} row(s) across {len(stats)} sheet(s)")
+        except Exception as e:
+            print(f"Backup: warning — Primary ID sync failed for {label}: {e}")
+
+
 def run_backup(backup_root: str = None, export_json: bool = True) -> bool:
     """
     Export admin and community spreadsheets to backup_root/sheets/YYYY-MM-DD/.
@@ -99,6 +122,9 @@ def run_backup(backup_root: str = None, export_json: bool = True) -> bool:
     except Exception as e:
         print(f"Backup: could not load services: {e}")
         return False
+
+    _ensure_primary_ids_before_export(admin_svc, community_svc)
+
     ok = False
     r1 = _export_spreadsheet(admin_svc, 'admin', date_str, out_dir, export_json=export_json)
     if r1['sheets'] > 0:

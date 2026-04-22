@@ -73,7 +73,7 @@ This document describes the backup strategy for the PicTur web app: **Google Spr
 1. **In the repo (already done):**
    - Backup module in the backend: export all sheets (admin + community) as CSV (one file per sheet, date in path) under `BACKUP_OUTPUT_DIR/sheets/`.
    - Optional: one JSON per spreadsheet under `BACKUP_OUTPUT_DIR/sheets/`.
-   - CLI/script (`python -m backup.run`) that you can run manually and later via cron.
+   - CLI/script (`python -m backup.run`) that you can run manually and later via cron. Before export, it **assigns missing Primary IDs** (same logic as backend startup) so manual sheet rows without a Primary ID are fixed before the snapshot.
    - Env: `BACKUP_OUTPUT_DIR` (default e.g. `./backups`).
    - Docker: volume for backups mounted from the host (`BACKUP_OUTPUT_DIR` in the container = mounted host directory).
 
@@ -87,7 +87,7 @@ This document describes the backup strategy for the PicTur web app: **Google Spr
      - **Sheets (CSV/JSON):** `BACKUP_OUTPUT_DIR` inside the container defaults to `/app/backups`, and Compose maps `./backups` there—so these files are **on the host** next to your compose file (not inside the `backend-data` volume).
      - **Images and `data/` tree:** The app stores uploads under `/app/data`, which uses the **named volume** `backend-data` only. That data is **not** on the host filesystem until you copy it out. Use the repo script `scripts/backup-backend-data.sh` (or the combined `scripts/daily-backup.sh`) so each run creates a dated folder `backups/data/YYYY-MM-DD/` on the host with a full copy of `data/`.
    - **Date in folder names (`YYYY-MM-DD`):** When you use **`scripts/daily-backup.sh`**, both `sheets/…` and `data/…` use the **host’s calendar date** (same `BACKUP_DATE`; set `timedatectl` / `TZ` on the server so cron and “today” match your region). If you run `python -m backup.run` **inside Docker** without `BACKUP_DATE`, the folder name follows the **container’s** local date (often UTC unless you set `TZ` on the backend service).
-   - **Cron (one job for everything):** Prefer **`scripts/daily-backup.sh`**: it runs `python -m backup.run` (Sheets) then `backup-backend-data.sh` (images). Add **one** line with **`crontab -e`**. Do **not** paste the whole line into an interactive shell—the first five fields (`0 3 * * *`) are the schedule; the shell would try to run `0` as a command and print `command not found`.
+   - **Cron (one job for everything):** Prefer **`scripts/daily-backup.sh`**: it runs `python -m backup.run` (Sheets, including Primary ID sync then CSV/JSON) then `backup-backend-data.sh` (images). Add **one** line with **`crontab -e`**. Do **not** paste the whole line into an interactive shell—the first five fields (`0 3 * * *`) are the schedule; the shell would try to run `0` as a command and print `command not found`.
    - Use an **absolute** path for `COMPOSE_DIR` (`~` often does not expand under cron). Example (adjust paths and log location; `bash` avoids needing the execute bit on the scripts):
      ```cron
      0 3 * * * COMPOSE_DIR=/home/lukas/PicTur/TurtleTracker BACKUP_OUTPUT_DIR=/home/lukas/PicTur/TurtleTracker/backups /usr/bin/bash /home/lukas/PicTur/TurtleTracker/scripts/daily-backup.sh >> /home/lukas/pictur-backup.log 2>&1

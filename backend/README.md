@@ -422,6 +422,6 @@ The backend can export all sheets from both the admin and community spreadsheets
   ```bash
   python -m backup.run
   ```
-- **Output:** `BACKUP_OUTPUT_DIR/sheets/YYYY-MM-DD/` with one CSV per sheet (`admin_SheetName.csv`, `community_SheetName.csv`) and optional `admin.json` / `community.json`.
+- **Output:** `BACKUP_OUTPUT_DIR/sheets/YYYY-MM-DD/` with one CSV per sheet (`admin_SheetName.csv`, `community_SheetName.csv`) and optional `admin.json` / `community.json`. Each run **fills missing Primary IDs** in the live spreadsheets (when biology **ID** is set) before writing files, so nightly cron backups stay aligned with the app without a container restart.
 - **Env:** `BACKUP_OUTPUT_DIR` (default: `./backups`). With Docker, the compose file mounts `./backups` on the host to `/app/backups` so backups are stored outside the container.
 - **On the server / cron:** Use **`scripts/daily-backup.sh`** to export Sheets **and** copy `data/` (images) from the Docker volume onto the host under `backups/data/YYYY-MM-DD/`, or run `docker compose exec -T backend python -m backup.run` for Sheets only. `daily-backup.sh` sets **`BACKUP_DATE`** from the host so `sheets/` and `data/` use the same calendar day as the server clock. Schedule with **`crontab -e`** (do not paste cron lines into a normal shell—the leading `0 3 * * *` is not a command). Examples: **docs/BACKUP.md**.
