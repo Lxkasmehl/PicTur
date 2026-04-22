@@ -99,6 +99,10 @@ export interface ApproveReviewRequest {
   community_sheet_name?: string;
   /** Photo type: plastron (belly, default) or carapace (top of shell). */
   photo_type?: PhotoType;
+  /** Replace the existing plastron reference image with this upload (old image archived). */
+  replace_reference?: boolean;
+  /** Replace the existing carapace reference using the first carapace additional image. */
+  replace_carapace_reference?: boolean;
 }
 
 /** Optional flag/collected-to-lab and extra images for upload (community flow) */
@@ -218,7 +222,7 @@ export const getReviewQueue = async (): Promise<ReviewQueueResponse> => {
 // Add additional images (microhabitat, condition, carapace, plastron) to a review packet (Admin only)
 export const uploadReviewPacketAdditionalImages = async (
   requestId: string,
-  files: Array<{ type: 'microhabitat' | 'condition' | 'carapace' | 'plastron'; file: File }>,
+  files: Array<{ type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional'; file: File }>,
 ): Promise<{ success: boolean; message?: string }> => {
   const token = getToken();
   const headers: Record<string, string> = {};
@@ -310,6 +314,7 @@ export const approveReview = async (
 export const crossCheckReviewPacket = async (
   requestId: string,
   photoType: PhotoType,
+  imagePath?: string,
 ): Promise<{
   success: boolean;
   photo_type: string;
@@ -319,9 +324,11 @@ export const crossCheckReviewPacket = async (
   const token = getToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const body: Record<string, string> = { photo_type: photoType };
+  if (imagePath) body.image_path = imagePath;
   const response = await fetch(
     `${TURTLE_API_BASE_URL}/review-queue/${encodeURIComponent(requestId)}/cross-check`,
-    { method: 'POST', headers, body: JSON.stringify({ photo_type: photoType }) },
+    { method: 'POST', headers, body: JSON.stringify(body) },
   );
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: 'Cross-check failed' }));
@@ -423,18 +430,53 @@ export const getImageUrl = (imagePath: string): string => {
   return `${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?path=${encodedPath}`;
 };
 
-// Turtle images (Admin only) – primary plastron, additional (microhabitat/condition), loose
+// Turtle images (Admin only) – primary plastron/carapace, additional, loose, history
 export interface TurtleImageAdditional {
   path: string;
   type: string;
+  /** Display-preferred date: EXIF first, upload fallback. */
   timestamp?: string | null;
+  /** When the photo was originally taken (camera EXIF DateTimeOriginal). */
+  exif_date?: string | null;
+  /** When the system stored the file (from manifest, filename stamp, or folder name). */
+  upload_date?: string | null;
   uploaded_by?: string | null;
+}
+
+export type TurtleLooseSource =
+  | 'plastron_old_ref'
+  | 'plastron_other'
+  | 'carapace_old_ref'
+  | 'carapace_other'
+  | 'loose_legacy';
+
+export interface TurtleLooseImage {
+  path: string;
+  source: TurtleLooseSource;
+  /** Display-preferred date: EXIF first, upload fallback. */
+  timestamp?: string | null;
+  exif_date?: string | null;
+  upload_date?: string | null;
+}
+
+export interface TurtlePrimaryInfo {
+  path: string;
+  /** Display-preferred date: EXIF first, upload fallback. */
+  timestamp?: string | null;
+  exif_date?: string | null;
+  upload_date?: string | null;
 }
 
 export interface TurtleImagesResponse {
   primary: string | null;
+  primary_carapace: string | null;
+  /** Active plastron reference with its capture/upload dates. */
+  primary_info?: TurtlePrimaryInfo | null;
+  /** Active carapace reference with its capture/upload dates. */
+  primary_carapace_info?: TurtlePrimaryInfo | null;
   additional: TurtleImageAdditional[];
-  loose: string[];
+  loose: TurtleLooseImage[];
+  history_dates: string[];
 }
 
 export const getTurtleImages = async (
@@ -476,10 +518,37 @@ export const getTurtlePrimariesBatch = async (
   return await response.json();
 };
 
+/** Replace a turtle's plastron or carapace reference image atomically (Admin only). */
+export const uploadTurtleReplaceReference = async (
+  turtleId: string,
+  file: File,
+  photoType: 'plastron' | 'carapace',
+  sheetName?: string | null,
+): Promise<{ success: boolean; message?: string }> => {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const formData = new FormData();
+  formData.append('turtle_id', turtleId);
+  formData.append('photo_type', photoType);
+  formData.append('file', file);
+  if (sheetName) formData.append('sheet_name', sheetName);
+  const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/replace-reference`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Failed to replace reference' }));
+    throw new Error(err.error || 'Failed to replace reference');
+  }
+  return await response.json();
+};
+
 /** Add microhabitat/condition images to a turtle folder (Admin only). */
 export const uploadTurtleAdditionalImages = async (
   turtleId: string,
-  files: Array<{ type: 'microhabitat' | 'condition' | 'carapace' | 'plastron'; file: File }>,
+  files: Array<{ type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional'; file: File }>,
   sheetName?: string | null,
 ): Promise<{ success: boolean; message?: string }> => {
   const token = getToken();

@@ -44,6 +44,11 @@ interface AdditionalImagesSectionProps {
   embedded?: boolean;
   /** If true, hide the Microhabitat/Condition add buttons (e.g. when another section in the same block has them). */
   hideAddButtons?: boolean;
+  /** When provided, ALL button clicks stage via this callback instead of uploading immediately.
+   *  Parent owns the staged files and commits them on save. Plastron button becomes visible,
+   *  and plastron/carapace are rendered in red to signal they may replace the current reference.
+   *  Leave undefined for packet-mode / immediate-upload behavior. */
+  onStagePhoto?: (type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional', file: File) => void;
 }
 
 export function AdditionalImagesSection({
@@ -56,6 +61,7 @@ export function AdditionalImagesSection({
   disabled = false,
   embedded = false,
   hideAddButtons = false,
+  onStagePhoto,
 }: AdditionalImagesSectionProps) {
   const [lightboxPath, setLightboxPath] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -92,9 +98,28 @@ export function AdditionalImagesSection({
     }
   };
 
-  const handleAdd = async (type: 'microhabitat' | 'condition' | 'carapace' | 'plastron', files: FileList | null) => {
+  const handleAdd = async (type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional', files: FileList | null) => {
     if (!files?.length) return;
-    const toAdd: Array<{ type: 'microhabitat' | 'condition' | 'carapace' | 'plastron'; file: File }> = [];
+    // Staging mode: every button routes through the parent's staging callback instead of
+    // uploading immediately. Parent owns the staged files and commits them on save
+    // (e.g. with a "Replace reference?" prompt for plastron/carapace).
+    if (onStagePhoto) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const validation = validateFile(file);
+        if (validation.isValid) {
+          onStagePhoto(type, file);
+        } else if (validation.error) {
+          notifications.show({
+            title: 'Invalid file',
+            message: validation.error,
+            color: 'red',
+          });
+        }
+      }
+      return;
+    }
+    const toAdd: Array<{ type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional'; file: File }> = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const validation = validateFile(file);
@@ -194,10 +219,32 @@ export function AdditionalImagesSection({
                 }}
               />
             </Button>
+            {onStagePhoto && (
+              <Button
+                size="sm"
+                variant="light"
+                color="red"
+                leftSection={<IconPhotoPlus size={14} />}
+                component="label"
+                loading={adding}
+                disabled={disabled}
+              >
+                Plastron
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    handleAdd('plastron', e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+              </Button>
+            )}
             <Button
               size="sm"
               variant="light"
-              color="teal"
+              color={onStagePhoto ? 'red' : undefined}
               leftSection={<IconPhotoPlus size={14} />}
               component="label"
               loading={adding}
@@ -217,19 +264,19 @@ export function AdditionalImagesSection({
             <Button
               size="sm"
               variant="light"
-              color="grape"
               leftSection={<IconPhotoPlus size={14} />}
               component="label"
               loading={adding}
               disabled={disabled}
             >
-              Plastron
+              Additional
               <input
                 type="file"
                 accept="image/*"
+                multiple
                 hidden
                 onChange={(e) => {
-                  handleAdd('plastron', e.target.files);
+                  handleAdd('additional', e.target.files);
                   e.target.value = '';
                 }}
               />
@@ -239,7 +286,7 @@ export function AdditionalImagesSection({
 
         {(images.length > 0 || canEdit) && (
           <Stack gap="sm">
-            {(['microhabitat', 'condition', 'carapace', 'plastron'] as const).map((t) => {
+            {(['microhabitat', 'condition', 'carapace', 'plastron', 'additional'] as const).map((t) => {
               const list = byType(t);
               if (list.length === 0) return null;
               return (

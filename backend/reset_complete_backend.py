@@ -1,4 +1,4 @@
-"""
+RES"""
 Complete Backend Reset Script
 Clears ALL data from the backend:
 - Database (all Turtle and TurtleImage records)

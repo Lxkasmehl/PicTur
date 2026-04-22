@@ -1,5 +1,6 @@
 import { Divider, Modal, Paper, Stack, Text } from '@mantine/core';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
+import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
 import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
 
 interface CreateNewTurtleModalProps {
@@ -18,6 +19,7 @@ export function CreateNewTurtleModal({ size }: CreateNewTurtleModalProps) {
     availableSheets,
     selectedItem,
     handleSaveNewTurtleSheetsData: onSave,
+    refreshQueueItem,
   } = ctx;
 
   const onClose = () => setShowNewTurtleModal(false);
@@ -43,6 +45,21 @@ export function CreateNewTurtleModal({ size }: CreateNewTurtleModalProps) {
               Primary ID
             </Text>
             <Text fw={500}>{newTurtlePrimaryId}</Text>
+          </Paper>
+        )}
+        {selectedItem?.request_id && (
+          <Paper p='sm' withBorder radius='md'>
+            <AdditionalImagesSection
+              title='Photos for this upload'
+              embedded
+              images={(selectedItem.additional_images ?? []).map((a) => ({
+                imagePath: a.image_path,
+                filename: a.filename,
+                type: a.type,
+              }))}
+              requestId={selectedItem.request_id}
+              onRefresh={() => refreshQueueItem(selectedItem.request_id)}
+            />
           </Paper>
         )}
         <Divider label='Google Sheets Data' labelPosition='center' />

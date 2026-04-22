@@ -164,7 +164,10 @@ export default function HomePage() {
     handleDrop,
     handleUpload,
     handleRemove,
-  } = usePhotoUpload({ role, matchSheet: matchSheetForUpload });
+  } = usePhotoUpload({
+    role,
+    matchSheet: matchSheetForUpload,
+  });
 
   const handleDropWithValidation = (acceptedFiles: FileWithPath[]): void => {
     if (acceptedFiles.length > 0) {

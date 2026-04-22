@@ -3,6 +3,7 @@ Turtle data endpoints (e.g. list images for a turtle folder)
 """
 
 import os
+import re
 import json
 import time
 from flask import request, jsonify
@@ -10,6 +11,45 @@ from werkzeug.utils import secure_filename
 from auth import require_admin
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from services import manager_service
+from turtle_manager import _extract_exif_date
+
+
+# Matches a millisecond-epoch timestamp at the start of a loose-photo filename,
+# e.g. "plastron_1712345678901_source.jpg" or "carapace_1712345678901_foo.jpg".
+_LOOSE_TS_RE = re.compile(r'^(?:plastron|carapace)_(\d{10,13})_')
+# Archived_Master_<ms>.jpg or Archived_Carapace_<ms>.jpg (with optional _YYYY-MM-DD suffix)
+_ARCHIVED_TS_RE = re.compile(r'^Archived_(?:Master|Carapace)_(\d{10,13})')
+# Obs_<unix_seconds>_original.jpg
+_OBS_TS_RE = re.compile(r'^Obs_(\d{10,13})_')
+# Embedded YYYY-MM-DD anywhere in filename (the upload-date stamp added by the manager)
+_FILENAME_DATE_RE = re.compile(r'(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)')
+
+
+def _extract_upload_date_from_filename(filename, fallback_path=None):
+    """Parse the system's upload date (YYYY-MM-DD) from a loose-photo filename.
+
+    Order: explicit YYYY-MM-DD stamp → ms timestamp prefix → file mtime fallback.
+    """
+    m = _FILENAME_DATE_RE.search(filename)
+    if m:
+        return m.group(1)
+    for rx in (_LOOSE_TS_RE, _ARCHIVED_TS_RE, _OBS_TS_RE):
+        m = rx.search(filename)
+        if m:
+            raw = m.group(1)
+            try:
+                ts = int(raw)
+                if ts > 1_000_000_000_000:
+                    ts = ts / 1000
+                return time.strftime('%Y-%m-%d', time.gmtime(ts))
+            except (ValueError, OSError):
+                pass
+    if fallback_path and os.path.exists(fallback_path):
+        try:
+            return time.strftime('%Y-%m-%d', time.gmtime(os.path.getmtime(fallback_path)))
+        except OSError:
+            pass
+    return None
 
 
 def register_turtle_routes(app):
@@ -19,9 +59,17 @@ def register_turtle_routes(app):
     @require_admin
     def get_turtle_images():
         """
-        Get image paths for a turtle: primary (ref_data), additional (microhabitat/condition), loose.
+        Get image paths for a turtle: primary plastron, primary carapace, additional, loose, history_dates.
         Query: turtle_id (required), sheet_name (optional, for disambiguation).
-        Returns: { primary: path | null, additional: [ { path, type } ], loose: [ path ] }
+        Returns: {
+          primary: path | null,
+          primary_carapace: path | null,
+          primary_info: { path, timestamp, exif_date, upload_date } | null,
+          primary_carapace_info: { path, timestamp, exif_date, upload_date } | null,
+          additional: [ { path, type, timestamp, exif_date, upload_date, uploaded_by } ],
+          loose: [ { path, source, timestamp, exif_date, upload_date } ],
+          history_dates: [ 'YYYY-MM-DD', ... ]   # includes primary reference dates
+        }
         """
         if not manager_service.manager_ready.wait(timeout=5):
             return jsonify({'error': 'TurtleManager is still initializing'}), 503
@@ -39,28 +87,60 @@ def register_turtle_routes(app):
         if not turtle_dir or not os.path.isdir(turtle_dir):
             return jsonify({
                 'primary': None,
+                'primary_carapace': None,
                 'additional': [],
                 'loose': [],
+                'history_dates': [],
             })
 
-        # --- PRIMARY IMAGE LOGIC ---
-        primary_path = None
-        ref_dir = os.path.join(turtle_dir, 'ref_data')
-        if os.path.isdir(ref_dir):
-            for f in sorted(os.listdir(ref_dir)):
-                if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                    primary_path = os.path.join(ref_dir, f)
-                    break
+        def _build_primary_info(path):
+            if not path:
+                return None
+            exif = _extract_exif_date(path)
+            upload = _extract_upload_date_from_filename(
+                os.path.basename(path), fallback_path=path
+            )
+            return {
+                'path': path,
+                'timestamp': exif or upload,
+                'exif_date': exif,
+                'upload_date': upload,
+            }
 
-        # --- NEW ADDITIONAL IMAGES LOGIC ---
+        # --- PRIMARY PLASTRON ---
+        primary_path = None
+        for ref_folder in ('plastron', 'ref_data'):
+            ref_dir = os.path.join(turtle_dir, ref_folder)
+            if os.path.isdir(ref_dir):
+                for f in sorted(os.listdir(ref_dir)):
+                    if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+                        primary_path = os.path.join(ref_dir, f)
+                        break
+                if primary_path:
+                    break
+        primary_info = _build_primary_info(primary_path)
+
+        # --- PRIMARY CARAPACE ---
+        primary_carapace_path = None
+        carapace_dir = os.path.join(turtle_dir, 'carapace')
+        if os.path.isdir(carapace_dir):
+            for f in sorted(os.listdir(carapace_dir)):
+                if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+                    primary_carapace_path = os.path.join(carapace_dir, f)
+                    break
+        primary_carapace_info = _build_primary_info(primary_carapace_path)
+
+        # --- ADDITIONAL IMAGES ---
         additional = []
         additional_dir = os.path.join(turtle_dir, 'additional_images')
 
-        # Helper function to parse a folder containing a manifest.json
         def parse_manifest_or_folder(target_dir):
             results = []
             manifest_path = os.path.join(target_dir, 'manifest.json')
             processed_files = set()
+            # Folder-level upload date from "additional_images/YYYY-MM-DD/"
+            folder_date_match = _FILENAME_DATE_RE.search(os.path.basename(target_dir))
+            folder_upload_date = folder_date_match.group(1) if folder_date_match else None
 
             if os.path.isfile(manifest_path):
                 try:
@@ -72,50 +152,106 @@ def register_turtle_routes(app):
                         if fn:
                             p = os.path.join(target_dir, fn)
                             if os.path.isfile(p):
+                                # EXIF first, then manifest timestamp/folder date as the upload fallback
+                                exif_date = entry.get('exif_date') or _extract_exif_date(p)
+                                manifest_ts = entry.get('timestamp')
+                                upload_date = (manifest_ts[:10] if isinstance(manifest_ts, str) and len(manifest_ts) >= 10 else None) or folder_upload_date
                                 results.append({
                                     'path': p,
                                     'type': kind,
-                                    'timestamp': entry.get('timestamp'),
+                                    # 'timestamp' is the display-preferred date (EXIF when available)
+                                    'timestamp': exif_date or upload_date,
+                                    'exif_date': exif_date,
+                                    'upload_date': upload_date,
                                     'uploaded_by': entry.get('uploaded_by'),
                                 })
                                 processed_files.add(fn)
                 except (json.JSONDecodeError, OSError):
                     pass
 
-            # Fallback: Catch any images in the folder that aren't in the manifest
             if os.path.isdir(target_dir):
                 for f in sorted(os.listdir(target_dir)):
                     if f != 'manifest.json' and f not in processed_files and f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+                        full = os.path.join(target_dir, f)
+                        exif_date = _extract_exif_date(full)
+                        upload_date = _extract_upload_date_from_filename(f, fallback_path=full) or folder_upload_date
                         results.append({
-                            'path': os.path.join(target_dir, f),
+                            'path': full,
                             'type': 'other',
-                            'timestamp': None,
+                            'timestamp': exif_date or upload_date,
+                            'exif_date': exif_date,
+                            'upload_date': upload_date,
                             'uploaded_by': None,
                         })
             return results
 
         if os.path.isdir(additional_dir):
-            # 1. Process root directory (Catches legacy flat-file uploads from before our update)
             additional.extend(parse_manifest_or_folder(additional_dir))
-
-            # 2. Process our new Date-Stamped subfolders
             for item in sorted(os.listdir(additional_dir)):
                 item_path = os.path.join(additional_dir, item)
                 if os.path.isdir(item_path):
                     additional.extend(parse_manifest_or_folder(item_path))
 
-        # --- LOOSE IMAGES LOGIC ---
+        # --- LOOSE / HISTORICAL IMAGES ---
+        # Each loose entry is structured: { path, source, timestamp (YYYY-MM-DD or null) }
         loose = []
-        loose_dir = os.path.join(turtle_dir, 'loose_images')
-        if os.path.isdir(loose_dir):
-            for f in sorted(os.listdir(loose_dir)):
-                if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                    loose.append(os.path.join(loose_dir, f))
+        loose_folders = [
+            ('plastron/Other Plastrons', 'plastron_other'),
+            ('plastron/Old References', 'plastron_old_ref'),
+            ('carapace/Other Carapaces', 'carapace_other'),
+            ('carapace/Old References', 'carapace_old_ref'),
+            ('loose_images', 'loose_legacy'),
+        ]
+        for folder_rel, source_tag in loose_folders:
+            ld = os.path.join(turtle_dir, folder_rel)
+            if not os.path.isdir(ld):
+                continue
+            for f in sorted(os.listdir(ld)):
+                if not f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+                    continue
+                full = os.path.join(ld, f)
+                exif_date = _extract_exif_date(full)
+                upload_date = _extract_upload_date_from_filename(f, fallback_path=full)
+                loose.append({
+                    'path': full,
+                    'source': source_tag,
+                    # Display-preferred date: EXIF when available, else upload
+                    'timestamp': exif_date or upload_date,
+                    'exif_date': exif_date,
+                    'upload_date': upload_date,
+                })
+
+        # --- HISTORY DATES: unique sorted dates across additional + loose ---
+        # Prefers EXIF date (when the photo was taken) over upload date. Falls back to
+        # the folder-name date for legacy additional_images/YYYY-MM-DD/ uploads.
+        date_set = set()
+        for a in additional:
+            best = a.get('exif_date') or a.get('upload_date') or a.get('timestamp')
+            if isinstance(best, str) and len(best) >= 10:
+                date_set.add(best[:10])
+            else:
+                m = re.search(r'additional_images[/\\](\d{4}-\d{2}-\d{2})[/\\]', a.get('path', ''))
+                if m:
+                    date_set.add(m.group(1))
+        for l in loose:
+            best = l.get('exif_date') or l.get('upload_date') or l.get('timestamp')
+            if isinstance(best, str) and len(best) >= 10:
+                date_set.add(best[:10])
+        for info in (primary_info, primary_carapace_info):
+            if info:
+                best = info.get('exif_date') or info.get('upload_date') or info.get('timestamp')
+                if isinstance(best, str) and len(best) >= 10:
+                    date_set.add(best[:10])
+        history_dates = sorted(date_set, reverse=True)
 
         return jsonify({
             'primary': primary_path,
+            'primary_carapace': primary_carapace_path,
+            'primary_info': primary_info,
+            'primary_carapace_info': primary_carapace_info,
             'additional': additional,
             'loose': loose,
+            'history_dates': history_dates,
         })
 
     @app.route('/api/turtles/images/primaries', methods=['POST'])
@@ -145,12 +281,15 @@ def register_turtle_routes(app):
             turtle_dir = manager._get_turtle_folder(tid, sheet)
             primary_path = None
             if turtle_dir and os.path.isdir(turtle_dir):
-                ref_dir = os.path.join(turtle_dir, 'ref_data')
-                if os.path.isdir(ref_dir):
-                    for f in sorted(os.listdir(ref_dir)):
-                        if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                            primary_path = os.path.join(ref_dir, f)
-                            break
+                for ref_folder in ('plastron', 'ref_data'):
+                    ref_dir = os.path.join(turtle_dir, ref_folder)
+                    if os.path.isdir(ref_dir):
+                        for f in sorted(os.listdir(ref_dir)):
+                            if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+                                primary_path = os.path.join(ref_dir, f)
+                                break
+                    if primary_path:
+                        break
             results.append({'turtle_id': tid, 'sheet_name': sheet, 'primary': primary_path})
         return jsonify({'images': results})
 
@@ -248,3 +387,50 @@ def register_turtle_routes(app):
                     except OSError:
                         pass
             return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/turtles/replace-reference', methods=['POST'])
+    @require_admin
+    def replace_turtle_reference_endpoint():
+        """
+        Directly replace a turtle's plastron or carapace reference image (Admin only).
+        Form: turtle_id (required), photo_type ('plastron'|'carapace'), file, sheet_name (optional).
+        Archives the old reference to {photo_type}/Old References/ and updates VRAM cache.
+        """
+        if not manager_service.manager_ready.wait(timeout=5):
+            return jsonify({'error': 'TurtleManager is still initializing'}), 503
+        if manager_service.manager is None:
+            return jsonify({'error': 'TurtleManager not available'}), 500
+        turtle_id = (request.form.get('turtle_id') or '').strip()
+        sheet_name = (request.form.get('sheet_name') or '').strip() or None
+        photo_type = (request.form.get('photo_type') or 'plastron').strip().lower()
+        if not turtle_id:
+            return jsonify({'error': 'turtle_id required'}), 400
+        if photo_type not in ('plastron', 'carapace'):
+            return jsonify({'error': "photo_type must be 'plastron' or 'carapace'"}), 400
+        f = request.files.get('file')
+        if not f or not f.filename or not allowed_file(f.filename):
+            return jsonify({'error': 'Valid image file required'}), 400
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(0)
+        if size > MAX_FILE_SIZE:
+            return jsonify({'error': f'File exceeds max size of {MAX_FILE_SIZE} bytes'}), 400
+        ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
+        temp_path = os.path.join(
+            UPLOAD_FOLDER,
+            f"replace_{turtle_id}_{photo_type}_{int(time.time() * 1000)}{ext}".replace(os.sep, '_'),
+        )
+        f.save(temp_path)
+        try:
+            success, msg = manager_service.manager.replace_turtle_reference(
+                turtle_id, temp_path, photo_type=photo_type, sheet_name=sheet_name,
+            )
+            if not success:
+                return jsonify({'error': msg or 'Failed to replace reference'}), 400
+            return jsonify({'success': True, 'message': msg})
+        finally:
+            if os.path.isfile(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass

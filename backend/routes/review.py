@@ -495,6 +495,8 @@ def register_review_routes(app):
         photo_type = (data.get('photo_type') or 'plastron').strip().lower()
         if photo_type not in ('plastron', 'carapace'):
             photo_type = 'plastron'
+        replace_reference = data.get('replace_reference') is True
+        replace_carapace_reference = data.get('replace_carapace_reference') is True
 
         # When moving turtle from community to admin, new admin path = sheet_name/general_location (e.g. Kansas/NT)
         new_admin_location = None
@@ -545,10 +547,18 @@ def register_review_routes(app):
         # This ensures the packet survives as a retry point if Sheets fails.
         is_new_turtle = bool(new_location and new_turtle_id and not match_turtle_id)
 
+        # Prepend biology ID to folder name: Biology_ID_PrimaryKey (e.g. F001_K14)
+        if is_new_turtle and isinstance(sheets_data, dict):
+            bio_id = (sheets_data.get('id') or '').strip()
+            if bio_id and new_turtle_id and not new_turtle_id.startswith(f"{bio_id}_"):
+                new_turtle_id = f"{bio_id}_{new_turtle_id}"
+
         try:
             success, message = manager_service.manager.approve_review_packet(
                 request_id,
                 match_turtle_id=match_turtle_id,
+                replace_reference=replace_reference,
+                replace_carapace_reference=replace_carapace_reference,
                 new_location=new_location,
                 new_turtle_id=new_turtle_id,
                 uploaded_image_path=uploaded_image_path,

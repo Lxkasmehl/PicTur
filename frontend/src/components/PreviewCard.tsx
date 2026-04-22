@@ -209,7 +209,7 @@ export function PreviewCard({
                     />
                   </Button>
                   {(role === 'admin' || role === 'staff') && (
-                    <Button size='sm' variant='light' color='teal' leftSection={<IconPhotoPlus size={14} />} component='label'>
+                    <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
                       Carapace
                       <input
                         type='file'
@@ -226,10 +226,28 @@ export function PreviewCard({
                       />
                     </Button>
                   )}
+                  {role !== 'admin' && role !== 'staff' && (
+                    <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
+                      Plastron
+                      <input
+                        type='file'
+                        accept='image/*'
+                        hidden
+                        onChange={(e) => {
+                          const list = e.target.files;
+                          if (!list?.length) return;
+                          const file = list[0];
+                          const validation = validateFile(file);
+                          if (validation.isValid) setExtraFiles((prev) => [...prev, { type: 'plastron', file }]);
+                          e.target.value = '';
+                        }}
+                      />
+                    </Button>
+                  )}
                 </Group>
                 {extraFiles.length > 0 && (
                   <Stack gap='xs'>
-                    {(['microhabitat', 'condition', 'carapace'] as const).map((t) => {
+                    {(['microhabitat', 'condition', 'carapace', 'plastron'] as const).map((t) => {
                       const ofType = extraFiles.map((ef, i) => ({ ef, i })).filter(({ ef }) => ef.type === t);
                       if (ofType.length === 0) return null;
                       return (

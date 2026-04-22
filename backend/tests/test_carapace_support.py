@@ -230,20 +230,21 @@ class TestRefreshDatabaseIndexCarapace:
 class TestProcessSingleTurtleCarapace:
     """Tests _process_single_turtle creates correct folder structure for carapace."""
 
-    def test_plastron_creates_ref_data(self, manager, tmp_path):
-        """Default (plastron) creates ref_data/ and loose_images/."""
+    def test_plastron_creates_plastron_dir(self, manager, tmp_path):
+        """Default (plastron) creates plastron/ with subfolders."""
         img = tmp_path / "source.jpg"
         img.write_bytes(b"\xff\xd8fake")
         loc_dir = tmp_path / "Kansas" / "Lawrence"
         loc_dir.mkdir(parents=True)
 
         manager._process_single_turtle(str(img), str(loc_dir), "T01", photo_type="plastron")
-        assert (loc_dir / "T01" / "ref_data" / "T01.jpg").exists()
-        assert (loc_dir / "T01" / "loose_images").exists()
-        assert not (loc_dir / "T01" / "carapace").exists()
+        assert (loc_dir / "T01" / "plastron" / "T01.jpg").exists()
+        assert (loc_dir / "T01" / "plastron" / "Other Plastrons").exists()
+        assert (loc_dir / "T01" / "plastron" / "Old References").exists()
+        assert (loc_dir / "T01" / "carapace").exists()
 
     def test_carapace_creates_carapace_dir(self, manager, tmp_path):
-        """photo_type='carapace' creates carapace/ and carapace_observations/, plus empty ref_data/."""
+        """photo_type='carapace' creates carapace/ with subfolders, plus empty plastron/."""
         img = tmp_path / "source.jpg"
         img.write_bytes(b"\xff\xd8fake")
         loc_dir = tmp_path / "Kansas" / "Lawrence"
@@ -251,11 +252,12 @@ class TestProcessSingleTurtleCarapace:
 
         manager._process_single_turtle(str(img), str(loc_dir), "T01", photo_type="carapace")
         assert (loc_dir / "T01" / "carapace" / "T01.jpg").exists()
-        assert (loc_dir / "T01" / "carapace_observations").exists()
-        # ref_data/ always created (empty placeholder for future plastron)
-        assert (loc_dir / "T01" / "ref_data").exists()
-        # But the image and .pt should NOT be in ref_data
-        assert not (loc_dir / "T01" / "ref_data" / "T01.jpg").exists()
+        assert (loc_dir / "T01" / "carapace" / "Other Carapaces").exists()
+        assert (loc_dir / "T01" / "carapace" / "Old References").exists()
+        # plastron/ always created (empty placeholder for future plastron)
+        assert (loc_dir / "T01" / "plastron").exists()
+        # But the image and .pt should NOT be in plastron
+        assert not (loc_dir / "T01" / "plastron" / "T01.jpg").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -385,7 +387,7 @@ class TestApproveWithCarapace:
         # Default photo_type should be 'plastron'
         assert call_kwargs[1].get('photo_type', 'plastron') == 'plastron'
         pt_path_arg = call_kwargs[0][0]
-        assert 'ref_data' in pt_path_arg
+        assert 'plastron' in pt_path_arg
 
 
 # ---------------------------------------------------------------------------

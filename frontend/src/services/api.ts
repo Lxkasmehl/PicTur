@@ -51,6 +51,7 @@ export {
   getTurtleImages,
   getTurtlePrimariesBatch,
   uploadTurtleAdditionalImages,
+  uploadTurtleReplaceReference,
   deleteTurtleAdditionalImage,
   classifyReviewPacket,
   crossCheckReviewPacket,
@@ -70,6 +71,9 @@ export type {
   UploadExtraFile,
   TurtleImageAdditional,
   TurtleImagesResponse,
+  TurtleLooseImage,
+  TurtleLooseSource,
+  TurtlePrimaryInfo,
 } from './api/turtle';
 
 export {

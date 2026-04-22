@@ -256,12 +256,10 @@ class TestAtomicReferenceReplacement:
         assert len(staged) == 0
 
     def test_old_image_archived(self, manager, tmp_path):
-        """Old master image is archived to loose_images."""
+        """Old master image is archived to plastron/Old References/."""
         turtle_dir = tmp_path / "Kansas" / "Lawrence" / "T42"
         ref_dir = turtle_dir / "ref_data"
-        loose_dir = turtle_dir / "loose_images"
         ref_dir.mkdir(parents=True)
-        loose_dir.mkdir(parents=True)
         (ref_dir / "T42.jpg").write_bytes(b"\xff\xd8old")
         (ref_dir / "T42.pt").write_bytes(b"old")
 
@@ -283,5 +281,7 @@ class TestAtomicReferenceReplacement:
             replace_reference=True,
         )
 
-        archived = [f for f in os.listdir(str(loose_dir)) if f.startswith('Archived_Master_')]
+        archive_dir = turtle_dir / "plastron" / "Old References"
+        assert archive_dir.exists()
+        archived = [f for f in os.listdir(str(archive_dir)) if f.startswith('Archived_Master_')]
         assert len(archived) >= 1

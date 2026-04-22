@@ -35,8 +35,8 @@ export function ReviewQueueTab() {
   const [selectedCandidateTurtleImages, setSelectedCandidateTurtleImages] = useState<TurtleImagesResponse | null>(null);
   const [crossCheckResults, setCrossCheckResults] = useState<Array<{ turtle_id: string; location: string; confidence: number; score: number; image_path: string }> | null>(null);
   const [crossCheckLoading, setCrossCheckLoading] = useState(false);
-  const [classifyLoading, setClassifyLoading] = useState<'plastron' | 'carapace' | null>(null);
-  const [classifyConfirm, setClassifyConfirm] = useState<'plastron' | 'carapace' | 'trash' | null>(null);
+  const [matchingLoading, setMatchingLoading] = useState<false | 'match' | 'crosscheck'>(false);
+  const [matchingConfirm, setMatchingConfirm] = useState<'match' | 'crosscheck' | 'trash' | null>(null);
   const [trashLoading, setTrashLoading] = useState(false);
   const {
     queueLoading,
@@ -82,7 +82,7 @@ export function ReviewQueueTab() {
   // Clear cross-check and confirm state when item changes
   useEffect(() => {
     setCrossCheckResults(null);
-    setClassifyConfirm(null);
+    setMatchingConfirm(null);
   }, [selectedItem?.request_id]);
 
   // Load selected candidate turtle's existing additional images when a match is selected (must run before any early return)
@@ -144,10 +144,10 @@ export function ReviewQueueTab() {
               <Badge
                 size='lg'
                 variant='light'
-                color={selectedItem.photo_type === 'carapace' ? 'teal' : selectedItem.photo_type === 'unclassified' ? 'yellow' : 'grape'}
+                color={selectedItem.photo_type === 'plastron' ? 'grape' : 'teal'}
                 data-testid='review-photo-type-badge'
               >
-                {selectedItem.photo_type === 'carapace' ? 'Carapace' : selectedItem.photo_type === 'unclassified' ? 'Unclassified' : 'Plastron'}
+                {selectedItem.photo_type === 'plastron' ? 'Plastron' : 'Carapace'}
               </Badge>
             </Group>
             <Button
@@ -207,14 +207,14 @@ export function ReviewQueueTab() {
             </Stack>
           </Paper>
 
-          {/* Classify control (community/unclassified) or cross-check button (admin/plastron) */}
+          {/* Matching control: proceed / cross-check / delete (unclassified) or status (already matched) */}
           {selectedItem.photo_type === 'unclassified' ? (
             <Paper shadow='sm' p='md' radius='md' withBorder>
-              {classifyLoading ? (
+              {matchingLoading ? (
                 <Group gap='md' align='center'>
                   <Loader size='sm' />
                   <Text fw={500} size='sm'>
-                    Classified as {classifyLoading === 'carapace' ? 'Carapace' : 'Plastron'} — matching in progress...
+                    Running carapace matching{matchingLoading === 'crosscheck' ? ' + plastron cross-check' : ''}...
                   </Text>
                 </Group>
               ) : trashLoading ? (
@@ -222,21 +222,23 @@ export function ReviewQueueTab() {
                   <Loader size='sm' color='red' />
                   <Text fw={500} size='sm'>Deleting upload...</Text>
                 </Group>
-              ) : classifyConfirm ? (
+              ) : matchingConfirm ? (
                 <Stack gap='xs'>
                   <Text fw={500} size='sm'>
-                    {classifyConfirm === 'trash'
+                    {matchingConfirm === 'trash'
                       ? 'Delete this upload from the queue?'
-                      : `Classify as ${classifyConfirm === 'carapace' ? 'Carapace' : 'Plastron'} and run matching?`}
+                      : matchingConfirm === 'crosscheck'
+                        ? 'Run carapace matching and cross-check against the uploaded plastron?'
+                        : 'Run carapace matching on this upload?'}
                   </Text>
                   <Group gap='sm'>
                     <Button
                       size='sm'
                       variant='filled'
-                      color={classifyConfirm === 'trash' ? 'red' : classifyConfirm === 'carapace' ? 'teal' : 'grape'}
+                      color={matchingConfirm === 'trash' ? 'red' : 'blue'}
                       onClick={async () => {
-                        const action = classifyConfirm;
-                        setClassifyConfirm(null);
+                        const action = matchingConfirm;
+                        setMatchingConfirm(null);
                         if (action === 'trash') {
                           setTrashLoading(true);
                           try {
@@ -248,43 +250,53 @@ export function ReviewQueueTab() {
                             setTrashLoading(false);
                           }
                         } else {
-                          setClassifyLoading(action);
+                          setMatchingLoading(action);
                           try {
-                            await classifyReviewPacket(selectedItem.request_id, action);
+                            await classifyReviewPacket(selectedItem.request_id, 'carapace');
+                            if (action === 'crosscheck') {
+                              const plastronImg = selectedItem.additional_images?.find(img => img.type === 'plastron');
+                              if (plastronImg) {
+                                const result = await crossCheckReviewPacket(selectedItem.request_id, 'plastron', plastronImg.image_path);
+                                setCrossCheckResults(result.matches);
+                              }
+                            }
                             await refreshQueueItem(selectedItem.request_id);
                             notifications.show({
-                              title: `Classified as ${action === 'carapace' ? 'Carapace' : 'Plastron'}`,
-                              message: `Matching against ${action} dataset complete`,
-                              color: action === 'carapace' ? 'teal' : 'grape',
+                              title: 'Matching complete',
+                              message: action === 'crosscheck'
+                                ? 'Carapace matching and plastron cross-check complete'
+                                : 'Carapace matching complete',
+                              color: 'green',
                             });
                           } catch (err) {
-                            notifications.show({ title: 'Error', message: err instanceof Error ? err.message : 'Classification failed', color: 'red' });
+                            notifications.show({ title: 'Error', message: err instanceof Error ? err.message : 'Matching failed', color: 'red' });
                           } finally {
-                            setClassifyLoading(null);
+                            setMatchingLoading(false);
                           }
                         }
                       }}
                     >
                       Yes
                     </Button>
-                    <Button size='sm' variant='default' onClick={() => setClassifyConfirm(null)}>
+                    <Button size='sm' variant='default' onClick={() => setMatchingConfirm(null)}>
                       No
                     </Button>
                   </Group>
                 </Stack>
               ) : (
                 <Stack gap='xs'>
-                  <Text fw={500} size='sm'>This photo needs classification before matching can run.</Text>
-                  <Text size='xs' c='dimmed'>Select the photo type to match against the correct dataset:</Text>
+                  <Text fw={500} size='sm'>Community upload — review the photo and proceed when ready.</Text>
                   <Group gap='sm'>
-                    <Button size='sm' variant='filled' color='grape' onClick={() => setClassifyConfirm('plastron')}>
-                      Plastron (belly)
+                    <Button size='sm' variant='filled' onClick={() => setMatchingConfirm('match')}>
+                      Proceed with matching
                     </Button>
-                    <Button size='sm' variant='filled' color='teal' onClick={() => setClassifyConfirm('carapace')}>
-                      Carapace (top of shell)
-                    </Button>
-                    <Button size='sm' variant='filled' color='red' leftSection={<IconTrash size={14} />} onClick={() => setClassifyConfirm('trash')}>
-                      Trash
+                    {selectedItem.additional_images?.some(img => img.type === 'plastron') && (
+                      <Button size='sm' variant='filled' color='grape' onClick={() => setMatchingConfirm('crosscheck')}>
+                        Cross-check with plastron
+                      </Button>
+                    )}
+                    <Button size='sm' variant='filled' color='red' leftSection={<IconTrash size={14} />} onClick={() => setMatchingConfirm('trash')}>
+                      Delete
                     </Button>
                   </Group>
                 </Stack>
@@ -296,165 +308,250 @@ export function ReviewQueueTab() {
                 <Text fw={500} size='sm'>
                   Matched against: {selectedItem.photo_type === 'carapace' ? 'Carapace' : 'Plastron'}
                 </Text>
-                <Button
-                  size='sm'
-                  variant='light'
-                  color='teal'
-                  loading={crossCheckLoading}
-                  onClick={async () => {
-                    setCrossCheckLoading(true);
-                    const otherType = selectedItem.photo_type === 'carapace' ? 'plastron' : 'carapace';
-                    try {
-                      const result = await crossCheckReviewPacket(selectedItem.request_id, otherType as PhotoType);
-                      setCrossCheckResults(result.matches);
-                      if (result.matches.length === 0) {
-                        notifications.show({ title: 'Cross-check', message: `No ${otherType} matches found`, color: 'yellow' });
-                      }
-                    } catch (err) {
-                      notifications.show({
-                        title: 'Error',
-                        message: err instanceof Error ? err.message : 'Cross-check failed',
-                        color: 'red',
-                      });
-                    } finally {
-                      setCrossCheckLoading(false);
-                    }
-                  }}
-                >
-                  Cross-check {selectedItem.photo_type === 'carapace' ? 'Plastron' : 'Carapace'}
-                </Button>
+                {(() => {
+                  const isAdmin = selectedItem.request_id?.startsWith('admin_');
+                  const plastronImg = selectedItem.additional_images?.find(img => img.type === 'plastron');
+                  const canCrossCheck = isAdmin || !!plastronImg;
+                  const otherType = selectedItem.photo_type === 'carapace' ? 'plastron' : 'carapace';
+                  if (!canCrossCheck || crossCheckResults) return null;
+                  return (
+                    <Button
+                      size='sm'
+                      variant='light'
+                      loading={crossCheckLoading}
+                      onClick={async () => {
+                        setCrossCheckLoading(true);
+                        try {
+                          const result = await crossCheckReviewPacket(
+                            selectedItem.request_id,
+                            otherType as PhotoType,
+                            !isAdmin && plastronImg ? plastronImg.image_path : undefined,
+                          );
+                          setCrossCheckResults(result.matches);
+                          if (result.matches.length === 0) {
+                            notifications.show({ title: 'Cross-check', message: `No ${otherType} matches found`, color: 'yellow' });
+                          }
+                        } catch (err) {
+                          notifications.show({
+                            title: 'Error',
+                            message: err instanceof Error ? err.message : 'Cross-check failed',
+                            color: 'red',
+                          });
+                        } finally {
+                          setCrossCheckLoading(false);
+                        }
+                      }}
+                    >
+                      Cross-check {otherType === 'carapace' ? 'Carapace' : 'Plastron'}
+                    </Button>
+                  );
+                })()}
                 {crossCheckResults !== null && (
                   <Badge size='lg' variant='light' color={crossCheckResults.length > 0 ? 'teal' : 'gray'}>
                     {crossCheckResults.length} {selectedItem.photo_type === 'carapace' ? 'plastron' : 'carapace'} match(es)
                   </Badge>
                 )}
               </Group>
-              {crossCheckResults && crossCheckResults.length > 0 && (
-                <Stack gap='xs' mt='sm'>
-                  <Text size='xs' c='dimmed'>
-                    Top {selectedItem.photo_type === 'carapace' ? 'plastron' : 'carapace'} match: <b>{crossCheckResults[0].turtle_id}</b> ({Math.round(crossCheckResults[0].confidence * 100)}% confidence)
-                    {selectedItem.candidates.length > 0 && crossCheckResults[0].turtle_id !== selectedItem.candidates[0].turtle_id && (
-                      <Badge size='sm' variant='light' color='red' ml='xs'>Differs from top {selectedItem.photo_type} match</Badge>
-                    )}
-                  </Text>
-                </Stack>
-              )}
             </Paper>
           )}
 
-          {/* Top 5 Matches — responsive grid with large cards */}
+          {/* Matches — side-by-side when cross-check results exist */}
           <Paper shadow='sm' p='md' radius='md' withBorder>
-            <Group justify='space-between' mb='md'>
-              <Group gap='xs'>
-                <Text fw={500} size='lg'>
-                  Top 5 Matches
-                </Text>
-                {loadingCandidateNames && <Loader size='xs' />}
-              </Group>
-            </Group>
-
-            <Text size='sm' c='dimmed' mb='md'>
-              Select a match to view details
-            </Text>
-
-            <SimpleGrid
-              cols={{ base: 1, xs: 2, md: 3, lg: 5 }}
-              spacing='md'
-            >
-              {selectedItem.candidates.map((candidate) => (
-                <Card
-                  key={candidate.turtle_id}
-                  shadow='sm'
-                  padding='sm'
-                  radius='md'
-                  withBorder
-                  style={{
-                    cursor: 'pointer',
-                    border:
-                      selectedCandidate === candidate.turtle_id
-                        ? '2px solid #228be6'
-                        : '1px solid #dee2e6',
-                    backgroundColor:
-                      selectedCandidate === candidate.turtle_id
-                        ? '#e7f5ff'
-                        : 'white',
-                    transition: 'transform 0.1s, box-shadow 0.1s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = '';
-                    e.currentTarget.style.boxShadow = '';
-                  }}
-                  onClick={() => onItemSelect(selectedItem, candidate.turtle_id)}
-                >
-                  {candidate.image_path ? (
-                    <Image
-                      src={getImageUrl(candidate.image_path)}
-                      alt={`Match ${candidate.rank}`}
-                      radius='md'
-                      style={{
-                        aspectRatio: '1',
-                        objectFit: 'cover',
-                        width: '100%',
-                      }}
-                      mb='sm'
-                    />
-                  ) : (
-                    <Center
-                      style={{
-                        aspectRatio: '1',
-                        backgroundColor: '#f8f9fa',
-                        borderRadius: 'var(--mantine-radius-md)',
-                      }}
-                      mb='sm'
-                    >
-                      <IconPhoto size={48} stroke={1.5} style={{ opacity: 0.3 }} />
-                    </Center>
-                  )}
-
-                  <Group justify='space-between' mb={4}>
-                    <Badge color='blue' size='sm' variant='filled'>
-                      #{candidate.rank}
-                    </Badge>
-                    <Badge color='gray' size='sm' variant='light'>
-                      {candidate.confidence}%
-                    </Badge>
+            <Grid gutter='lg'>
+              <Grid.Col span={crossCheckResults && crossCheckResults.length > 0 ? { base: 12, md: 6 } : 12}>
+                <Group justify='space-between' mb='md'>
+                  <Group gap='xs'>
+                    <Text fw={500} size='lg'>
+                      {crossCheckResults && crossCheckResults.length > 0 ? 'Carapace Matches' : 'Top 5 Matches'}
+                    </Text>
+                    {loadingCandidateNames && <Loader size='xs' />}
                   </Group>
-                  <Text
-                    fw={500}
-                    size='sm'
-                    truncate
-                    title={
-                      candidateNames[candidate.turtle_id] || candidate.turtle_id
-                    }
-                  >
-                    {candidateNames[candidate.turtle_id] || candidate.turtle_id}
+                </Group>
+
+                <Text size='sm' c='dimmed' mb='md'>
+                  Select a match to view details
+                </Text>
+
+                <SimpleGrid
+                  cols={crossCheckResults && crossCheckResults.length > 0 ? { base: 1, xs: 2 } : { base: 1, xs: 2, md: 3, lg: 5 }}
+                  spacing='md'
+                >
+                  {selectedItem.candidates.map((candidate) => (
+                    <Card
+                      key={candidate.turtle_id}
+                      shadow='sm'
+                      padding='sm'
+                      radius='md'
+                      withBorder
+                      style={{
+                        cursor: 'pointer',
+                        border:
+                          selectedCandidate === candidate.turtle_id
+                            ? '2px solid #228be6'
+                            : '1px solid #dee2e6',
+                        backgroundColor:
+                          selectedCandidate === candidate.turtle_id
+                            ? '#e7f5ff'
+                            : 'white',
+                        transition: 'transform 0.1s, box-shadow 0.1s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = '';
+                        e.currentTarget.style.boxShadow = '';
+                      }}
+                      onClick={() => onItemSelect(selectedItem, candidate.turtle_id)}
+                    >
+                      {candidate.image_path ? (
+                        <Image
+                          src={getImageUrl(candidate.image_path)}
+                          alt={`Match ${candidate.rank}`}
+                          radius='md'
+                          style={{
+                            aspectRatio: '1',
+                            objectFit: 'cover',
+                            width: '100%',
+                          }}
+                          mb='sm'
+                        />
+                      ) : (
+                        <Center
+                          style={{
+                            aspectRatio: '1',
+                            backgroundColor: '#f8f9fa',
+                            borderRadius: 'var(--mantine-radius-md)',
+                          }}
+                          mb='sm'
+                        >
+                          <IconPhoto size={48} stroke={1.5} style={{ opacity: 0.3 }} />
+                        </Center>
+                      )}
+
+                      <Group justify='space-between' mb={4}>
+                        <Badge color='blue' size='sm' variant='filled'>
+                          #{candidate.rank}
+                        </Badge>
+                        <Badge color='gray' size='sm' variant='light'>
+                          {candidate.confidence}%
+                        </Badge>
+                      </Group>
+                      <Text
+                        fw={500}
+                        size='sm'
+                        truncate
+                        title={
+                          candidateNames[candidate.turtle_id] || candidate.turtle_id
+                        }
+                      >
+                        {candidateNames[candidate.turtle_id] || candidate.turtle_id}
+                      </Text>
+                      <Text size='xs' c='dimmed' truncate>
+                        ID:{' '}
+                        {candidateOriginalIds[candidate.turtle_id] ??
+                          candidate.turtle_id}
+                      </Text>
+                      {selectedCandidate === candidate.turtle_id && (
+                        <IconCheck
+                          size={18}
+                          color='#228be6'
+                          style={{ alignSelf: 'center', marginTop: 4 }}
+                        />
+                      )}
+                    </Card>
+                  ))}
+                </SimpleGrid>
+              </Grid.Col>
+
+              {crossCheckResults && crossCheckResults.length > 0 && (
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Group gap='xs' mb='md'>
+                    <Text fw={500} size='lg'>
+                      Plastron Matches
+                    </Text>
+                    {selectedItem.candidates.length > 0 && crossCheckResults[0].turtle_id !== selectedItem.candidates[0].turtle_id && (
+                      <Badge color='orange' variant='light'>Top match differs</Badge>
+                    )}
+                  </Group>
+
+                  <Text size='sm' c='dimmed' mb='md'>
+                    Cross-check results from plastron image
                   </Text>
-                  <Text size='xs' c='dimmed' truncate>
-                    ID:{' '}
-                    {candidateOriginalIds[candidate.turtle_id] ??
-                      candidate.turtle_id}
-                  </Text>
-                  {selectedCandidate === candidate.turtle_id && (
-                    <IconCheck
-                      size={18}
-                      color='#228be6'
-                      style={{ alignSelf: 'center', marginTop: 4 }}
-                    />
-                  )}
-                </Card>
-              ))}
-            </SimpleGrid>
+
+                  <SimpleGrid cols={{ base: 1, xs: 2 }} spacing='md'>
+                    {crossCheckResults.map((match, index) => (
+                      <Card
+                        key={`${match.turtle_id}-xcheck-${index}`}
+                        shadow='sm'
+                        padding='sm'
+                        radius='md'
+                        withBorder
+                        style={{
+                          border: '1px solid #dee2e6',
+                          transition: 'transform 0.1s, box-shadow 0.1s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = '';
+                          e.currentTarget.style.boxShadow = '';
+                        }}
+                      >
+                        {match.image_path ? (
+                          <Image
+                            src={getImageUrl(match.image_path)}
+                            alt={`Plastron match ${index + 1}`}
+                            radius='md'
+                            style={{
+                              aspectRatio: '1',
+                              objectFit: 'cover',
+                              width: '100%',
+                            }}
+                            mb='sm'
+                          />
+                        ) : (
+                          <Center
+                            style={{
+                              aspectRatio: '1',
+                              backgroundColor: '#f8f9fa',
+                              borderRadius: 'var(--mantine-radius-md)',
+                            }}
+                            mb='sm'
+                          >
+                            <IconPhoto size={48} stroke={1.5} style={{ opacity: 0.3 }} />
+                          </Center>
+                        )}
+                        <Group justify='space-between' mb={4}>
+                          <Badge color='grape' size='sm' variant='filled'>
+                            #{index + 1}
+                          </Badge>
+                          <Badge color='gray' size='sm' variant='light'>
+                            {Math.round(match.confidence * 100)}%
+                          </Badge>
+                        </Group>
+                        <Text fw={500} size='sm' truncate>
+                          {match.turtle_id}
+                        </Text>
+                        <Text size='xs' c='dimmed' truncate>
+                          {match.location}
+                        </Text>
+                      </Card>
+                    ))}
+                  </SimpleGrid>
+                </Grid.Col>
+              )}
+            </Grid>
           </Paper>
 
           <Paper shadow='sm' p='md' radius='md' withBorder>
             <Stack gap='md'>
               <div>
                 <Text fw={600} size='sm' mb={4}>
-                  Microhabitat / Condition photos
+                  Additional Photos
                 </Text>
                 <Text size='xs' c='dimmed' mb='sm'>
                   From this upload and, when a match is selected, already stored for that turtle.

@@ -183,7 +183,7 @@ export function usePhotoUpload({
         locationHint ?? undefined,
         isAdminFlow ? (matchSheet ?? '') : undefined,
         flagOptions,
-        extraFiles.length > 0 ? extraFiles : undefined
+        extraFiles.length > 0 ? extraFiles : undefined,
       );
 
       // Clear interval and set to 100%

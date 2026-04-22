@@ -8,6 +8,56 @@ import json
 import sys
 import uuid
 
+# Pillow is already a dependency for SuperPoint preprocessing — used here for EXIF
+try:
+    from PIL import Image as _PILImage
+    from PIL.ExifTags import TAGS as _EXIF_TAGS
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
+
+
+def _extract_exif_date(image_path):
+    """Read DateTimeOriginal from a JPG's EXIF and return YYYY-MM-DD or None.
+
+    Falls back through DateTime and DateTimeDigitized when Original is missing.
+    Returns None on any error (missing tag, bad format, unreadable file, no Pillow).
+    """
+    if not _PIL_AVAILABLE or not image_path or not os.path.isfile(image_path):
+        return None
+    try:
+        with _PILImage.open(image_path) as img:
+            exif = img.getexif()
+            if not exif:
+                return None
+            # Build name → value map for the EXIF tags we care about
+            wanted = {'DateTimeOriginal': None, 'DateTimeDigitized': None, 'DateTime': None}
+            for tag_id, value in exif.items():
+                name = _EXIF_TAGS.get(tag_id)
+                if name in wanted and wanted[name] is None:
+                    wanted[name] = value
+            raw = wanted['DateTimeOriginal'] or wanted['DateTimeDigitized'] or wanted['DateTime']
+            if not raw or not isinstance(raw, str):
+                return None
+            # EXIF date format: "YYYY:MM:DD HH:MM:SS"
+            date_part = raw.split(' ')[0].strip()
+            if len(date_part) == 10 and date_part[4] == ':' and date_part[7] == ':':
+                return date_part.replace(':', '-')
+    except Exception:
+        return None
+    return None
+
+
+def _date_suffix(epoch_ms=None):
+    """Return _YYYY-MM-DD using current time (or given epoch ms) for filename stamping."""
+    if epoch_ms is not None:
+        try:
+            t = epoch_ms / 1000 if epoch_ms > 1_000_000_000_000 else epoch_ms
+            return time.strftime('_%Y-%m-%d', time.gmtime(t))
+        except (ValueError, OSError):
+            pass
+    return time.strftime('_%Y-%m-%d', time.gmtime())
+
 # --- PATH HACK ---
 # This ensures we can find the 'turtles' package regardless of where we run this script
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -167,14 +217,15 @@ class TurtleManager:
     def _recover_staged_files(self):
         """Recover from interrupted reference replacements.
 
-        Scans ref_data/ and carapace/ directories for orphaned _staged_ files.
-        If a staged .pt exists, the replacement was interrupted — promote the
-        staged file to the canonical name so the turtle has a valid reference.
+        Scans plastron/, ref_data/ (legacy), and carapace/ directories for
+        orphaned _staged_ files.  If a staged .pt exists, the replacement was
+        interrupted — promote the staged file to the canonical name so the
+        turtle has a valid reference.
         """
         recovered = 0
         for root, dirs, files in os.walk(self.base_dir):
             dir_name = os.path.basename(root)
-            if dir_name not in ('ref_data', 'carapace'):
+            if dir_name not in ('plastron', 'ref_data', 'carapace'):
                 continue
             staged_files = [f for f in files if '_staged_' in f]
             if not staged_files:
@@ -290,14 +341,14 @@ class TurtleManager:
     def refresh_database_index(self):
         """Scans for .pt files to build the search index and pushes to VRAM.
 
-        Scans both ref_data/ (plastron) and carapace/ subdirectories.
+        Scans plastron/ (new), ref_data/ (legacy), and carapace/ subdirectories.
         Each index entry is a 4-tuple: (pt_path, turtle_id, location, photo_type).
         """
         self.db_index = []
         for root, dirs, files in os.walk(self.base_dir):
             # Determine photo_type from the directory name
             dir_name = os.path.basename(root)
-            if dir_name == "ref_data":
+            if dir_name in ("plastron", "ref_data"):
                 photo_type = "plastron"
             elif dir_name == "carapace":
                 photo_type = "carapace"
@@ -310,7 +361,7 @@ class TurtleManager:
                     if len(path_parts) >= 3:
                         turtle_id = path_parts[-2]
                         rel_path = os.path.relpath(root, self.base_dir)
-                        # Strip the last 2 parts (TurtleID/ref_data or TurtleID/carapace)
+                        # Strip the last 2 parts (TurtleID/plastron or TurtleID/carapace)
                         loc_parts = rel_path.split(os.sep)[:-2]
                         location_name = "/".join(loc_parts)
                         self.db_index.append((os.path.join(root, file), turtle_id, location_name, photo_type))
@@ -333,7 +384,8 @@ class TurtleManager:
           2. StateLocation combo sheet — NebraskaCPBS/TurtleID/ref_data/
 
         A subfolder is a *turtle folder* (not a location) when it contains a
-        ``ref_data/`` directory.  Those are never listed in the dropdown.
+        ``plastron/`` or ``ref_data/`` (legacy) directory.  Those are never
+        listed in the dropdown.
         """
         locations = ["Community_Uploads"]
 
@@ -351,12 +403,12 @@ class TurtleManager:
             locations.append(entry)
 
             # Check children: only list them if they are location folders,
-            # NOT turtle folders (turtle folders contain ref_data/).
+            # NOT turtle folders (turtle folders contain plastron/ or ref_data/).
             for sub in sorted(os.listdir(entry_path)):
                 sub_path = os.path.join(entry_path, sub)
                 if not os.path.isdir(sub_path) or sub.startswith('.'):
                     continue
-                if os.path.isdir(os.path.join(sub_path, "ref_data")):
+                if os.path.isdir(os.path.join(sub_path, "plastron")) or os.path.isdir(os.path.join(sub_path, "ref_data")):
                     # This is a turtle folder — skip it
                     continue
                 locations.append(f"{entry}/{sub}")
@@ -630,29 +682,32 @@ class TurtleManager:
         """Creates folders and generates .pt tensor file using SuperPoint.
 
         Args:
-            photo_type: 'plastron' (default) saves to ref_data/, 'carapace' saves to carapace/.
+            photo_type: 'plastron' (default) saves to plastron/, 'carapace' saves to carapace/.
         """
         turtle_dir = os.path.join(location_dir, turtle_id)
 
         if photo_type == "carapace":
             data_dir = os.path.join(turtle_dir, 'carapace')
-            obs_dir = os.path.join(turtle_dir, 'carapace_observations')
         else:
-            data_dir = os.path.join(turtle_dir, 'ref_data')
-            obs_dir = os.path.join(turtle_dir, 'loose_images')
+            data_dir = os.path.join(turtle_dir, 'plastron')
 
         os.makedirs(data_dir, exist_ok=True)
-        os.makedirs(obs_dir, exist_ok=True)
-        # Always create both folder sets so the structure is complete
-        os.makedirs(os.path.join(turtle_dir, 'ref_data'), exist_ok=True)
-        os.makedirs(os.path.join(turtle_dir, 'loose_images'), exist_ok=True)
+        # Create the full folder structure for both photo types
+        for subdir in ('plastron', 'plastron/Old References', 'plastron/Other Plastrons',
+                       'carapace', 'carapace/Old References', 'carapace/Other Carapaces'):
+            os.makedirs(os.path.join(turtle_dir, subdir), exist_ok=True)
 
         ext = os.path.splitext(source_path)[1]
         dest_image_path = os.path.join(data_dir, f"{turtle_id}{ext}")
         dest_pt_path = os.path.join(data_dir, f"{turtle_id}.pt")
 
+        # Also check legacy ref_data/ path for existing plastron turtles
         if os.path.exists(dest_pt_path):
             return "skipped"
+        if photo_type == "plastron":
+            legacy_pt = os.path.join(turtle_dir, 'ref_data', f"{turtle_id}.pt")
+            if os.path.exists(legacy_pt):
+                return "skipped"
 
         shutil.copy2(source_path, dest_image_path)
         try:
@@ -762,15 +817,136 @@ class TurtleManager:
                     queue_items.append({'request_id': req_id, 'path': req_path, 'status': 'pending'})
         return queue_items
 
+    def replace_turtle_reference(self, turtle_id, new_image_path, photo_type="plastron", sheet_name=None):
+        """Atomically replace the plastron or carapace reference image for an existing turtle.
+
+        Archives the old .pt+image to {photo_type}/Old References/, stages the new
+        .pt+image, promotes atomically, and updates the VRAM cache. Guarded by
+        _approval_lock so concurrent admin actions can't race.
+
+        Args:
+            turtle_id: Primary key of the turtle (folder name on disk).
+            new_image_path: Path to the new reference image (must already exist on disk).
+            photo_type: 'plastron' (default) or 'carapace'.
+            sheet_name: Optional location hint to disambiguate multi-location turtles.
+
+        Returns:
+            (success: bool, message: str)
+        """
+        if photo_type not in ('plastron', 'carapace'):
+            return False, f"Invalid photo_type: {photo_type}"
+        if not new_image_path or not os.path.exists(new_image_path):
+            return False, "New image file not found"
+
+        with self._approval_lock:
+            target_dir = self._get_turtle_folder(turtle_id, sheet_name)
+            if not target_dir:
+                return False, f"Could not find folder for {turtle_id}"
+
+            if photo_type == "carapace":
+                ref_dir = os.path.join(target_dir, 'carapace')
+                archive_dir = os.path.join(target_dir, 'carapace', 'Old References')
+                cache_attr = 'vram_cache_carapace'
+                print_prefix = "✨ UPGRADING CARAPACE REFERENCE"
+                archive_prefix = "Archived_Carapace"
+            else:
+                plastron_dir = os.path.join(target_dir, 'plastron')
+                ref_data_dir = os.path.join(target_dir, 'ref_data')
+                if os.path.isdir(plastron_dir):
+                    ref_dir = plastron_dir
+                elif os.path.isdir(ref_data_dir):
+                    ref_dir = ref_data_dir
+                else:
+                    ref_dir = plastron_dir
+                archive_dir = os.path.join(target_dir, 'plastron', 'Old References')
+                cache_attr = 'vram_cache_plastron'
+                print_prefix = "✨ UPGRADING REFERENCE"
+                archive_prefix = "Archived_Master"
+            os.makedirs(ref_dir, exist_ok=True)
+            os.makedirs(archive_dir, exist_ok=True)
+
+            print(f"{print_prefix} for {turtle_id}...")
+            old_pt_path = os.path.join(ref_dir, f"{turtle_id}.pt")
+            old_img_path = None
+            for ext in ['.jpg', '.jpeg', '.png']:
+                possible = os.path.join(ref_dir, f"{turtle_id}{ext}")
+                if os.path.exists(possible):
+                    old_img_path = possible
+                    break
+
+            op_ts = int(time.time() * 1000)
+            new_ext = os.path.splitext(new_image_path)[1] or '.jpg'
+            staged_master_path = os.path.join(ref_dir, f"{turtle_id}_staged_{op_ts}{new_ext}")
+            staged_pt_path = os.path.join(ref_dir, f"{turtle_id}_staged_{op_ts}.pt")
+
+            # Stage new master and .pt first; only promote if extraction succeeds.
+            shutil.copy2(new_image_path, staged_master_path)
+            try:
+                staged_ok = brain.process_and_save(staged_master_path, staged_pt_path)
+            except Exception as e:
+                print(f"   ⚠️ SuperPoint crashed during reference upgrade for {turtle_id}: {e}")
+                staged_ok = False
+            if not staged_ok:
+                for p in [staged_master_path, staged_pt_path]:
+                    try:
+                        if os.path.exists(p):
+                            os.remove(p)
+                    except OSError:
+                        pass
+                return False, f"Failed to extract features for replacement image of {turtle_id}"
+
+            new_master_path = os.path.join(ref_dir, f"{turtle_id}{new_ext}")
+            new_pt_path = os.path.join(ref_dir, f"{turtle_id}.pt")
+
+            # Step 1: Archive old image to Old References (copy, not move).
+            # Date suffix encodes the EXIF "taken" date (when known) or the upload date.
+            if old_img_path:
+                archive_date = _extract_exif_date(old_img_path) or time.strftime('%Y-%m-%d', time.gmtime())
+                archive_name = f"{archive_prefix}_{op_ts}_{archive_date}{os.path.splitext(old_img_path)[1]}"
+                shutil.copy2(old_img_path, os.path.join(archive_dir, archive_name))
+                print(f"   📦 Archived old master to {archive_name}")
+
+            # Step 2: Promote staged files atomically
+            if os.path.exists(new_master_path) and new_master_path != staged_master_path:
+                os.remove(new_master_path)
+            shutil.move(staged_master_path, new_master_path)
+            shutil.move(staged_pt_path, new_pt_path)
+
+            # Step 3: Clean up old image if it was a different extension
+            if old_img_path and os.path.exists(old_img_path) and old_img_path != new_master_path:
+                try:
+                    os.remove(old_img_path)
+                except OSError:
+                    pass
+
+            # Incremental VRAM cache update: evict old entry, add new
+            cache = getattr(brain, cache_attr, [])
+            setattr(brain, cache_attr, [c for c in cache if c['file_path'] != old_pt_path])
+            rel_path = os.path.relpath(ref_dir, self.base_dir)
+            loc_parts = rel_path.split(os.sep)[:-2]
+            location_name = "/".join(loc_parts)
+            brain.add_single_to_vram(new_pt_path, turtle_id, location_name, photo_type=photo_type)
+            print(f"   ✅ {turtle_id} {photo_type} reference upgraded successfully.")
+            return True, f"{photo_type.capitalize()} reference replaced for {turtle_id}"
+
+    def replace_plastron_reference(self, turtle_id, new_image_path, sheet_name=None):
+        """Convenience wrapper: replace plastron reference. See replace_turtle_reference."""
+        return self.replace_turtle_reference(turtle_id, new_image_path, photo_type="plastron", sheet_name=sheet_name)
+
+    def replace_carapace_reference(self, turtle_id, new_image_path, sheet_name=None):
+        """Convenience wrapper: replace carapace reference. See replace_turtle_reference."""
+        return self.replace_turtle_reference(turtle_id, new_image_path, photo_type="carapace", sheet_name=sheet_name)
+
     def approve_review_packet(self, request_id, match_turtle_id=None, replace_reference=False,
                               new_location=None, new_turtle_id=None, uploaded_image_path=None,
                               find_metadata=None, is_community_upload=False,
                               match_from_community=False, community_sheet_name=None,
                               new_admin_location=None, photo_type="plastron",
-                              delete_packet=True):
+                              delete_packet=True, replace_carapace_reference=False):
         """
         Processes approval of a review-queue packet.
         - replace_reference=True: Stages and upgrades the SuperPoint .pt master image safely.
+        - replace_carapace_reference=True: Replace carapace reference using the FIRST carapace additional image.
         - is_community_upload: New turtle files go under data/Community_Uploads/<sheet_name>.
         - match_from_community: Matched turtle is in Community_Uploads; move folder to new_admin_location.
         - Merges date-stamped additional_images and updates find_metadata.json.
@@ -786,12 +962,14 @@ class TurtleManager:
                 community_sheet_name=community_sheet_name,
                 new_admin_location=new_admin_location, photo_type=photo_type,
                 delete_packet=delete_packet,
+                replace_carapace_reference=replace_carapace_reference,
             )
 
     def _approve_review_packet_locked(self, request_id, match_turtle_id=None, replace_reference=False,
                               new_location=None, new_turtle_id=None, uploaded_image_path=None,
                               find_metadata=None, is_community_upload=False,
                               match_from_community=False, community_sheet_name=None,
+                              replace_carapace_reference=False,
                               new_admin_location=None, photo_type="plastron",
                               delete_packet=True):
         query_image = None
@@ -823,12 +1001,23 @@ class TurtleManager:
 
             if photo_type == "carapace":
                 ref_dir = os.path.join(target_dir, 'carapace')
-                loose_dir = os.path.join(target_dir, 'carapace_observations')
+                loose_dir = os.path.join(target_dir, 'carapace', 'Other Carapaces')
+                archive_dir = os.path.join(target_dir, 'carapace', 'Old References')
             else:
-                ref_dir = os.path.join(target_dir, 'ref_data')
-                loose_dir = os.path.join(target_dir, 'loose_images')
+                # Prefer new 'plastron/' layout; fall back to legacy 'ref_data/' for old turtles
+                plastron_dir = os.path.join(target_dir, 'plastron')
+                ref_data_dir = os.path.join(target_dir, 'ref_data')
+                if os.path.isdir(plastron_dir):
+                    ref_dir = plastron_dir
+                elif os.path.isdir(ref_data_dir):
+                    ref_dir = ref_data_dir
+                else:
+                    ref_dir = plastron_dir
+                loose_dir = os.path.join(target_dir, 'plastron', 'Other Plastrons')
+                archive_dir = os.path.join(target_dir, 'plastron', 'Old References')
             os.makedirs(ref_dir, exist_ok=True)
             os.makedirs(loose_dir, exist_ok=True)
+            os.makedirs(archive_dir, exist_ok=True)
 
             if replace_reference:
                 print(f"✨ UPGRADING REFERENCE for {match_turtle_id}...")
@@ -868,10 +1057,11 @@ class TurtleManager:
                 new_master_path = os.path.join(ref_dir, f"{match_turtle_id}{new_ext}")
                 new_pt_path = os.path.join(ref_dir, f"{match_turtle_id}.pt")
 
-                # Step 1: Archive old image to loose_images (copy, not move — original stays until step 3)
+                # Step 1: Archive old image to Old References (copy, not move — original stays until step 3)
                 if old_img_path:
-                    archive_name = f"Archived_Master_{op_ts}{os.path.splitext(old_img_path)[1]}"
-                    shutil.copy2(old_img_path, os.path.join(loose_dir, archive_name))
+                    archive_date = _extract_exif_date(old_img_path) or time.strftime('%Y-%m-%d', time.gmtime())
+                    archive_name = f"Archived_Master_{op_ts}_{archive_date}{os.path.splitext(old_img_path)[1]}"
+                    shutil.copy2(old_img_path, os.path.join(archive_dir, archive_name))
                     print(f"   📦 Archived old master to {archive_name}")
 
                 # Step 2: Promote staged files to canonical names (overwrites old .pt and image atomically)
@@ -888,7 +1078,8 @@ class TurtleManager:
                     except OSError:
                         pass
 
-                obs_name = f"Obs_{int(time.time())}_{os.path.basename(query_image)}"
+                obs_date = _extract_exif_date(query_image) or time.strftime('%Y-%m-%d', time.gmtime())
+                obs_name = f"Obs_{int(time.time())}_{obs_date}_{os.path.basename(query_image)}"
                 shutil.copy2(query_image, os.path.join(loose_dir, obs_name))
 
                 # Incremental cache update: remove old entry and add updated one
@@ -903,7 +1094,8 @@ class TurtleManager:
 
             else:
                 print(f"📸 Adding observation to {match_turtle_id}...")
-                obs_name = f"Obs_{int(time.time())}_{os.path.basename(query_image)}"
+                obs_date = _extract_exif_date(query_image) or time.strftime('%Y-%m-%d', time.gmtime())
+                obs_name = f"Obs_{int(time.time())}_{obs_date}_{os.path.basename(query_image)}"
                 shutil.copy2(query_image, os.path.join(loose_dir, obs_name))
 
         # Scenario B: Creating a new turtle
@@ -924,7 +1116,7 @@ class TurtleManager:
             if status == 'created':
                 print(f"✅ New turtle {new_turtle_id} created successfully at {new_location}")
                 # Incremental cache update: add new turtle without full rebuild
-                subdir = 'carapace' if photo_type == 'carapace' else 'ref_data'
+                subdir = 'carapace' if photo_type == 'carapace' else 'plastron'
                 pt_path = os.path.join(location_dir, new_turtle_id, subdir, f"{new_turtle_id}.pt")
                 rel_path = os.path.relpath(location_dir, self.base_dir)
                 location_name = rel_path.replace(os.sep, "/")
@@ -988,23 +1180,29 @@ class TurtleManager:
                                 packet_manifest = []
                             for entry in packet_manifest:
                                 fn = entry.get('filename')
-                                if fn and os.path.isfile(os.path.join(src_date_dir, fn)):
-                                    shutil.copy2(os.path.join(src_date_dir, fn), os.path.join(dest_date_dir, fn))
-                                    if fn not in existing_filenames:
-                                        existing_manifest.append(entry)
-                                        existing_filenames.add(fn)
+                                if not fn or not os.path.isfile(os.path.join(src_date_dir, fn)):
+                                    continue
+                                # Skip carapace/plastron — they go to carapace/ or plastron/ folders, not additional_images/
+                                if entry.get('type', '') in ('carapace', 'plastron'):
+                                    continue
+                                shutil.copy2(os.path.join(src_date_dir, fn), os.path.join(dest_date_dir, fn))
+                                if fn not in existing_filenames:
+                                    existing_manifest.append(entry)
+                                    existing_filenames.add(fn)
                             with open(dest_manifest_path, 'w') as f:
                                 json.dump(existing_manifest, f, indent=4)
 
-            # Process plastron/carapace additional images: extract SuperPoint features
-            # and save to the correct reference subfolder (ref_data/ or carapace/).
-            # This handles the case where community uploads a carapace as main photo
-            # and attaches a plastron as additional, or vice versa for admin.
-            _ref_type_to_dir = {'plastron': 'ref_data', 'carapace': 'carapace'}
+            # Process plastron/carapace additional images: create references or route
+            # to Other Plastrons / Other Carapaces folders.
+            # First carapace image becomes the reference (or replaces it); extras go to Other Carapaces.
+            # Same logic for plastron images.
+            _ref_type_to_dir = {'plastron': 'plastron', 'carapace': 'carapace'}
+            _other_dir = {'plastron': 'plastron/Other Plastrons', 'carapace': 'carapace/Other Carapaces'}
+            _carapace_ref_handled = False  # Only the FIRST carapace can become/replace a reference
             if os.path.isdir(packet_dir):
                 src_additional = os.path.join(packet_dir, 'additional_images')
                 if os.path.isdir(src_additional):
-                    for date_folder in os.listdir(src_additional):
+                    for date_folder in sorted(os.listdir(src_additional)):
                         src_date_dir = os.path.join(src_additional, date_folder)
                         if not os.path.isdir(src_date_dir):
                             continue
@@ -1026,12 +1224,72 @@ class TurtleManager:
                             src_img = os.path.join(src_date_dir, fn)
                             if not os.path.isfile(src_img):
                                 continue
+
                             dest_subdir = os.path.join(target_dir, _ref_type_to_dir[img_type])
                             os.makedirs(dest_subdir, exist_ok=True)
                             ext = os.path.splitext(fn)[1] or '.jpg'
                             dest_img = os.path.join(dest_subdir, f"{target_turtle_id}{ext}")
                             dest_pt = os.path.join(dest_subdir, f"{target_turtle_id}.pt")
-                            if not os.path.exists(dest_pt):
+                            # Also check legacy ref_data/ for existing plastron references
+                            has_ref = os.path.exists(dest_pt)
+                            if not has_ref and img_type == 'plastron':
+                                has_ref = os.path.exists(os.path.join(target_dir, 'ref_data', f"{target_turtle_id}.pt"))
+
+                            # Decide: create reference, replace reference, or route to Other folder
+                            should_replace_carapace = (img_type == 'carapace' and replace_carapace_reference
+                                                       and not _carapace_ref_handled)
+                            is_first_carapace = (img_type == 'carapace' and not _carapace_ref_handled)
+
+                            if should_replace_carapace and has_ref:
+                                # Atomic carapace reference replacement (same pattern as plastron)
+                                _carapace_ref_handled = True
+                                print(f"✨ UPGRADING CARAPACE REFERENCE for {target_turtle_id}...")
+                                archive_dir = os.path.join(target_dir, 'carapace', 'Old References')
+                                os.makedirs(archive_dir, exist_ok=True)
+                                op_ts = int(time.time() * 1000)
+                                old_pt_path = dest_pt
+                                old_img_path = None
+                                for old_ext in ['.jpg', '.jpeg', '.png']:
+                                    possible = os.path.join(dest_subdir, f"{target_turtle_id}{old_ext}")
+                                    if os.path.exists(possible):
+                                        old_img_path = possible
+                                        break
+                                staged_master = os.path.join(dest_subdir, f"{target_turtle_id}_staged_{op_ts}{ext}")
+                                staged_pt = os.path.join(dest_subdir, f"{target_turtle_id}_staged_{op_ts}.pt")
+                                shutil.copy2(src_img, staged_master)
+                                try:
+                                    staged_ok = brain.process_and_save(staged_master, staged_pt)
+                                except Exception as e:
+                                    print(f"   ⚠️ SuperPoint crashed during carapace upgrade for {target_turtle_id}: {e}")
+                                    staged_ok = False
+                                if not staged_ok:
+                                    for p in [staged_master, staged_pt]:
+                                        try:
+                                            if os.path.exists(p): os.remove(p)
+                                        except OSError: pass
+                                    print(f"   ⚠️ Carapace reference upgrade failed for {target_turtle_id}")
+                                    continue
+                                if old_img_path:
+                                    archive_date = _extract_exif_date(old_img_path) or time.strftime('%Y-%m-%d', time.gmtime())
+                                    archive_name = f"Archived_Carapace_{op_ts}_{archive_date}{os.path.splitext(old_img_path)[1]}"
+                                    shutil.copy2(old_img_path, os.path.join(archive_dir, archive_name))
+                                if os.path.exists(dest_img): os.remove(dest_img)
+                                shutil.move(staged_master, dest_img)
+                                shutil.move(staged_pt, dest_pt)
+                                if old_img_path and os.path.exists(old_img_path) and old_img_path != dest_img:
+                                    try: os.remove(old_img_path)
+                                    except OSError: pass
+                                cache = getattr(brain, 'vram_cache_carapace', [])
+                                brain.vram_cache_carapace = [c for c in cache if c['file_path'] != old_pt_path]
+                                rel = os.path.relpath(target_dir, self.base_dir)
+                                loc = os.path.dirname(rel).replace(os.sep, "/")
+                                brain.add_single_to_vram(dest_pt, target_turtle_id, loc, photo_type='carapace')
+                                print(f"   ✅ Carapace reference upgraded for {target_turtle_id}")
+
+                            elif not has_ref and (img_type == 'plastron' or is_first_carapace):
+                                # No reference exists yet — create one
+                                if img_type == 'carapace':
+                                    _carapace_ref_handled = True
                                 shutil.copy2(src_img, dest_img)
                                 if brain.process_and_save(dest_img, dest_pt):
                                     rel = os.path.relpath(target_dir, self.base_dir)
@@ -1040,6 +1298,17 @@ class TurtleManager:
                                     print(f"   ✅ {img_type.capitalize()} reference created for {target_turtle_id}")
                                 else:
                                     print(f"   ⚠️ {img_type.capitalize()} SuperPoint extraction failed for {target_turtle_id}")
+
+                            else:
+                                # Reference already exists and not replacing — route to Other folder
+                                if img_type == 'carapace':
+                                    _carapace_ref_handled = True
+                                other_dir = os.path.join(target_dir, _other_dir[img_type])
+                                os.makedirs(other_dir, exist_ok=True)
+                                ts = int(time.time() * 1000)
+                                other_name = f"{img_type}_{ts}{ext}"
+                                shutil.copy2(src_img, os.path.join(other_dir, other_name))
+                                print(f"   📸 {img_type.capitalize()} saved to {_other_dir[img_type]}: {other_name}")
 
             # Move turtle folder from Community_Uploads to admin location
             if match_from_community and new_admin_location and match_turtle_id and target_dir and os.path.isdir(target_dir):
@@ -1097,13 +1366,13 @@ class TurtleManager:
             except Exception as e:
                 print(f"⚠️ Failed to roll back turtle folder: {e}")
 
-        # Evict from VRAM cache
-        subdir = 'carapace' if photo_type == 'carapace' else 'ref_data'
-        pt_path_fragment = os.path.join(turtle_id, subdir, f"{turtle_id}.pt")
+        # Evict from VRAM cache (check both new 'plastron' and legacy 'ref_data' paths)
+        subdirs_to_check = ['carapace'] if photo_type == 'carapace' else ['plastron', 'ref_data']
+        pt_path_fragments = [os.path.join(turtle_id, sd, f"{turtle_id}.pt") for sd in subdirs_to_check]
         for cache_attr in ('vram_cache_plastron', 'vram_cache_carapace'):
             cache = getattr(brain, cache_attr, [])
             before = len(cache)
-            filtered = [c for c in cache if not c['file_path'].endswith(pt_path_fragment)]
+            filtered = [c for c in cache if not any(c['file_path'].endswith(frag) for frag in pt_path_fragments)]
             if len(filtered) < before:
                 setattr(brain, cache_attr, filtered)
                 print(f"🔙 Evicted {turtle_id} from {cache_attr}")
@@ -1176,13 +1445,16 @@ class TurtleManager:
             if typ not in ('microhabitat', 'condition', 'carapace', 'plastron', 'other'): typ = 'other'
             ts = item.get('timestamp') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             if not src or not os.path.isfile(src): continue
-            ext = os.path.splitext(src)[1] or '.jpg'
-            safe_name = f"{typ}_{int(time.time() * 1000)}_{os.path.basename(src)}"
+            exif_date = _extract_exif_date(src)
+            stamp_date = exif_date or time.strftime('%Y-%m-%d', time.gmtime())
+            safe_name = f"{typ}_{int(time.time() * 1000)}_{stamp_date}_{os.path.basename(src)}"
             safe_name = "".join(c for c in safe_name if c.isalnum() or c in '._-')
             dest = os.path.join(date_dir, safe_name)
             shutil.copy2(src, dest)
-            manifest.append(
-                {"filename": safe_name, "type": typ, "timestamp": ts, "original_source": os.path.basename(src)})
+            manifest.append({
+                "filename": safe_name, "type": typ, "timestamp": ts,
+                "exif_date": exif_date, "original_source": os.path.basename(src),
+            })
 
         with open(manifest_path, 'w') as f:
             json.dump(manifest, f, indent=4)
@@ -1265,7 +1537,7 @@ class TurtleManager:
 
     def add_observation_to_turtle(self, source_image_path, turtle_id, location_hint=None):
         """
-        Moves an uploaded image to the turtle's loose_images folder as an observation copy.
+        Moves an uploaded image to the turtle's plastron/Other Plastrons folder as an observation copy.
         """
         target_dir = None
         if location_hint and location_hint != 'Unknown':
@@ -1283,11 +1555,12 @@ class TurtleManager:
         if not target_dir:
             return False, f"Could not find folder for {turtle_id}"
 
-        loose_dir = os.path.join(target_dir, 'loose_images')
+        loose_dir = os.path.join(target_dir, 'plastron', 'Other Plastrons')
         os.makedirs(loose_dir, exist_ok=True)
 
         filename = os.path.basename(source_image_path)
-        save_name = f"Obs_{int(time.time())}_{filename}"
+        obs_date = _extract_exif_date(source_image_path) or time.strftime('%Y-%m-%d', time.gmtime())
+        save_name = f"Obs_{int(time.time())}_{obs_date}_{filename}"
         dest_path = os.path.join(loose_dir, save_name)
 
         try:
@@ -1302,25 +1575,47 @@ class TurtleManager:
         if not turtle_dir or not os.path.isdir(turtle_dir): return False, "Turtle folder not found"
         today_str = time.strftime('%Y-%m-%d')
         date_dir = os.path.join(turtle_dir, 'additional_images', today_str)
-        os.makedirs(date_dir, exist_ok=True)
         manifest_path = os.path.join(date_dir, 'manifest.json')
         manifest = []
-        if os.path.exists(manifest_path):
-            with open(manifest_path, 'r') as f: manifest = json.load(f)
+        date_dir_created = False
+
+        # Routes for carapace/plastron images — go to proper subfolders, not additional_images/
+        _other_dir = {'plastron': 'plastron/Other Plastrons', 'carapace': 'carapace/Other Carapaces'}
 
         for item in files_with_types:
             src = item.get('path')
             typ = (item.get('type') or 'other').lower()
             ts = item.get('timestamp') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             if not src or not os.path.isfile(src): continue
-            safe_name = f"{typ}_{int(time.time() * 1000)}_{os.path.basename(src)}"
-            safe_name = "".join(c for c in safe_name if c.isalnum() or c in '._-')
-            dest = os.path.join(date_dir, safe_name)
-            shutil.copy2(src, dest)
-            manifest.append({"filename": safe_name, "type": typ, "timestamp": ts})
+            exif_date = _extract_exif_date(src)
+            stamp_date = exif_date or time.strftime('%Y-%m-%d', time.gmtime())
 
-        with open(manifest_path, 'w') as f:
-            json.dump(manifest, f, indent=4)
+            if typ in _other_dir:
+                # Route carapace/plastron to their proper folders
+                dest_dir = os.path.join(turtle_dir, _other_dir[typ])
+                os.makedirs(dest_dir, exist_ok=True)
+                safe_name = f"{typ}_{int(time.time() * 1000)}_{stamp_date}_{os.path.basename(src)}"
+                safe_name = "".join(c for c in safe_name if c.isalnum() or c in '._-')
+                shutil.copy2(src, os.path.join(dest_dir, safe_name))
+                print(f"📸 {typ.capitalize()} added to {turtle_id}/{_other_dir[typ]}: {safe_name}")
+            else:
+                # Microhabitat, condition, additional, other → additional_images/
+                if not date_dir_created:
+                    os.makedirs(date_dir, exist_ok=True)
+                    if os.path.exists(manifest_path):
+                        with open(manifest_path, 'r') as f: manifest = json.load(f)
+                    date_dir_created = True
+                safe_name = f"{typ}_{int(time.time() * 1000)}_{stamp_date}_{os.path.basename(src)}"
+                safe_name = "".join(c for c in safe_name if c.isalnum() or c in '._-')
+                dest = os.path.join(date_dir, safe_name)
+                shutil.copy2(src, dest)
+                manifest.append({
+                    "filename": safe_name, "type": typ, "timestamp": ts, "exif_date": exif_date,
+                })
+
+        if date_dir_created:
+            with open(manifest_path, 'w') as f:
+                json.dump(manifest, f, indent=4)
         return True, "OK"
 
     def remove_additional_image_from_turtle(self, turtle_id, filename, sheet_name=None):
