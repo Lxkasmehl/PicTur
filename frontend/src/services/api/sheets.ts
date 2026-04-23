@@ -55,6 +55,20 @@ export interface TurtleSheetsData {
   plastron_p2_mm?: string;
   plastron_width_mm?: string;
   dome_height_mm?: string;
+  /** Google Sheet row (1-based header excluded); set when listing from /api/sheets/turtles */
+  row_index?: number;
+}
+
+/**
+ * On-disk folder / ref_data stem: biology **ID** column when set (e.g. F439), else **Primary ID**.
+ * Image APIs walk ``basename == turtle_id``; folders usually match the short biology ID, not the numeric primary.
+ */
+export function turtleDiskFolderId(
+  t: Pick<TurtleSheetsData, 'id' | 'primary_id'>,
+): string {
+  const bio = (t.id || '').trim();
+  if (bio) return bio;
+  return (t.primary_id || '').trim();
 }
 
 /**

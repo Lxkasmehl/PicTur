@@ -218,7 +218,13 @@ export function TurtleSheetsDataFormFields({
         if (!config) return null;
 
         const span = toSpan(config.span);
-        const value = formData[config.key] ?? '';
+        const rawVal = formData[config.key];
+        const value =
+          rawVal === undefined || rawVal === null
+            ? ''
+            : typeof rawVal === 'string'
+              ? rawVal
+              : String(rawVal);
         const isGeneralLocationField = config.key === 'general_location';
         const generalLocationAsSelect = isGeneralLocationField && generalLocationUseCatalog;
         const generalLocationDescription =

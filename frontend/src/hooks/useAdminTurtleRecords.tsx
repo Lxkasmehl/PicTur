@@ -579,6 +579,7 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
     const query = searchQuery.toLowerCase();
     return (
       turtle.id?.toLowerCase().includes(query) ||
+      turtle.primary_id?.toLowerCase().includes(query) ||
       turtle.name?.toLowerCase().includes(query) ||
       turtle.species?.toLowerCase().includes(query) ||
       turtle.location?.toLowerCase().includes(query) ||

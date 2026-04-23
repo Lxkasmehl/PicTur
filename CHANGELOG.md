@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.17] - 2026-04-21 — Sheets browser biology ID for disk images + primaries batch
+
+### Fixed
+
+- **Admin Sheets browser — identifier plastron and thumbnails**: Image APIs (`GET /api/turtles/images`, batch primaries, identifier upload, additional photos) now use **`turtleDiskFolderId`**: the sheet **ID** (biology folder name, e.g. **`F439`**) when present, then **Primary ID** (`T177…`). On-disk layout is almost always **`data/…/<biology id>/ref_data/`**; sending Primary ID first left **`primary: null`** and empty previews even when `F439.JPG` / `F439.pt` existed.
+- **Batch primaries map**: Response rows are applied **in request order** with stable **`turtleKey`** (includes optional **`row_index`** from `/api/sheets/turtles`) so list thumbnails do not mis-assign or overwrite when many turtles load at once.
+- **Photo tags → sheet row**: `findTurtleForMatch` matches **`m.turtle_id`** against **either** biology **`id`** or **`primary_id`**.
+- **`TurtleSheetsDataForm`**: Dynamic field values are coerced to **strings** so numeric **`row_index`** on list payloads does not break `TurtleFormField` (`string | number`).
+
+### Changed
+
+- **Sheets browser identifier panel**: Removed the redundant **orange** general/location warning; short guidance remains in the muted help text. **Search** in the turtle list also matches **Primary ID**.
+
 ## [1.2.16] - 2026-04-23 — Sheets folder resolution (primary path + state/site layout)
 
 ### Fixed
@@ -283,7 +296,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.16...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.17...HEAD
+[1.2.17]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.17
 [1.2.16]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.16
 [1.2.15]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.15
 [1.2.14]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.14
