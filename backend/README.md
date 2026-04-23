@@ -146,6 +146,83 @@ To clear only the Review Queue:
 python clear_uploads.py --review-only
 ```
 
+## Maintenance Scripts
+
+Two operational scripts live alongside the Flask app for one-off migrations and daily drift correction. Both default to **dry-run mode** — they print a full manifest of what they *would* do and exit without changing anything on disk. Pass `--apply` to actually execute the changes.
+
+Both scripts treat Google Sheets as **read-only** — they never edit the production spreadsheets.
+
+### `backfill_folder_names.py` — sync folder names to Sheets
+
+Keeps turtle folder names in sync with the current state of the research + community spreadsheets. Three jobs in one pass:
+
+1. Adds `_{primary_id}` to bio-ID-only folders once the sheet has assigned a primary key (`F017/` → `F017_T177.../`).
+2. Rehomes misplaced `T177...`-only folders that landed in a state root instead of a location directory (production bug), giving them their combined `{bio_id}_{primary_id}` name in the correct `state/location/`.
+3. Detects bio-ID changes (juvenile → adult, misgender corrections) on already-renamed folders and renames both the folder and its internal reference files.
+
+Idempotent. Safe to run daily — intended to be tied into the Sheets-backup chronodrop once `main` is merged.
+
+```bash
+# Dry run: see what would change
+docker compose exec backend python backfill_folder_names.py
+
+# Apply the changes
+docker compose exec backend python backfill_folder_names.py --apply
+```
+
+The `--apply` flag is what actually writes to disk. Without it, you see a manifest and no files are touched. Exit code is `1` if any errors were reported, `0` otherwise.
+
+### `ingest_rebuild_folder.py` — ingest carapaces + new turtles
+
+Walks a host-side "Rebuild Ingest" folder tree and pushes its contents into the backend data directory. Expected layout:
+
+```
+<ingest root>/
+  Lawrence/
+    F017 Plastron.jpg
+    F017 Plastron 2.jpg
+    F017 Carapace.jpg
+    F999 Carapace.jpg
+  North Topeka/
+    ...
+```
+
+Each top-level folder name must match a key in `DRIVE_LOCATION_TO_BACKEND_PATH` (`turtle_manager.py`). Per bio-ID group:
+
+- Existing turtle: migrates `ref_data/` → `plastron/` if needed, removes empty `loose_images/`, places new plastrons into `plastron/Other Plastrons/`, and adds a carapace reference (or `carapace/Other Carapaces/` extras) as needed.
+- Unknown turtle: creates a bio-id-named folder containing only the subdirs it needs — no empty `ref_data/` or plastron placeholder for carapace-only turtles.
+
+Feature extraction (`.pt` files) is **not** run at ingest — images are dropped and the next backend startup regenerates the `.pt` files via `refresh_database_index()` and loads them into both VRAM caches.
+
+Turtles not yet in the sheets stay bio-id-only named. They pick up their `primary_id` later when someone matches against them through the normal admin/community upload flow, at which point `backfill_folder_names.py` will rename the folder on its next run.
+
+**Running from a Windows host:** mount the host-side ingest folder into the backend container with a one-off `docker compose run`:
+
+```bash
+# Dry run — preview what would be written to /app/data
+docker compose run --rm \
+    -v "C:/Users/gking/Desktop/Rebuild Ingest:/ingest:ro" \
+    backend python ingest_rebuild_folder.py --ingest-path /ingest
+
+# Apply
+docker compose run --rm \
+    -v "C:/Users/gking/Desktop/Rebuild Ingest:/ingest:ro" \
+    backend python ingest_rebuild_folder.py --ingest-path /ingest --apply
+
+# Restart so refresh_database_index() picks up the new images
+docker compose restart backend
+```
+
+On Linux/macOS, replace the host path with your equivalent (e.g. `-v "$HOME/rebuild_ingest:/ingest:ro"`).
+
+**Suggested order** when running both scripts for the first time on a production machine:
+
+1. `ingest_rebuild_folder.py --apply` — gets all new images onto disk in the right layout
+2. `backfill_folder_names.py --apply` — renames the folders to `{bio_id}_{primary_id}`
+3. `docker compose restart backend` — extracts `.pt` files and refreshes the VRAM caches
+
+Step 2 can be re-run any time afterwards to catch new primary-key assignments or bio-ID changes.
+
 ## Troubleshooting
 
 ### Port Already in Use
