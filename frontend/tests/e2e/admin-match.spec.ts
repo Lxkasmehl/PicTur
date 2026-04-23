@@ -8,6 +8,7 @@ import {
   selectSheetInCreateTurtleDialog,
   unlockUntilFieldEditable,
   GENERAL_LOCATION_LABEL,
+  registerKansasGeneralLocationsCatalogMock,
 } from './fixtures';
 
 test.describe('Admin Turtle Match', () => {
@@ -213,6 +214,144 @@ test.describe('Admin Turtle Match', () => {
       await expect(listbox).toBeVisible({ timeout: 5000 });
       const optionTexts = await listbox.getByRole('option').allTextContents();
       expect(optionTexts).toContain('North Topeka');
+      await page.keyboard.press('Escape');
+    }
+  });
+
+  test('Edit matched research turtle: General Location requires unlock, then catalog dropdown (e.g. West Topeka)', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const REQUEST_ID = 'e2e-match-edit-gl-research';
+
+    await page.route('**/api/upload**', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          request_id: REQUEST_ID,
+          uploaded_image_path: `Review_Queue/${REQUEST_ID}/query.jpg`,
+          matches: [
+            {
+              turtle_id: 'F501',
+              location: 'Kansas',
+              distance: 0.12,
+              file_path: 'Review_Queue/Req_1/candidate_matches/rank1.jpg',
+              filename: 'rank1.jpg',
+            },
+          ],
+          message: 'Uploaded',
+        }),
+      });
+    });
+
+    const reviewSuffix = `/api/review-queue/${encodeURIComponent(REQUEST_ID)}`;
+    await page.route('**/api/review-queue/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path !== reviewSuffix || route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          item: {
+            request_id: REQUEST_ID,
+            uploaded_image: `Review_Queue/${REQUEST_ID}/query.jpg`,
+            metadata: {},
+            additional_images: [],
+            candidates: [],
+            status: 'pending',
+          },
+        }),
+      });
+    });
+
+    await page.route('**/api/sheets/sheets**', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, sheets: ['Kansas', 'NebraskaCPBS'] }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await page.route('**/api/sheets/turtle/F501**', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            exists: true,
+            data: {
+              primary_id: '10042',
+              id: 'F501',
+              name: 'E2E Match Turtle',
+              sheet_name: 'Kansas',
+              general_location: 'North Topeka',
+              sex: 'M',
+            },
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await registerKansasGeneralLocationsCatalogMock(page);
+
+    await loginAsAdmin(page);
+    await page.getByText('Successfully logged in!').waitFor({ state: 'hidden', timeout: 8000 }).catch(() => {});
+
+    const fileInput = page.locator('input[type="file"]:not([capture])').first();
+    await fileInput.setInputFiles({
+      name: 'match-edit-gl-e2e.png',
+      mimeType: 'image/png',
+      buffer: getTestImageBuffer(),
+    });
+    await page.waitForSelector('button:has-text("Upload Photo")', { timeout: 5000 });
+    await clickUploadPhotoButton(page);
+
+    await expect(page).toHaveURL(new RegExp(`/admin/turtle-match/${REQUEST_ID}`), { timeout: 30_000 });
+    await expect(page.getByRole('heading', { name: /Turtle Match Review/ })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await page.locator('.mantine-Card-root').filter({ hasText: 'F501' }).first().click();
+
+    const sheetsFormCard = page.locator('.mantine-Paper-root').filter({
+      has: page.getByRole('heading', { name: /Turtle Data - Google Sheets/ }),
+    });
+    await expect(sheetsFormCard).toBeVisible({ timeout: 15_000 });
+
+    await registerKansasGeneralLocationsCatalogMock(page);
+
+    const glField = sheetsFormCard.getByLabel(GENERAL_LOCATION_LABEL);
+    await expect(glField).toBeVisible({ timeout: 15_000 });
+    await expect(glField).toBeDisabled();
+    const glCell = glField.locator('xpath=ancestor::div[contains(@class,"Grid-col")][1]');
+    await expect(glCell.getByRole('button', { name: 'Unlock editing' })).toBeVisible();
+
+    await unlockUntilFieldEditable(page, sheetsFormCard, GENERAL_LOCATION_LABEL);
+
+    const isNativeSelect = await glField.evaluate((el) => el.tagName === 'SELECT');
+    if (isNativeSelect) {
+      const options = await glField.locator('option').allTextContents();
+      expect(options).toContain('West Topeka');
+    } else {
+      await glField.click();
+      const listbox = page.getByRole('listbox', { name: GENERAL_LOCATION_LABEL });
+      await expect(listbox).toBeVisible({ timeout: 5000 });
+      const optionTexts = await listbox.getByRole('option').allTextContents();
+      expect(optionTexts).toContain('West Topeka');
       await page.keyboard.press('Escape');
     }
   });

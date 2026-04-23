@@ -69,6 +69,8 @@ export function TurtleSheetsDataFormFields({
     if (!useMatchEditLocks) return effectiveRestrictedForField(field);
     if (requireNewSheetForCommunityMatch && field === 'general_location') return false;
     if (field === 'id') return false;
+    // Sheet default pins General Location (catalog): keep disabled control without an unlock step.
+    if (field === 'general_location' && generalLocationLocked) return false;
     if (mode === 'create') return true;
     return TURTLE_MATCH_PAGE_UNLOCKABLE_FIELDS.has(field);
   };

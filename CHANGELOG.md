@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Admin Turtle Match — General Location**: On the match sheet form, **General Location** was hard read-only (plain text + “Add new General Location” only, no catalog dropdown). It is now in the same **Unlock editing** flow as other editable match columns; after confirm, the **catalog select** works like elsewhere. Sheets with a **fixed catalog default** (`generalLocationLocked`) still show a disabled control **without** an extra unlock step.
+
+### Testing
+
+- **Playwright** (`frontend/tests/e2e/admin-match.spec.ts`): **Edit matched research turtle** asserts General Location starts locked with **Unlock editing**, then offers catalog options including **West Topeka** after unlock.
+
 ## [1.2.17] - 2026-04-21 — Sheets browser biology ID for disk images + primaries batch
 
 ### Fixed
