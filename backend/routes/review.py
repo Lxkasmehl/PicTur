@@ -16,63 +16,6 @@ from image_utils import normalize_to_jpeg
 from general_locations_catalog import resolve_general_location_from_sheet_and_value
 from additional_image_labels import normalize_label_list, parse_labels_from_form
 
-# Metadata keys to strip when syncing turtle data to community spreadsheet
-_COMMUNITY_SYNC_STRIP_KEYS = ('sheet_name', 'row_index')
-
-
-def _sync_confirmed_to_community(data, sheets_data, service, new_location, new_turtle_id, match_turtle_id):
-    """
-    After a successful approval, push the confirmed turtle record to the community-facing
-    spreadsheet. Community uploads always sync here (required; separate from research).
-    Raises if community spreadsheet is not configured or sync fails.
-    """
-    comm = get_community_sheets_service()
-    if not comm:
-        raise RuntimeError(
-            "Community spreadsheet is required for confirmations. "
-            "Set GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID in backend .env and share the sheet with the service account."
-        )
-    if not isinstance(data, dict):
-        data = {}
-    if not isinstance(sheets_data, dict):
-        sheets_data = {}
-    primary_id = data.get('primary_id') or sheets_data.get('primary_id')
-    raw_sheet = (data.get('sheet_name') or sheets_data.get('sheet_name') or new_location or '').strip()
-    # Community sheet tab = first path segment (State); new_location can be "State/Location"
-    sheet_name = raw_sheet.split("/")[0].strip() if raw_sheet else ''
-    if not primary_id or not sheet_name:
-        raise ValueError("Cannot sync to community spreadsheet: missing primary_id or sheet_name")
-    # Resolve full turtle data: for new turtle use sheets_data; for match read from research
-    turtle_data = None
-    if new_location and new_turtle_id and sheets_data:
-        turtle_data = dict(sheets_data)
-    elif match_turtle_id and service:
-        turtle_data = service.get_turtle_data(primary_id, sheet_name)
-    if not turtle_data:
-        raise ValueError("Cannot sync to community spreadsheet: could not resolve turtle data")
-    for key in _COMMUNITY_SYNC_STRIP_KEYS:
-        turtle_data.pop(key, None)
-    turtle_data['primary_id'] = primary_id
-    # For new turtles, ensure primary_id and biology ID exist (community sheet only)
-    if new_location and new_turtle_id:
-        if not turtle_data.get('primary_id'):
-            raise ValueError("Cannot sync to community spreadsheet: missing primary_id for new turtle")
-        if not turtle_data.get('id'):
-            sex = (turtle_data.get('sex') or '').strip().upper()
-            gender = sex if sex in ('M', 'F', 'J') else 'U'
-            turtle_data['id'] = comm.generate_biology_id(gender, sheet_name)
-    comm.create_sheet_with_headers(sheet_name)
-    existing_row = comm.get_turtle_data(primary_id, sheet_name)
-    state = turtle_data.get('general_location') or ''
-    location = turtle_data.get('location') or ''
-    if existing_row:
-        comm.update_turtle_data(primary_id, turtle_data, sheet_name, state, location)
-        print(f"✅ Community spreadsheet: updated turtle {primary_id} on sheet '{sheet_name}'")
-    else:
-        comm.create_turtle_data(turtle_data, sheet_name, state, location)
-        print(f"✅ Community spreadsheet: added turtle {primary_id} to sheet '{sheet_name}'")
-
-
 def format_review_packet_item(packet_dir, request_id):
     """Build one queue item dict from packet_dir (used by get_review_queue and get_review_packet)."""
     metadata_path = os.path.join(packet_dir, 'metadata.json')
@@ -523,30 +466,20 @@ def register_review_routes(app):
                             except Exception as sheets_error:
                                 print(f"⚠️ Warning: Failed to create Google Sheets entry: {sheets_error}")
 
-                # When admin matched a community turtle: remove from community sheet (turtle moved to research).
-                # When admin matched a research turtle: sync to community spreadsheet.
-                if match_turtle_id:
-                    if match_from_community and community_sheet_name:
-                        primary_id = (isinstance(sheets_data, dict) and sheets_data.get('primary_id')) or match_turtle_id
-                        comm = get_community_sheets_service()
-                        if comm:
-                            try:
-                                deleted = comm.delete_turtle_data(primary_id, community_sheet_name)
-                                if deleted:
-                                    print(f"✅ Removed turtle {primary_id} from community sheet '{community_sheet_name}' (moved to admin).")
-                                else:
-                                    print(f"⚠️ Could not remove turtle {primary_id} from community sheet '{community_sheet_name}' (row may not exist).")
-                            except Exception as del_err:
-                                print(f"⚠️ Warning: Failed to remove turtle from community sheet: {del_err}")
-                        # Do NOT sync to community – turtle now lives only in research.
-                    else:
+                # When admin matched a community turtle: remove that row from the community sheet (turtle moves to research only).
+                # Admin/research matches do not write to the community spreadsheet — the two books stay separate.
+                if match_turtle_id and match_from_community and community_sheet_name:
+                    primary_id = (isinstance(sheets_data, dict) and sheets_data.get('primary_id')) or match_turtle_id
+                    comm = get_community_sheets_service()
+                    if comm:
                         try:
-                            _sync_confirmed_to_community(
-                                request.json or {}, (request.json or {}).get('sheets_data'),
-                                get_sheets_service(), None, None, match_turtle_id,
-                            )
-                        except Exception as sync_err:
-                            print(f"⚠️ Warning: Could not sync match to community: {sync_err}")
+                            deleted = comm.delete_turtle_data(primary_id, community_sheet_name)
+                            if deleted:
+                                print(f"✅ Removed turtle {primary_id} from community sheet '{community_sheet_name}' (moved to admin).")
+                            else:
+                                print(f"⚠️ Could not remove turtle {primary_id} from community sheet '{community_sheet_name}' (row may not exist).")
+                        except Exception as del_err:
+                            print(f"⚠️ Warning: Failed to remove turtle from community sheet: {del_err}")
 
                 return jsonify({
                     'success': True,
