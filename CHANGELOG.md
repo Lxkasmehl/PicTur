@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Review approve — research match**: Confirming a match to an **admin/research** turtle no longer writes or updates the **community** Google Sheet. Admin and community spreadsheets stay separate; only **community → admin** moves still delete the row from the community sheet (`match_from_community`). Resolves unwanted extra rows (e.g. #150).
+
 ## [1.2.17] - 2026-04-21 — Sheets browser biology ID for disk images + primaries batch
 
 ### Fixed
