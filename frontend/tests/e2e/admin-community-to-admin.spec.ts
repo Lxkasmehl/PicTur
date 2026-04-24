@@ -197,9 +197,9 @@ test.describe('Admin Community turtle move to admin', () => {
       .or(page.getByRole('combobox', { name: 'Sheet / Location' }));
     await expect(sheetLocationInput).toBeVisible({ timeout: 15_000 });
     // Form fields live in a Paper above the action bar; Save is in a sibling Paper (no shared Grid.Col).
-    const sheetsFormCard = page.locator('.mantine-Paper-root').filter({
-      has: page.getByRole('heading', { name: /Turtle Data - Google Sheets/ }),
-    });
+    const sheetsFormCard = page
+      .getByRole('heading', { name: /Turtle Data - Google Sheets/ })
+      .locator('xpath=ancestor::div[contains(@class,"mantine-Paper-root")][1]');
     const generalLocationInput = sheetsFormCard
       .getByRole('textbox', { name: /General Location/ })
       .or(sheetsFormCard.getByRole('combobox', { name: /General Location/ }));
