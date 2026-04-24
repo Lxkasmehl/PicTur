@@ -29,9 +29,35 @@ const LOOSE_SOURCE_LABELS: Record<TurtleLooseSource, string> = {
   loose_legacy: 'Loose (legacy)',
 };
 
+// Category keys are stable strings. The category dropdown is assembled from
+// fixed category keys plus any additional.type values actually present in the
+// response, so new photo types main adds (left / right / back / etc.) show up
+// automatically without code changes here.
+const CAT_ALL = '__all__';
+const CAT_REFERENCE = '__reference__';
+const CAT_PLASTRON_OLD_REF = 'plastron_old_ref';
+const CAT_PLASTRON_OTHER = 'plastron_other';
+const CAT_CARAPACE_OLD_REF = 'carapace_old_ref';
+const CAT_CARAPACE_OTHER = 'carapace_other';
+const CAT_LOOSE_LEGACY = 'loose_legacy';
+
+const DATE_ALL_EXIF_DESC = '__date_all_exif_desc__';
+const DATE_ALL_EXIF_ASC = '__date_all_exif_asc__';
+const DATE_ALL_UPLOAD_DESC = '__date_all_upload_desc__';
+const DATE_ALL_UPLOAD_ASC = '__date_all_upload_asc__';
+
+const DATE_ALL_VALUES = new Set<string>([
+  DATE_ALL_EXIF_DESC,
+  DATE_ALL_EXIF_ASC,
+  DATE_ALL_UPLOAD_DESC,
+  DATE_ALL_UPLOAD_ASC,
+]);
+
 interface HistoryPhoto {
   path: string;
   label: string;
+  /** Stable category key for filtering (e.g. 'microhabitat', 'plastron_other'). */
+  category: string;
   exifDate?: string | null;
   uploadDate?: string | null;
 }
@@ -44,63 +70,144 @@ export function OldTurtlePhotosSection({
   primaryCarapaceInfo,
 }: OldTurtlePhotosSectionProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(historyDates[0] ?? null);
+  const [selectedCategory, setSelectedCategory] = useState<string>(CAT_ALL);
   const [lightboxPath, setLightboxPath] = useState<string | null>(null);
 
-  const photosForDate: HistoryPhoto[] = useMemo(() => {
-    if (!selectedDate) return [];
+  // Collect every photo once with a stable category key. Keeps filter and
+  // sort logic uniform across the two dropdowns and guards against ever
+  // mixing in another turtle's data — only props from THIS turtle feed in.
+  const allPhotos: HistoryPhoto[] = useMemo(() => {
     const out: HistoryPhoto[] = [];
-    const matchesSelected = (info: TurtlePrimaryInfo) => {
-      const ts = (info.timestamp || '').slice(0, 10);
-      const exif = (info.exif_date || '').slice(0, 10);
-      const upload = (info.upload_date || '').slice(0, 10);
-      return ts === selectedDate || exif === selectedDate || upload === selectedDate;
-    };
-    if (primaryInfo && matchesSelected(primaryInfo)) {
+    if (primaryInfo) {
       out.push({
         path: primaryInfo.path,
         label: 'Plastron (active)',
+        category: CAT_REFERENCE,
         exifDate: primaryInfo.exif_date,
         uploadDate: primaryInfo.upload_date,
       });
     }
-    if (primaryCarapaceInfo && matchesSelected(primaryCarapaceInfo)) {
+    if (primaryCarapaceInfo) {
       out.push({
         path: primaryCarapaceInfo.path,
         label: 'Carapace (active)',
+        category: CAT_REFERENCE,
         exifDate: primaryCarapaceInfo.exif_date,
         uploadDate: primaryCarapaceInfo.upload_date,
       });
     }
     for (const a of additional) {
-      const ts = (a.timestamp || '').slice(0, 10);
-      const exif = (a.exif_date || '').slice(0, 10);
-      const upload = (a.upload_date || '').slice(0, 10);
-      const pathDateMatch = a.path.match(/additional_images[/\\](\d{4}-\d{2}-\d{2})[/\\]/);
-      const folderDate = pathDateMatch?.[1] ?? '';
-      if (ts === selectedDate || exif === selectedDate || upload === selectedDate || folderDate === selectedDate) {
-        out.push({
-          path: a.path,
-          label: a.type || 'additional',
-          exifDate: a.exif_date,
-          uploadDate: a.upload_date,
-        });
-      }
+      out.push({
+        path: a.path,
+        label: a.type || 'additional',
+        category: a.type || 'additional',
+        exifDate: a.exif_date,
+        uploadDate: a.upload_date,
+      });
     }
     for (const l of loose) {
-      const ts = (l.timestamp || '').slice(0, 10);
-      const exif = (l.exif_date || '').slice(0, 10);
-      const upload = (l.upload_date || '').slice(0, 10);
-      if (ts === selectedDate || exif === selectedDate || upload === selectedDate) {
-        out.push({
-          path: l.path,
-          label: LOOSE_SOURCE_LABELS[l.source] ?? l.source,
-          exifDate: l.exif_date,
-          uploadDate: l.upload_date,
-        });
+      out.push({
+        path: l.path,
+        label: LOOSE_SOURCE_LABELS[l.source] ?? l.source,
+        category: l.source,
+        exifDate: l.exif_date,
+        uploadDate: l.upload_date,
+      });
+    }
+    // De-dupe by path so primary and loose pointing at the same file don't double-render.
+    const seen = new Set<string>();
+    return out.filter((p) => (seen.has(p.path) ? false : (seen.add(p.path), true)));
+  }, [additional, loose, primaryInfo, primaryCarapaceInfo]);
+
+  // Build category dropdown from the actual data — fixed keys first, then any
+  // additional types present in the response (sorted alphabetically).
+  const categoryOptions = useMemo(() => {
+    const opts: Array<{ value: string; label: string }> = [
+      { value: CAT_ALL, label: 'All categories' },
+    ];
+
+    const hasReference = allPhotos.some((p) => p.category === CAT_REFERENCE);
+    if (hasReference) opts.push({ value: CAT_REFERENCE, label: 'Reference (active plastron + carapace)' });
+
+    const looseCats: Array<{ key: string; label: string }> = [
+      { key: CAT_PLASTRON_OLD_REF, label: 'Old Plastron References' },
+      { key: CAT_PLASTRON_OTHER, label: 'Other Plastrons' },
+      { key: CAT_CARAPACE_OLD_REF, label: 'Old Carapace References' },
+      { key: CAT_CARAPACE_OTHER, label: 'Other Carapaces' },
+      { key: CAT_LOOSE_LEGACY, label: 'Legacy loose' },
+    ];
+    for (const { key, label } of looseCats) {
+      if (allPhotos.some((p) => p.category === key)) {
+        opts.push({ value: key, label });
       }
     }
-    return out;
-  }, [selectedDate, additional, loose, primaryInfo, primaryCarapaceInfo]);
+
+    // Additional.type values — anything not already covered above. This is
+    // where microhabitat / condition / additional / future main types
+    // (left, right, back, ...) surface automatically.
+    const knownKeys = new Set<string>([
+      CAT_REFERENCE, CAT_PLASTRON_OLD_REF, CAT_PLASTRON_OTHER,
+      CAT_CARAPACE_OLD_REF, CAT_CARAPACE_OTHER, CAT_LOOSE_LEGACY,
+    ]);
+    const additionalTypes = new Set<string>();
+    for (const p of allPhotos) {
+      if (!knownKeys.has(p.category)) additionalTypes.add(p.category);
+    }
+    for (const t of Array.from(additionalTypes).sort()) {
+      // Capitalize first letter for display only; value stays the raw type.
+      const label = t.length > 0 ? t[0].toUpperCase() + t.slice(1) : t;
+      opts.push({ value: t, label });
+    }
+
+    return opts;
+  }, [allPhotos]);
+
+  const dateOptions = useMemo(() => [
+    { value: DATE_ALL_EXIF_DESC, label: 'All photos — newest EXIF first' },
+    { value: DATE_ALL_EXIF_ASC, label: 'All photos — oldest EXIF first' },
+    { value: DATE_ALL_UPLOAD_DESC, label: 'All photos — newest upload first' },
+    { value: DATE_ALL_UPLOAD_ASC, label: 'All photos — oldest upload first' },
+    ...historyDates.map((d) => ({ value: d, label: d })),
+  ], [historyDates]);
+
+  const visiblePhotos: HistoryPhoto[] = useMemo(() => {
+    if (!selectedDate) return [];
+
+    // Step 1: narrow by date mode.
+    let byDate: HistoryPhoto[];
+    if (DATE_ALL_VALUES.has(selectedDate)) {
+      const field: 'exifDate' | 'uploadDate' =
+        selectedDate === DATE_ALL_EXIF_DESC || selectedDate === DATE_ALL_EXIF_ASC
+          ? 'exifDate'
+          : 'uploadDate';
+      const ascending = selectedDate === DATE_ALL_EXIF_ASC || selectedDate === DATE_ALL_UPLOAD_ASC;
+      byDate = [...allPhotos].sort((a, b) => {
+        const av = (a[field] || '').slice(0, 10);
+        const bv = (b[field] || '').slice(0, 10);
+        if (av === bv) return 0;
+        if (!av) return 1;  // missing values always to the bottom
+        if (!bv) return -1;
+        if (ascending) return av < bv ? -1 : 1;
+        return av < bv ? 1 : -1;
+      });
+    } else {
+      // Specific date — use backend-matching canonical date precedence so each
+      // photo appears under exactly one date.
+      const canonicalDate = (p: HistoryPhoto): string => {
+        const exif = (p.exifDate || '').slice(0, 10);
+        if (exif) return exif;
+        const upload = (p.uploadDate || '').slice(0, 10);
+        if (upload) return upload;
+        const pathMatch = p.path.match(/additional_images[/\\](\d{4}-\d{2}-\d{2})[/\\]/);
+        return pathMatch?.[1] ?? '';
+      };
+      byDate = allPhotos.filter((p) => canonicalDate(p) === selectedDate);
+    }
+
+    // Step 2: narrow by category.
+    if (selectedCategory === CAT_ALL) return byDate;
+    return byDate.filter((p) => p.category === selectedCategory);
+  }, [selectedDate, selectedCategory, allPhotos]);
 
   const formatDateSubtitle = (p: HistoryPhoto): string => {
     const exif = p.exifDate ? p.exifDate.slice(0, 10) : null;
@@ -120,23 +227,34 @@ export function OldTurtlePhotosSection({
           <Text fw={600} size='sm'>
             View Old Turtle Photos
           </Text>
-          <Select
-            data={historyDates}
-            value={selectedDate}
-            onChange={setSelectedDate}
-            placeholder='Select a date'
-            size='xs'
-            allowDeselect={false}
-            maw={220}
-          />
+          <Group gap='xs' wrap='wrap'>
+            <Select
+              data={dateOptions}
+              value={selectedDate}
+              onChange={setSelectedDate}
+              placeholder='Select a date'
+              size='xs'
+              allowDeselect={false}
+              maw={260}
+            />
+            <Select
+              data={categoryOptions}
+              value={selectedCategory}
+              onChange={(v) => setSelectedCategory(v ?? CAT_ALL)}
+              placeholder='Category'
+              size='xs'
+              allowDeselect={false}
+              maw={240}
+            />
+          </Group>
         </Group>
-        {photosForDate.length === 0 ? (
+        {visiblePhotos.length === 0 ? (
           <Text size='xs' c='dimmed'>
-            No photos for this date.
+            No photos match this filter.
           </Text>
         ) : (
           <Group gap='xs' wrap='wrap'>
-            {photosForDate.map((p) => {
+            {visiblePhotos.map((p) => {
               const subtitle = formatDateSubtitle(p);
               return (
                 <Stack key={p.path} gap={2} align='center' maw={120}>

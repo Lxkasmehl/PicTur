@@ -251,8 +251,16 @@ export function SheetsBrowserTab() {
 
   // Show only images uploaded *today* in the Additional Turtle Photos pane.
   // Older uploads remain accessible via the "View Old Turtle Photos" date picker.
-  // Matches the backend's local-date folder naming in add_additional_images_to_turtle.
-  const allAdditionalImages = turtleImages?.additional ?? [];
+  // Photos land in several disk locations depending on upload path:
+  //   - microhabitat/condition/additional (and any new future additional-style
+  //     buttons main adds) -> additional_images/YYYY-MM-DD/... -> turtleImages.additional
+  //   - plastron/carapace replacement refs  -> plastron/ or carapace/ -> primary_info
+  //   - demoted/other plastron & carapace   -> plastron/Other Plastrons/, etc. -> loose
+  //   - old refs archived on replacement    -> plastron/Old References/, etc. -> loose
+  // All of these should appear in today's scratchpad; we use upload_date (not
+  // timestamp, which prefers EXIF) so a photo captured years ago but uploaded
+  // today still shows up. Filter is type-agnostic for forward compatibility
+  // with any new additional-type buttons that land in main.
   const todayIso = (() => {
     const d = new Date();
     const y = d.getFullYear();
@@ -261,10 +269,43 @@ export function SheetsBrowserTab() {
     return `${y}-${m}-${day}`;
   })();
   const folderDateRegex = /[\\/](\d{4}-\d{2}-\d{2})[\\/]/;
-  const todaysAdditionalImages = allAdditionalImages.filter((img) => {
-    const match = img.path.match(folderDateRegex);
-    return match?.[1] === todayIso;
-  });
+
+  type ScratchpadImage = { path: string; type: string };
+
+  const todaysAdditionalImages: ScratchpadImage[] = (() => {
+    const out: ScratchpadImage[] = [];
+
+    for (const img of turtleImages?.additional ?? []) {
+      const match = img.path.match(folderDateRegex);
+      if (match?.[1] === todayIso) {
+        out.push({ path: img.path, type: img.type });
+      }
+    }
+
+    const looseTypeFor = (source: string): string =>
+      source.startsWith('carapace') ? 'carapace' : 'plastron';
+
+    for (const img of turtleImages?.loose ?? []) {
+      if (img.upload_date === todayIso) {
+        out.push({ path: img.path, type: looseTypeFor(img.source) });
+      }
+    }
+
+    const primaryInfo = turtleImages?.primary_info;
+    if (primaryInfo && primaryInfo.upload_date === todayIso) {
+      out.push({ path: primaryInfo.path, type: 'plastron' });
+    }
+    const primaryCarapaceInfo = turtleImages?.primary_carapace_info;
+    if (primaryCarapaceInfo && primaryCarapaceInfo.upload_date === todayIso) {
+      out.push({ path: primaryCarapaceInfo.path, type: 'carapace' });
+    }
+
+    // De-duplicate by path (a primary ref and a loose entry can occasionally
+    // point at the same path during the brief window before the backend
+    // response reflects a replacement).
+    const seen = new Set<string>();
+    return out.filter((x) => (seen.has(x.path) ? false : (seen.add(x.path), true)));
+  })();
 
   return (
     <Grid gutter='lg'>
@@ -507,16 +548,29 @@ export function SheetsBrowserTab() {
                       );
                     })}
                   </Group>
-                  {(replaceWinnerIds.plastron || replaceWinnerIds.carapace) &&
-                    stagedPhotos.filter((s) => isReferenceType(s.photoType) && s.replaceReference).length > 1 && (
+                  {(() => {
+                    // Fire only when a SINGLE type has more than one replace-flagged
+                    // staged entry. One plastron + one carapace (both replace) is fine.
+                    const perType: Record<ReferenceType, number> = { plastron: 0, carapace: 0 };
+                    for (const s of stagedPhotos) {
+                      if (isReferenceType(s.photoType) && s.replaceReference) {
+                        perType[s.photoType] += 1;
+                      }
+                    }
+                    const collidingTypes = (['plastron', 'carapace'] as ReferenceType[]).filter(
+                      (t) => perType[t] > 1,
+                    );
+                    if (collidingTypes.length === 0) return null;
+                    return (
                       <Alert color='orange' icon={<IconAlertTriangle size={16} />} p='xs'>
                         <Text size='xs'>
-                          Multiple replacements staged for the same type — only the last one of each
-                          type will become the new reference. Earlier ones will be saved to the
-                          Other folder instead.
+                          Multiple replacements staged for {collidingTypes.join(' and ')} —
+                          only the last one of each type will become the new reference. Earlier
+                          ones will be saved to the Other folder instead.
                         </Text>
                       </Alert>
-                    )}
+                    );
+                  })()}
                 </Stack>
               </Paper>
             )}
