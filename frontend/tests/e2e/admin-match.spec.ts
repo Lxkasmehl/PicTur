@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import {
   loginAsAdmin,
   loginAsCommunity,
@@ -10,6 +10,21 @@ import {
   GENERAL_LOCATION_LABEL,
   registerKansasGeneralLocationsCatalogMock,
 } from './fixtures';
+
+/**
+ * After opening the General Location Mantine dropdown, resolves the portaled listbox.
+ * WebKit often omits the accessible name on that listbox; same strategy as `selectGeneralLocationInCreateTurtleDialog` in fixtures.ts.
+ */
+async function waitForGeneralLocationListbox(page: Page, visibilityTimeoutMs: number) {
+  const namedListbox = page.getByRole('listbox', { name: GENERAL_LOCATION_LABEL });
+  const useNamed = await namedListbox
+    .waitFor({ state: 'visible', timeout: 2500 })
+    .then(() => true)
+    .catch(() => false);
+  const listbox = useNamed ? namedListbox : page.getByRole('listbox').last();
+  await listbox.waitFor({ state: 'visible', timeout: visibilityTimeoutMs });
+  return listbox;
+}
 
 test.describe('Admin Turtle Match', () => {
   test.beforeEach(async ({ page }) => {
@@ -210,8 +225,7 @@ test.describe('Admin Turtle Match', () => {
       expect(options).toContain('North Topeka');
     } else {
       await generalLocationField.click();
-      const listbox = page.getByRole('listbox');
-      await expect(listbox).toBeVisible({ timeout: 5000 });
+      const listbox = await waitForGeneralLocationListbox(page, 5000);
       const optionTexts = await listbox.getByRole('option').allTextContents();
       expect(optionTexts).toContain('North Topeka');
       await page.keyboard.press('Escape');
@@ -349,8 +363,7 @@ test.describe('Admin Turtle Match', () => {
       expect(options).toContain('West Topeka');
     } else {
       await glField.click();
-      const listbox = page.getByRole('listbox', { name: GENERAL_LOCATION_LABEL });
-      await expect(listbox).toBeVisible({ timeout: 5000 });
+      const listbox = await waitForGeneralLocationListbox(page, 5000);
       const optionTexts = await listbox.getByRole('option').allTextContents();
       expect(optionTexts).toContain('West Topeka');
       await page.keyboard.press('Escape');
