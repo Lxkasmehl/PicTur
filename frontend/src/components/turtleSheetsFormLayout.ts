@@ -62,7 +62,9 @@ export const FULL_SHEET_FORM_FIELD_ORDER: TurtleFormOrderKey[] = [
  *   all other visible fields (e.g. **freq**, **species**, **name**) are read-only with no unlock.
  * - **Create** new turtle (Match page modal): the same “non-unlockable on edit” fields use
  *   unlock-to-edit so they can be filled; biology **id** stays auto/disabled; **general_location**
- *   may stay open when moving from community (`requireNewSheetForCommunityMatch`).
+ *   uses unlock-then-catalog-dropdown when editable, or stays disabled when the sheet has a
+ *   fixed default (`generalLocationLocked`); **general_location** may stay open when moving from
+ *   community (`requireNewSheetForCommunityMatch`).
  */
 export const TURTLE_MATCH_PAGE_FORM_ORDER: TurtleFormOrderKey[] = [
   'freq',
@@ -98,12 +100,16 @@ export const TURTLE_MATCH_PAGE_FORM_ORDER: TurtleFormOrderKey[] = [
   'dome_height_mm',
 ];
 
-/** On Match **edit**, these fields use unlock + confirm; others in the match column set are hard read-only. */
+/**
+ * On Match **edit**, these fields use unlock + confirm; others in the match column set are hard read-only.
+ * **general_location** uses the same unlock flow so the catalog dropdown appears after confirm (not read-only text + “Add new” only).
+ */
 export const TURTLE_MATCH_PAGE_UNLOCKABLE_FIELDS = new Set<keyof TurtleSheetsData>([
   'dna_extracted',
   'last_assay_date',
   'dates_refound',
   'specific_location',
+  'general_location',
   'location',
   'cow_interactions',
   'health_status',
