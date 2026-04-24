@@ -327,9 +327,10 @@ test.describe('Admin Turtle Match', () => {
 
     await page.locator('.mantine-Card-root').filter({ hasText: 'F501' }).first().click();
 
-    const sheetsFormCard = page.locator('.mantine-Paper-root').filter({
-      has: page.getByRole('heading', { name: /Turtle Data - Google Sheets/ }),
-    });
+    // Closest Paper only: nested Mantine Papers both match filter({ has: heading }), which breaks strict mode.
+    const sheetsFormCard = page
+      .getByRole('heading', { name: /Turtle Data - Google Sheets/ })
+      .locator('xpath=ancestor::div[contains(@class,"mantine-Paper-root")][1]');
     await expect(sheetsFormCard).toBeVisible({ timeout: 15_000 });
 
     await registerKansasGeneralLocationsCatalogMock(page);
