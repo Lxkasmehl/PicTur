@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Paper, Stack, Group, Text, Select, Image, Modal, Box, Badge } from '@mantine/core';
-import { getImageUrl } from '../services/api';
+import { Paper, Stack, Group, Text, Select, Image, Modal, Box, Badge, ActionIcon } from '@mantine/core';
+import { IconTrash, IconDownload, IconRestore } from '@tabler/icons-react';
+import { getImageUrl, getTurtleImageDownloadUrl } from '../services/api';
 import type {
+  TurtleDeletedImage,
   TurtleImageAdditional,
   TurtleLooseImage,
   TurtleLooseSource,
@@ -19,6 +21,24 @@ interface OldTurtlePhotosSectionProps {
   primaryInfo?: TurtlePrimaryInfo | null;
   /** Active carapace reference — shown under its capture/upload date. */
   primaryCarapaceInfo?: TurtlePrimaryInfo | null;
+  /** Soft-deleted images. When present + an onRestore callback is provided,
+   *  a "Deleted photos (restorable)" option appears in the date dropdown. */
+  deleted?: TurtleDeletedImage[];
+  /** Callback when the user clicks the trash on a live photo. Parent owns the
+   *  confirm-modal flow and refetch. Button hidden when not provided. */
+  onDelete?: (photo: HistoryPhotoExternal) => void;
+  /** Callback when the user clicks restore on a photo in the deleted view. */
+  onRestore?: (photo: TurtleDeletedImage) => void;
+}
+
+/** Subset of HistoryPhoto exposed to the delete callback. Kept minimal so the
+ *  parent isn't coupled to internal category keys. */
+export interface HistoryPhotoExternal {
+  path: string;
+  label: string;
+  category: string;
+  exifDate?: string | null;
+  uploadDate?: string | null;
 }
 
 const LOOSE_SOURCE_LABELS: Record<TurtleLooseSource, string> = {
@@ -45,6 +65,7 @@ const DATE_ALL_EXIF_DESC = '__date_all_exif_desc__';
 const DATE_ALL_EXIF_ASC = '__date_all_exif_asc__';
 const DATE_ALL_UPLOAD_DESC = '__date_all_upload_desc__';
 const DATE_ALL_UPLOAD_ASC = '__date_all_upload_asc__';
+const DATE_DELETED_ONLY = '__date_deleted_only__';
 
 const DATE_ALL_VALUES = new Set<string>([
   DATE_ALL_EXIF_DESC,
@@ -68,6 +89,9 @@ export function OldTurtlePhotosSection({
   loose,
   primaryInfo,
   primaryCarapaceInfo,
+  deleted,
+  onDelete,
+  onRestore,
 }: OldTurtlePhotosSectionProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(historyDates[0] ?? null);
   const [selectedCategory, setSelectedCategory] = useState<string>(CAT_ALL);
@@ -162,13 +186,19 @@ export function OldTurtlePhotosSection({
     return opts;
   }, [allPhotos]);
 
-  const dateOptions = useMemo(() => [
-    { value: DATE_ALL_EXIF_DESC, label: 'All photos — newest EXIF first' },
-    { value: DATE_ALL_EXIF_ASC, label: 'All photos — oldest EXIF first' },
-    { value: DATE_ALL_UPLOAD_DESC, label: 'All photos — newest upload first' },
-    { value: DATE_ALL_UPLOAD_ASC, label: 'All photos — oldest upload first' },
-    ...historyDates.map((d) => ({ value: d, label: d })),
-  ], [historyDates]);
+  const dateOptions = useMemo(() => {
+    const base = [
+      { value: DATE_ALL_EXIF_DESC, label: 'All photos — newest EXIF first' },
+      { value: DATE_ALL_EXIF_ASC, label: 'All photos — oldest EXIF first' },
+      { value: DATE_ALL_UPLOAD_DESC, label: 'All photos — newest upload first' },
+      { value: DATE_ALL_UPLOAD_ASC, label: 'All photos — oldest upload first' },
+    ];
+    const hasDeleted = (deleted?.length ?? 0) > 0 && !!onRestore;
+    if (hasDeleted) {
+      base.push({ value: DATE_DELETED_ONLY, label: `Deleted photos (restorable) — ${deleted!.length}` });
+    }
+    return [...base, ...historyDates.map((d) => ({ value: d, label: d }))];
+  }, [historyDates, deleted, onRestore]);
 
   const visiblePhotos: HistoryPhoto[] = useMemo(() => {
     if (!selectedDate) return [];
@@ -218,7 +248,32 @@ export function OldTurtlePhotosSection({
     return '';
   };
 
-  if (historyDates.length === 0) return null;
+  const inDeletedView = selectedDate === DATE_DELETED_ONLY;
+
+  // Categorize deleted entries for display labels when in the deleted view.
+  const deletedCategoryLabel = (cat: string): string => {
+    switch (cat) {
+      case 'reference': return 'Reference (deleted)';
+      case 'plastron_old_ref': return 'Old Plastron Ref (deleted)';
+      case 'plastron_other': return 'Other Plastron (deleted)';
+      case 'carapace_old_ref': return 'Old Carapace Ref (deleted)';
+      case 'carapace_other': return 'Other Carapace (deleted)';
+      case 'additional': return 'Additional (deleted)';
+      case 'loose_legacy': return 'Legacy loose (deleted)';
+      default: return 'Deleted';
+    }
+  };
+
+  const formatDeletedSubtitle = (p: TurtleDeletedImage): string => {
+    const exif = p.exif_date ? p.exif_date.slice(0, 10) : null;
+    const upload = p.upload_date ? p.upload_date.slice(0, 10) : null;
+    if (exif && upload && exif !== upload) return `📷 ${exif} · 📤 ${upload}`;
+    if (exif) return `📷 ${exif}`;
+    if (upload) return `📤 ${upload}`;
+    return '';
+  };
+
+  if (historyDates.length === 0 && (deleted?.length ?? 0) === 0) return null;
 
   return (
     <Paper shadow='sm' p='md' radius='md' withBorder>
@@ -248,7 +303,66 @@ export function OldTurtlePhotosSection({
             />
           </Group>
         </Group>
-        {visiblePhotos.length === 0 ? (
+        {inDeletedView ? (
+          (deleted?.length ?? 0) === 0 ? (
+            <Text size='xs' c='dimmed'>No deleted photos.</Text>
+          ) : (
+            <Group gap='xs' wrap='wrap'>
+              {deleted!.map((d) => {
+                const subtitle = formatDeletedSubtitle(d);
+                return (
+                  <Stack key={d.path} gap={2} align='center' maw={120}>
+                    <Box
+                      style={{
+                        width: 96,
+                        height: 96,
+                        borderRadius: 8,
+                        overflow: 'hidden',
+                        border: '1px solid var(--mantine-color-default-border)',
+                        cursor: 'pointer',
+                        opacity: 0.75,
+                      }}
+                      onClick={() => setLightboxPath(d.path)}
+                    >
+                      <Image src={getImageUrl(d.path)} alt={d.category} w={96} h={96} fit='cover' />
+                    </Box>
+                    <Badge size='xs' variant='light' color='gray'>
+                      {deletedCategoryLabel(d.category)}
+                    </Badge>
+                    {subtitle && (
+                      <Text size='10px' c='dimmed' ta='center' lh={1.2}>
+                        {subtitle}
+                      </Text>
+                    )}
+                    <Group gap={4} justify='center' wrap='nowrap'>
+                      <ActionIcon
+                        size='sm'
+                        variant='subtle'
+                        component='a'
+                        href={getTurtleImageDownloadUrl(d.path)}
+                        title='Download'
+                        download
+                      >
+                        <IconDownload size={14} />
+                      </ActionIcon>
+                      {onRestore && (
+                        <ActionIcon
+                          size='sm'
+                          variant='subtle'
+                          color='green'
+                          title='Restore'
+                          onClick={() => onRestore(d)}
+                        >
+                          <IconRestore size={14} />
+                        </ActionIcon>
+                      )}
+                    </Group>
+                  </Stack>
+                );
+              })}
+            </Group>
+          )
+        ) : visiblePhotos.length === 0 ? (
           <Text size='xs' c='dimmed'>
             No photos match this filter.
           </Text>
@@ -279,6 +393,29 @@ export function OldTurtlePhotosSection({
                       {subtitle}
                     </Text>
                   )}
+                  <Group gap={4} justify='center' wrap='nowrap'>
+                    <ActionIcon
+                      size='sm'
+                      variant='subtle'
+                      component='a'
+                      href={getTurtleImageDownloadUrl(p.path)}
+                      title='Download'
+                      download
+                    >
+                      <IconDownload size={14} />
+                    </ActionIcon>
+                    {onDelete && (
+                      <ActionIcon
+                        size='sm'
+                        variant='subtle'
+                        color='red'
+                        title='Delete'
+                        onClick={() => onDelete(p)}
+                      >
+                        <IconTrash size={14} />
+                      </ActionIcon>
+                    )}
+                  </Group>
                 </Stack>
               );
             })}

@@ -76,5 +76,11 @@ def register_image_routes(app):
         
         if not full_path or not os.path.exists(full_path):
             return jsonify({'error': 'Image not found'}), 404
-        
+
+        # ?download=1 forces the browser to save rather than render inline.
+        # Filename in Content-Disposition is the file's basename on disk.
+        download_flag = (request.args.get('download') or '').strip().lower()
+        as_attachment = download_flag in ('1', 'true', 'yes')
+        if as_attachment:
+            return send_file(full_path, as_attachment=True, download_name=os.path.basename(full_path))
         return send_file(full_path)

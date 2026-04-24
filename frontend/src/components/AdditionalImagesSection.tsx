@@ -49,6 +49,11 @@ interface AdditionalImagesSectionProps {
    *  and plastron/carapace are rendered in red to signal they may replace the current reference.
    *  Leave undefined for packet-mode / immediate-upload behavior. */
   onStagePhoto?: (type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional', file: File) => void;
+  /** Override for the delete button. When provided, clicking trash calls this instead
+   *  of the built-in handler, and it is the parent's responsibility to refetch. Used
+   *  by scratchpad callers so the confirm-modal and soft-delete routing lives in one
+   *  place instead of being duplicated here. */
+  onDelete?: (photo: AdditionalImageDisplay) => Promise<void> | void;
 }
 
 export function AdditionalImagesSection({
@@ -62,6 +67,7 @@ export function AdditionalImagesSection({
   embedded = false,
   hideAddButtons = false,
   onStagePhoto,
+  onDelete,
 }: AdditionalImagesSectionProps) {
   const [lightboxPath, setLightboxPath] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -70,6 +76,20 @@ export function AdditionalImagesSection({
   const isPacket = !!requestId;
   const isTurtle = !!turtleId;
   const canEdit = (isPacket || isTurtle) && !disabled;
+
+  const handleRemoveWithOverride = async (img: AdditionalImageDisplay) => {
+    if (onDelete) {
+      // Parent owns the whole flow (confirm modal + refetch).
+      setRemoving(img.filename);
+      try {
+        await onDelete(img);
+      } finally {
+        setRemoving(null);
+      }
+      return;
+    }
+    await handleRemove(img.filename);
+  };
 
   const handleRemove = async (filename: string) => {
     setRemoving(filename);
@@ -341,7 +361,7 @@ export function AdditionalImagesSection({
                               title="Remove"
                               p={4}
                               loading={removing === img.filename}
-                              onClick={() => handleRemove(img.filename)}
+                              onClick={() => handleRemoveWithOverride(img)}
                             >
                               <IconTrash size={14} />
                             </Button>

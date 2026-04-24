@@ -244,6 +244,13 @@ def register_turtle_routes(app):
                     date_set.add(best[:10])
         history_dates = sorted(date_set, reverse=True)
 
+        # Soft-deleted images: scanned from {turtle_dir}/Deleted/ via TurtleManager.
+        deleted = []
+        try:
+            deleted = manager.list_deleted_turtle_images(turtle_id, sheet_name)
+        except Exception as e:
+            print(f"Warning: could not list deleted images for {turtle_id}: {e}")
+
         return jsonify({
             'primary': primary_path,
             'primary_carapace': primary_carapace_path,
@@ -252,6 +259,7 @@ def register_turtle_routes(app):
             'additional': additional,
             'loose': loose,
             'history_dates': history_dates,
+            'deleted': deleted,
         })
 
     @app.route('/api/turtles/images/primaries', methods=['POST'])
@@ -292,6 +300,73 @@ def register_turtle_routes(app):
                         break
             results.append({'turtle_id': tid, 'sheet_name': sheet, 'primary': primary_path})
         return jsonify({'images': results})
+
+    @app.route('/api/turtles/image', methods=['DELETE'])
+    @require_admin
+    def soft_delete_turtle_image():
+        """
+        Soft-delete an image (Admin only).
+
+        Moves the file to {turtle_dir}/Deleted/{original_rel_path}. If it was
+        the active plastron or carapace reference, auto-reverts to the most
+        recent file in {photo_type}/Old References/ and regenerates its .pt.
+
+        Body (JSON): { turtle_id, path, sheet_name? }.
+        Response: { success, was_reference, reverted, new_reference_path }.
+        """
+        if not manager_service.manager_ready.wait(timeout=5):
+            return jsonify({'error': 'TurtleManager is still initializing'}), 503
+        if manager_service.manager is None:
+            return jsonify({'error': 'TurtleManager not available'}), 500
+        data = request.get_json(silent=True) or {}
+        turtle_id = (data.get('turtle_id') or '').strip()
+        path = (data.get('path') or '').strip()
+        sheet_name = (data.get('sheet_name') or '').strip() or None
+        if not turtle_id:
+            return jsonify({'error': 'turtle_id required'}), 400
+        if not path:
+            return jsonify({'error': 'path required'}), 400
+        success, info = manager_service.manager.soft_delete_turtle_image(
+            turtle_id, path, sheet_name
+        )
+        if not success:
+            return jsonify({'error': info.get('error', 'Failed to delete image')}), 400
+        return jsonify({'success': True, **info})
+
+    @app.route('/api/turtles/restore-image', methods=['POST'])
+    @require_admin
+    def restore_turtle_image_endpoint():
+        """
+        Restore a soft-deleted image (Admin only).
+
+        Target path is derived from the Deleted/ path by stripping the
+        'Deleted/' prefix. If the target is an active-ref slot, regenerates
+        .pt and updates VRAM. Fails with collision=True if the target
+        already exists.
+
+        Body (JSON): { turtle_id, path, sheet_name? } where path is the
+        absolute path of the file in the Deleted/ folder (or a turtle-dir
+        relative path starting with 'Deleted/').
+        """
+        if not manager_service.manager_ready.wait(timeout=5):
+            return jsonify({'error': 'TurtleManager is still initializing'}), 503
+        if manager_service.manager is None:
+            return jsonify({'error': 'TurtleManager not available'}), 500
+        data = request.get_json(silent=True) or {}
+        turtle_id = (data.get('turtle_id') or '').strip()
+        path = (data.get('path') or '').strip()
+        sheet_name = (data.get('sheet_name') or '').strip() or None
+        if not turtle_id:
+            return jsonify({'error': 'turtle_id required'}), 400
+        if not path:
+            return jsonify({'error': 'path required'}), 400
+        success, info = manager_service.manager.restore_turtle_image(
+            turtle_id, path, sheet_name
+        )
+        if not success:
+            status = 409 if info.get('collision') else 400
+            return jsonify({'error': info.get('error', 'Failed to restore image'), **{k: v for k, v in info.items() if k != 'error'}}), status
+        return jsonify({'success': True, **info})
 
     @app.route('/api/turtles/images/additional', methods=['DELETE'])
     @require_admin

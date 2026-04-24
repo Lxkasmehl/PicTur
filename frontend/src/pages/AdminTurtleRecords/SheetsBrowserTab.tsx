@@ -26,11 +26,16 @@ import {
   getTurtlePrimariesBatch,
   uploadTurtleAdditionalImages,
   uploadTurtleReplaceReference,
+  deleteTurtleImage,
+  restoreTurtleImage,
+  RestoreCollisionError,
   type TurtleImagesResponse,
+  type TurtleDeletedImage,
 } from '../../services/api';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
-import { OldTurtlePhotosSection } from '../../components/OldTurtlePhotosSection';
+import { OldTurtlePhotosSection, type HistoryPhotoExternal } from '../../components/OldTurtlePhotosSection';
+import { ConfirmDeletePhotoModal, type DeleteModalContext } from '../../components/ConfirmDeletePhotoModal';
 import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
 
 type StagedType = 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional';
@@ -221,6 +226,149 @@ export function SheetsBrowserTab() {
       }
     }
     return result;
+  };
+
+  // Images-only commit triggered by the second Update Turtle Images button
+  // inside the pending-photos box. Does NOT save the sheet record.
+  const handleCommitImagesOnly = async () => {
+    const committed = await commitStagedPhotos();
+    if (!committed) return;
+    if (turtleId) {
+      try {
+        const res = await getTurtleImages(turtleId, sheetName);
+        setTurtleImages(res);
+      } catch {
+        /* ignore */
+      }
+    }
+    notifications.show({
+      title: 'Images updated',
+      message: 'Staged photos committed. The turtle record was not modified.',
+      color: 'green',
+    });
+  };
+
+  // --- Soft-delete + restore flow ---------------------------------------
+  const [pendingDelete, setPendingDelete] = useState<null | {
+    path: string;
+    label: string;
+    context: DeleteModalContext;
+  }>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  const refetchImages = async () => {
+    if (!turtleId) return;
+    try {
+      const res = await getTurtleImages(turtleId, sheetName);
+      setTurtleImages(res);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const openDeleteModalForActiveRef = (
+    photoType: 'plastron' | 'carapace',
+    photoPath: string,
+    photoLabel: string,
+  ) => {
+    // Look for an Old Ref that would auto-promote if this is deleted.
+    const oldRefSource = photoType === 'plastron' ? 'plastron_old_ref' : 'carapace_old_ref';
+    const oldRefs = (turtleImages?.loose ?? []).filter((l) => l.source === oldRefSource);
+    let revertHint: string | undefined;
+    if (oldRefs.length > 0) {
+      const sorted = [...oldRefs].sort((a, b) => {
+        const ad = (a.upload_date || a.timestamp || '') as string;
+        const bd = (b.upload_date || b.timestamp || '') as string;
+        return ad < bd ? 1 : ad > bd ? -1 : 0;
+      });
+      const first = sorted[0];
+      revertHint = first.upload_date || first.timestamp || undefined;
+    }
+    setPendingDelete({
+      path: photoPath,
+      label: photoLabel,
+      context: oldRefs.length > 0
+        ? { kind: 'active_ref_with_revert', photoType, revertHint: revertHint || undefined }
+        : { kind: 'active_ref_no_revert', photoType },
+    });
+  };
+
+  const openDeleteModalForNonRef = (path: string, label: string) => {
+    setPendingDelete({ path, label, context: { kind: 'non_ref' } });
+  };
+
+  const handlePhotoDelete = (photo: HistoryPhotoExternal) => {
+    if (!turtleId) return;
+    const isActivePlastron = turtleImages?.primary_info?.path === photo.path;
+    const isActiveCarapace = turtleImages?.primary_carapace_info?.path === photo.path;
+    if (isActivePlastron) {
+      openDeleteModalForActiveRef('plastron', photo.path, photo.label);
+    } else if (isActiveCarapace) {
+      openDeleteModalForActiveRef('carapace', photo.path, photo.label);
+    } else {
+      openDeleteModalForNonRef(photo.path, photo.label);
+    }
+  };
+
+  // Scratchpad uses the same flow, just shaped from AdditionalImagesSection's item type.
+  const handleScratchpadDelete = async (item: { imagePath: string; filename: string; type: string }) => {
+    handlePhotoDelete({ path: item.imagePath, label: item.type, category: item.type });
+  };
+
+  const confirmPendingDelete = async () => {
+    if (!pendingDelete || !turtleId) return;
+    setDeleteBusy(true);
+    try {
+      const res = await deleteTurtleImage(turtleId, pendingDelete.path, sheetName);
+      setPendingDelete(null);
+      notifications.show({
+        title: res.reverted ? 'Deleted & reverted' : 'Moved to Deleted',
+        message: res.reverted
+          ? `Previous ${res.was_reference} reference promoted automatically.`
+          : res.was_reference
+            ? `No previous ${res.was_reference} reference available; the turtle now has no active ${res.was_reference} reference.`
+            : 'Photo moved to the Deleted folder; can be restored later.',
+        color: res.reverted ? 'green' : res.was_reference ? 'orange' : 'green',
+      });
+      await refetchImages();
+    } catch (e) {
+      notifications.show({
+        title: 'Delete failed',
+        message: e instanceof Error ? e.message : 'Unknown error',
+        color: 'red',
+      });
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const handleRestore = async (photo: TurtleDeletedImage) => {
+    if (!turtleId) return;
+    try {
+      const res = await restoreTurtleImage(turtleId, photo.deleted_rel_path, sheetName);
+      notifications.show({
+        title: 'Restored',
+        message: res.is_reference
+          ? `Reference restored; feature tensor regenerated.`
+          : 'Photo restored to its original location.',
+        color: res.warning ? 'orange' : 'green',
+      });
+      await refetchImages();
+    } catch (e) {
+      if (e instanceof RestoreCollisionError) {
+        notifications.show({
+          title: 'Restore blocked',
+          message: `${e.message} Delete the occupant first, then restore.`,
+          color: 'red',
+        });
+      } else {
+        notifications.show({
+          title: 'Restore failed',
+          message: e instanceof Error ? e.message : 'Unknown error',
+          color: 'red',
+        });
+      }
+    }
   };
 
   // Load primary (plastron) images for the turtle list so we can show them in cards
@@ -452,13 +600,16 @@ export function SheetsBrowserTab() {
       <Grid.Col span={{ base: 12, md: 8 }}>
         {selectedTurtle ? (
           <Stack gap='md'>
-            {turtleId && turtleImages && turtleImages.history_dates.length > 0 && (
+            {turtleId && turtleImages && (turtleImages.history_dates.length > 0 || (turtleImages.deleted?.length ?? 0) > 0) && (
               <OldTurtlePhotosSection
                 historyDates={turtleImages.history_dates}
                 additional={turtleImages.additional}
                 loose={turtleImages.loose}
                 primaryInfo={turtleImages.primary_info}
                 primaryCarapaceInfo={turtleImages.primary_carapace_info}
+                deleted={turtleImages.deleted}
+                onDelete={handlePhotoDelete}
+                onRestore={handleRestore}
               />
             )}
             {turtleId && (
@@ -473,6 +624,7 @@ export function SheetsBrowserTab() {
                 sheetName={sheetName}
                 onStagePhoto={handleStagePhoto}
                 disabled={committing}
+                onDelete={handleScratchpadDelete}
                 onRefresh={async () => {
                   if (!turtleId) return;
                   const res = await getTurtleImages(turtleId, sheetName);
@@ -571,6 +723,25 @@ export function SheetsBrowserTab() {
                       </Alert>
                     );
                   })()}
+                  <Divider />
+                  <Stack gap={4}>
+                    <Group justify='space-between' align='center' wrap='wrap' gap='xs'>
+                      <Text size='xs' c='dimmed'>
+                        Staged photos haven't been saved yet. This button saves images only —
+                        to update the turtle's record fields, use the Update button in the
+                        turtle info section below.
+                      </Text>
+                      <Button
+                        color='blue'
+                        size='xs'
+                        onClick={handleCommitImagesOnly}
+                        loading={committing}
+                        disabled={committing || stagedPhotos.length === 0}
+                      >
+                        Update Turtle Images
+                      </Button>
+                    </Group>
+                  </Stack>
                 </Stack>
               </Paper>
             )}
@@ -647,6 +818,16 @@ export function SheetsBrowserTab() {
           </Group>
         </Stack>
       </Modal>
+
+      <ConfirmDeletePhotoModal
+        opened={!!pendingDelete}
+        previewPath={pendingDelete?.path}
+        previewLabel={pendingDelete?.label}
+        context={pendingDelete?.context ?? { kind: 'non_ref' }}
+        onCancel={() => { if (!deleteBusy) setPendingDelete(null); }}
+        onConfirm={confirmPendingDelete}
+        busy={deleteBusy}
+      />
     </Grid>
   );
 }

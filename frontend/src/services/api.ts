@@ -48,11 +48,15 @@ export {
   getTurtlesWithFlags,
   clearReleaseFlag,
   getImageUrl,
+  getTurtleImageDownloadUrl,
   getTurtleImages,
   getTurtlePrimariesBatch,
   uploadTurtleAdditionalImages,
   uploadTurtleReplaceReference,
   deleteTurtleAdditionalImage,
+  deleteTurtleImage,
+  restoreTurtleImage,
+  RestoreCollisionError,
   classifyReviewPacket,
   crossCheckReviewPacket,
 } from './api/turtle';
@@ -74,6 +78,10 @@ export type {
   TurtleLooseImage,
   TurtleLooseSource,
   TurtlePrimaryInfo,
+  TurtleDeletedImage,
+  TurtleDeletedCategory,
+  DeleteTurtleImageResponse,
+  RestoreTurtleImageResponse,
 } from './api/turtle';
 
 export {

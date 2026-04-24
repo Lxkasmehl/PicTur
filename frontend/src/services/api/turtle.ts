@@ -430,6 +430,15 @@ export const getImageUrl = (imagePath: string): string => {
   return `${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?path=${encodedPath}`;
 };
 
+/** Download URL — triggers Content-Disposition: attachment server-side. */
+export const getTurtleImageDownloadUrl = (imagePath: string): string => {
+  if (imagePath.startsWith('http')) {
+    return imagePath;
+  }
+  const encodedPath = encodeURIComponent(imagePath);
+  return `${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?path=${encodedPath}&download=1`;
+};
+
 // Turtle images (Admin only) – primary plastron/carapace, additional, loose, history
 export interface TurtleImageAdditional {
   path: string;
@@ -467,6 +476,29 @@ export interface TurtlePrimaryInfo {
   upload_date?: string | null;
 }
 
+export type TurtleDeletedCategory =
+  | 'reference'
+  | 'plastron_old_ref'
+  | 'plastron_other'
+  | 'carapace_old_ref'
+  | 'carapace_other'
+  | 'additional'
+  | 'loose_legacy'
+  | 'unknown';
+
+export interface TurtleDeletedImage {
+  /** Absolute path of the file inside {turtle_dir}/Deleted/... */
+  path: string;
+  /** Absolute path where restore would place this file. */
+  original_path: string;
+  /** Turtle-dir relative path starting with "Deleted/". Used by the restore endpoint. */
+  deleted_rel_path: string;
+  category: TurtleDeletedCategory;
+  timestamp?: string | null;
+  exif_date?: string | null;
+  upload_date?: string | null;
+}
+
 export interface TurtleImagesResponse {
   primary: string | null;
   primary_carapace: string | null;
@@ -477,6 +509,8 @@ export interface TurtleImagesResponse {
   additional: TurtleImageAdditional[];
   loose: TurtleLooseImage[];
   history_dates: string[];
+  /** Soft-deleted images (in {turtle_dir}/Deleted/). */
+  deleted?: TurtleDeletedImage[];
 }
 
 export const getTurtleImages = async (
@@ -592,4 +626,91 @@ export const deleteTurtleAdditionalImage = async (
     const err = await response.json().catch(() => ({ error: 'Failed to delete image' }));
     throw new Error(err.error || 'Failed to delete image');
   }
+};
+
+// --------------------------------------------------------------------------
+// Soft-delete / restore (Admin only)
+// --------------------------------------------------------------------------
+
+export interface DeleteTurtleImageResponse {
+  success: boolean;
+  /** Absolute path of the file in Deleted/. */
+  moved_to: string;
+  /** 'plastron' | 'carapace' when the deleted file was the active ref, else null. */
+  was_reference: 'plastron' | 'carapace' | null;
+  /** True if an Old Reference was promoted back to active automatically. */
+  reverted: boolean;
+  /** Absolute path of the newly-promoted active reference, if reverted. */
+  new_reference_path: string | null;
+  /** Present when promotion succeeded on move but .pt regeneration failed. */
+  error_promoting?: string;
+}
+
+export const deleteTurtleImage = async (
+  turtleId: string,
+  imagePath: string,
+  sheetName?: string | null,
+): Promise<DeleteTurtleImageResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/image`, {
+    method: 'DELETE',
+    headers,
+    body: JSON.stringify({
+      turtle_id: turtleId,
+      path: imagePath,
+      sheet_name: sheetName ?? null,
+    }),
+  });
+  const body = await response.json().catch(() => ({ error: 'Failed to delete image' }));
+  if (!response.ok) {
+    throw new Error(body.error || 'Failed to delete image');
+  }
+  return body as DeleteTurtleImageResponse;
+};
+
+export interface RestoreTurtleImageResponse {
+  success: boolean;
+  /** Absolute path the image was restored to. */
+  restored_to: string;
+  /** 'plastron' | 'carapace' when the restore targets an active-ref slot, else null. */
+  is_reference: 'plastron' | 'carapace' | null;
+  /** Present when move succeeded but .pt extraction didn't. */
+  warning?: string;
+}
+
+export class RestoreCollisionError extends Error {
+  collision = true;
+  constructor(message: string) {
+    super(message);
+    this.name = 'RestoreCollisionError';
+  }
+}
+
+export const restoreTurtleImage = async (
+  turtleId: string,
+  deletedPath: string,
+  sheetName?: string | null,
+): Promise<RestoreTurtleImageResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/restore-image`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      turtle_id: turtleId,
+      path: deletedPath,
+      sheet_name: sheetName ?? null,
+    }),
+  });
+  const body = await response.json().catch(() => ({ error: 'Failed to restore image' }));
+  if (!response.ok) {
+    if (response.status === 409 || body.collision) {
+      throw new RestoreCollisionError(body.error || 'A file already exists at the restore location.');
+    }
+    throw new Error(body.error || 'Failed to restore image');
+  }
+  return body as RestoreTurtleImageResponse;
 };
