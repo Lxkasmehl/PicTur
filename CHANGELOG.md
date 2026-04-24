@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Review approve — research match**: Confirming a match to an **admin/research** turtle no longer writes or updates the **community** Google Sheet. Admin and community spreadsheets stay separate; only **community → admin** moves still delete the row from the community sheet (`match_from_community`). Resolves unwanted extra rows (e.g. #150).
 
+### Testing
+
+- **`backend/tests/test_review_approve_no_community_sync_on_research_match.py`**: Unit tests (Flask test client + mocks) assert that approving a **research-only** match does not call `get_community_sheets_service`, and that **community → admin** approval still calls `delete_turtle_data` only (no community create/update).
+
+
 ## [1.2.17] - 2026-04-21 — Sheets browser biology ID for disk images + primaries batch
 
 ### Fixed
