@@ -36,7 +36,7 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted }: Inst
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const isMobile = useMediaQuery('(max-width: 576px)');
+  const isMobile = useMediaQuery('(max-width: 768px)', undefined, { getInitialValueInEffect: false });
 
   // If user already saw instructions before (e.g. reopening as reminder), allow closing freely
   const isReminderMode =
@@ -93,7 +93,7 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted }: Inst
       }}
     >
       <ScrollArea
-        h={isMobile ? '70vh' : 560}
+        h={isMobile ? 'calc(100dvh - 9rem)' : 560}
         onScrollPositionChange={handleScroll}
         viewportRef={viewportRef}
         type="scroll"
