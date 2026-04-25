@@ -4,97 +4,127 @@ import {
   Title,
   Text,
   Stack,
-  Center,
   TextInput,
   Textarea,
   Button,
-  Group,
+  Anchor,
+  Alert,
 } from '@mantine/core';
-import { IconMail, IconUser, IconMessage } from '@tabler/icons-react';
+import { IconMail, IconUser, IconMessage, IconExternalLink, IconInfoCircle } from '@tabler/icons-react';
 import { useState } from 'react';
+import { notifications } from '@mantine/notifications';
+import {
+  getLabContactEmail,
+  WASHBURN_TURTLE_CONTACT_URL,
+  WASHBURN_TURTLE_LAB_URL,
+} from '../config/contact';
+
+function buildMailtoHref(to: string, subject: string, body: string): string {
+  const q = new URLSearchParams({ subject, body });
+  return `mailto:${to}?${q.toString()}`;
+}
 
 export default function ContactPage() {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    message: '',
-  });
+  const labEmail = getLabContactEmail();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission here
-    console.log('Form submitted:', formData);
-    // Reset form
-    setFormData({ name: '', email: '', message: '' });
-  };
-
-  const handleChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    if (labEmail) {
+      const body = `${message}\n\n—\nFrom: ${name}\nReply-To: ${email}`;
+      const subject = `PicTur / lab inquiry from ${name}`;
+      window.location.href = buildMailtoHref(labEmail, subject, body);
+      notifications.show({
+        title: 'Opening your email app',
+        message: 'If nothing opens, copy the address from “Email the lab” below.',
+        color: 'teal',
+      });
+      return;
+    }
+    window.open(WASHBURN_TURTLE_CONTACT_URL, '_blank', 'noopener,noreferrer');
+    notifications.show({
+      title: 'Washburn contact page',
+      message: 'We opened the lab site contact form in a new tab.',
+      color: 'teal',
+    });
   };
 
   return (
     <Container size='sm' py={{ base: 'md', sm: 'xl' }} px={{ base: 'xs', sm: 'md' }}>
-      <Paper shadow='sm' p={{ base: 'md', sm: 'xl' }} radius='md'>
+      <Paper shadow='sm' p={{ base: 'md', sm: 'xl' }} radius='md' withBorder>
         <Stack gap='lg'>
-          <Center>
-            <Title order={1}>Contact Us</Title>
-          </Center>
+          <div>
+            <Title order={1}>Contact</Title>
+            <Text size='sm' c='dimmed' mt='xs'>
+              PicTur accounts and uploads are separate from day-to-day lab scheduling. Use the options
+              below for research outreach, talks, or site questions.
+            </Text>
+          </div>
 
-          <Text size='lg' c='dimmed' ta='center'>
-            Get in touch with us
-          </Text>
+          <Alert variant='light' color='teal' icon={<IconInfoCircle size={18} />}>
+            There is no published phone number or mailing address for this contact flow. Prefer email or
+            the Washburn team site.
+          </Alert>
+
+          <Stack gap='xs'>
+            <Text size='sm' fw={600}>
+              Email the lab
+            </Text>
+            {labEmail ? (
+              <Anchor size='sm' href={`mailto:${labEmail}`}>
+                {labEmail}
+              </Anchor>
+            ) : (
+              <Text size='sm' c='dimmed'>
+                Set <Text span ff='monospace'>VITE_CONTACT_EMAIL</Text> when building PicTur to show the
+                lab address here. Until then, the form below opens the Washburn contact page.
+              </Text>
+            )}
+          </Stack>
+
+          <Anchor href={WASHBURN_TURTLE_LAB_URL} target='_blank' rel='noopener noreferrer' size='sm'>
+            Washburn turtle research (context, publications, donate){' '}
+            <IconExternalLink size={14} style={{ verticalAlign: 'middle' }} />
+          </Anchor>
 
           <form onSubmit={handleSubmit}>
             <Stack gap='md'>
+              <Text size='sm' fw={500}>
+                {labEmail ? 'Compose in your mail app' : 'Message via Washburn site'}
+              </Text>
               <TextInput
-                label='Name'
+                label='Your name'
                 placeholder='Your name'
                 leftSection={<IconUser size={16} />}
-                value={formData.name}
-                onChange={(e) => handleChange('name', e.target.value)}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 required
               />
-
               <TextInput
-                label='Email'
-                placeholder='your@email.com'
+                label='Your email'
+                placeholder='you@example.com'
                 leftSection={<IconMail size={16} />}
                 type='email'
-                value={formData.email}
-                onChange={(e) => handleChange('email', e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
               />
-
               <Textarea
                 label='Message'
-                placeholder='Your message here...'
+                placeholder='How we can help…'
                 leftSection={<IconMessage size={16} />}
                 minRows={4}
-                value={formData.message}
-                onChange={(e) => handleChange('message', e.target.value)}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
                 required
               />
-
-              <Group justify='center' mt='md'>
-                <Button type='submit' size='md' color='green'>
-                  Send Message
-                </Button>
-              </Group>
+              <Button type='submit' leftSection={<IconMail size={18} />}>
+                {labEmail ? 'Open email draft' : 'Open Washburn contact form'}
+              </Button>
             </Stack>
           </form>
-
-          <Stack gap='md' mt='xl'>
-            <Title order={4}>Other Ways to Reach Us</Title>
-            <Text size='sm' c='dimmed'>
-              Email: contact@pictur.com
-            </Text>
-            <Text size='sm' c='dimmed'>
-              Phone: +1 (555) 123-4567
-            </Text>
-            <Text size='sm' c='dimmed'>
-              Address: 123 Turtle Street, Ocean City, TC 12345
-            </Text>
-          </Stack>
         </Stack>
       </Paper>
     </Container>

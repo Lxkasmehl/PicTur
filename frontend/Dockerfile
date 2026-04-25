@@ -12,8 +12,10 @@ COPY . .
 # API URLs the browser will use (host-relative for Docker Compose on one machine)
 ARG VITE_AUTH_API_URL=http://localhost:3001/api
 ARG VITE_API_URL=http://localhost:5000/api
+ARG VITE_CONTACT_EMAIL=
 ENV VITE_AUTH_API_URL=$VITE_AUTH_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_CONTACT_EMAIL=$VITE_CONTACT_EMAIL
 
 RUN npm run build
 
