@@ -87,7 +87,7 @@ export default function HomePage() {
   const { role, isLoggedIn, authChecked } = useUser();
   const isStaff = isStaffRole(role);
   const canUseObserverGamification = authChecked && isLoggedIn;
-  const isMobile = useMediaQuery('(max-width: 768px)', false, { getInitialValueInEffect: false });
+  const isMobile = useMediaQuery('(max-width: 768px)', undefined, { getInitialValueInEffect: false });
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [instructionsOpened, setInstructionsOpened] = useState(false);
