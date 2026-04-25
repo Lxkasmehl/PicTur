@@ -63,6 +63,10 @@ FRONTEND_URL=http://localhost:5173
 # SMTP_USER=your-email@gmail.com
 # SMTP_PASSWORD=your-app-password
 # SMTP_FROM=noreply@pictur.com
+
+# PicTur “Contact” page (POST /api/contact): comma- or semicolon-separated lab inboxes (not exposed to the browser).
+# Requires SMTP_* above for real delivery; if unset, the API returns 503 and the UI can fall back to the Washburn site.
+# CONTACT_FORM_RECIPIENTS=pi@washburn.edu,advisor@washburn.edu
 ```
 
 **Important:** Generate secure secrets for `JWT_SECRET` and `SESSION_SECRET`. You can use this command:

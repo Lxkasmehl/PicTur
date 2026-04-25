@@ -76,6 +76,14 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 /** No-reply sender; use for all system emails */
 const getFromEmail = () => process.env.SMTP_FROM?.trim() || 'noreply@pictur.com';
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /** Shared HTML wrapper for consistent branding and footer */
 function wrapEmailHtml(title: string, bodyHtml: string): string {
   return `
@@ -90,18 +98,25 @@ function wrapEmailHtml(title: string, bodyHtml: string): string {
 
 /** Send mail via transporter or log to console in dev; log errors, don't throw by default */
 async function sendMailSafe(
-  to: string,
+  to: string | string[],
   subject: string,
   html: string,
   text: string,
-  options?: { throwOnError?: boolean }
+  options?: { throwOnError?: boolean; replyTo?: string }
 ): Promise<void> {
   const fromEmail = getFromEmail();
-  const mailOptions = { from: fromEmail, to, subject, html, text };
+  const mailOptions = {
+    from: fromEmail,
+    to,
+    subject,
+    html,
+    text,
+    ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
+  };
   const transporter = getTransporter();
   if (!transporter) {
     console.log('\n📧 ===== EMAIL (DEVELOPMENT MODE) =====');
-    console.log(`To: ${to}`);
+    console.log(`To: ${Array.isArray(to) ? to.join(', ') : to}`);
     console.log(`Subject: ${subject}`);
     console.log('\n--- Content ---');
     console.log(text);
@@ -206,3 +221,33 @@ export const sendAdminPromotionEmail = async ({
     await sendMailSafe(email, 'You have been invited to join as Admin', html, text);
   }
 };
+
+/** Comma- or semicolon-separated inbox list (server-only env). */
+export function parseContactFormRecipients(): string[] {
+  const raw = process.env.CONTACT_FORM_RECIPIENTS?.trim();
+  if (!raw) return [];
+  return raw
+    .split(/[,;]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/** One notification to all lab inboxes; Reply-To set to the visitor. */
+export async function sendContactFormNotification(params: {
+  name: string;
+  email: string;
+  message: string;
+  recipients: string[];
+}): Promise<void> {
+  const { name, email, message, recipients } = params;
+  const subject = `[PicTur contact] ${name}`;
+  const text = `Message from PicTur contact form\n\nName: ${name}\nEmail: ${email}\n\n---\n${message}\n`;
+  const bodyHtml = `
+    <p>Message from the PicTur contact form.</p>
+    <p><strong>Name:</strong> ${escapeHtml(name)}<br/>
+    <strong>Email:</strong> ${escapeHtml(email)}</p>
+    <p style="white-space: pre-wrap;">${escapeHtml(message)}</p>`;
+  const html = wrapEmailHtml('PicTur contact', bodyHtml);
+  const to = recipients.length === 1 ? recipients[0] : recipients;
+  await sendMailSafe(to, subject, html, text, { replyTo: email, throwOnError: true });
+}

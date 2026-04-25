@@ -14,42 +14,47 @@ import {
 import { IconMail, IconUser, IconMessage, IconExternalLink, IconInfoCircle } from '@tabler/icons-react';
 import { useState } from 'react';
 import { notifications } from '@mantine/notifications';
-import {
-  getLabContactEmail,
-  WASHBURN_TURTLE_CONTACT_URL,
-  WASHBURN_TURTLE_LAB_URL,
-} from '../config/contact';
-
-function buildMailtoHref(to: string, subject: string, body: string): string {
-  const q = new URLSearchParams({ subject, body });
-  return `mailto:${to}?${q.toString()}`;
-}
+import { WASHBURN_TURTLE_CONTACT_URL, WASHBURN_TURTLE_LAB_URL } from '../config/contact';
+import { submitContactForm } from '../services/api/contact';
 
 export default function ContactPage() {
-  const labEmail = getLabContactEmail();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (labEmail) {
-      const body = `${message}\n\n—\nFrom: ${name}\nReply-To: ${email}`;
-      const subject = `PicTur / lab inquiry from ${name}`;
-      window.location.href = buildMailtoHref(labEmail, subject, body);
+    setSending(true);
+    try {
+      const result = await submitContactForm({ name, email, message });
+      if (result.ok) {
+        setName('');
+        setEmail('');
+        setMessage('');
+        notifications.show({
+          title: 'Message sent',
+          message: 'Thank you. The team can reply directly to the address you entered.',
+          color: 'teal',
+        });
+        return;
+      }
+      if (result.status === 503 && result.code === 'CONTACT_DISABLED') {
+        notifications.show({
+          title: 'Contact form unavailable',
+          message: 'This deployment has not set lab inboxes yet. Use the Washburn link below.',
+          color: 'yellow',
+        });
+        return;
+      }
       notifications.show({
-        title: 'Opening your email app',
-        message: 'If nothing opens, copy the address from “Email the lab” below.',
-        color: 'teal',
+        title: 'Could not send',
+        message: result.error,
+        color: 'red',
       });
-      return;
+    } finally {
+      setSending(false);
     }
-    window.open(WASHBURN_TURTLE_CONTACT_URL, '_blank', 'noopener,noreferrer');
-    notifications.show({
-      title: 'Washburn contact page',
-      message: 'We opened the lab site contact form in a new tab.',
-      color: 'teal',
-    });
   };
 
   return (
@@ -59,31 +64,15 @@ export default function ContactPage() {
           <div>
             <Title order={1}>Contact</Title>
             <Text size='sm' c='dimmed' mt='xs'>
-              PicTur accounts and uploads are separate from day-to-day lab scheduling. Use the options
-              below for research outreach, talks, or site questions.
+              PicTur accounts and uploads are separate from day-to-day lab scheduling. Send a message
+              to the team using the form below (no lab email address is shown on this page).
             </Text>
           </div>
 
           <Alert variant='light' color='teal' icon={<IconInfoCircle size={18} />}>
-            There is no published phone number or mailing address for this contact flow. Prefer email or
-            the Washburn team site.
+            There is no published phone number or mailing address here. Messages go by email only.
+            If the form is unavailable on this server, use the Washburn team contact page (link below).
           </Alert>
-
-          <Stack gap='xs'>
-            <Text size='sm' fw={600}>
-              Email the lab
-            </Text>
-            {labEmail ? (
-              <Anchor size='sm' href={`mailto:${labEmail}`}>
-                {labEmail}
-              </Anchor>
-            ) : (
-              <Text size='sm' c='dimmed'>
-                Set <Text span ff='monospace'>VITE_CONTACT_EMAIL</Text> when building PicTur to show the
-                lab address here. Until then, the form below opens the Washburn contact page.
-              </Text>
-            )}
-          </Stack>
 
           <Anchor
             href={WASHBURN_TURTLE_LAB_URL}
@@ -97,18 +86,19 @@ export default function ContactPage() {
             <IconExternalLink size={14} stroke={1.5} style={{ flexShrink: 0 }} aria-hidden />
           </Anchor>
 
+          <Anchor href={WASHBURN_TURTLE_CONTACT_URL} target='_blank' rel='noopener noreferrer' size='xs' c='dimmed'>
+            Alternate: Washburn contact form (new tab)
+          </Anchor>
+
           <form onSubmit={handleSubmit}>
             <Stack gap='md'>
               <Text size='sm' fw={500}>
-                {labEmail ? 'Compose in your mail app' : 'Message for the lab'}
+                Message to the lab
               </Text>
-              {!labEmail && (
-                <Text size='xs' c='dimmed'>
-                  PicTur does not send this form to the lab. The button below opens the Washburn team’s
-                  contact page in a <strong>new browser tab</strong> (Weebly). Copy your message from
-                  here if you like, then submit it on their site.
-                </Text>
-              )}
+              <Text size='xs' c='dimmed'>
+                Sends one email to the lab’s configured inboxes (set on the server, not shown here).
+                Your address is used as the reply-to.
+              </Text>
               <TextInput
                 label='Your name'
                 placeholder='Your name'
@@ -116,6 +106,7 @@ export default function ContactPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
+                disabled={sending}
               />
               <TextInput
                 label='Your email'
@@ -125,6 +116,7 @@ export default function ContactPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                disabled={sending}
               />
               <Textarea
                 label='Message'
@@ -134,24 +126,13 @@ export default function ContactPage() {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 required
+                disabled={sending}
               />
-              <Stack gap='xs'>
-                <Group wrap='wrap' gap='sm' align='center'>
-                  <Button type='submit' leftSection={<IconMail size={18} />}>
-                    {labEmail ? 'Open email draft' : 'Open lab contact page'}
-                  </Button>
-                  {!labEmail && (
-                    <Text size='xs' c='dimmed' style={{ lineHeight: 1.4 }}>
-                      New tab · Weebly contact form
-                    </Text>
-                  )}
-                </Group>
-                {labEmail && (
-                  <Text size='xs' c='dimmed'>
-                    Opens your default mail app with the fields above filled into the message.
-                  </Text>
-                )}
-              </Stack>
+              <Group wrap='wrap' gap='sm' align='center'>
+                <Button type='submit' leftSection={<IconMail size={18} />} loading={sending}>
+                  Send message
+                </Button>
+              </Group>
             </Stack>
           </form>
         </Stack>
