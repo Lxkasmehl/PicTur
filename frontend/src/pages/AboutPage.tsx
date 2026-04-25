@@ -47,8 +47,11 @@ export default function AboutPage() {
               rel='noopener noreferrer'
               size='sm'
               fw={500}
+              display='inline-flex'
+              style={{ alignItems: 'center', gap: 6, width: 'fit-content' }}
             >
-              Washburn turtle research site <IconExternalLink size={14} style={{ verticalAlign: 'middle' }} />
+              <span>Washburn turtle research site</span>
+              <IconExternalLink size={14} stroke={1.5} style={{ flexShrink: 0 }} aria-hidden />
             </Anchor>
           </Stack>
         </Paper>

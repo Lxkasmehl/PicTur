@@ -9,6 +9,7 @@ import {
   Button,
   Anchor,
   Alert,
+  Group,
 } from '@mantine/core';
 import { IconMail, IconUser, IconMessage, IconExternalLink, IconInfoCircle } from '@tabler/icons-react';
 import { useState } from 'react';
@@ -84,16 +85,30 @@ export default function ContactPage() {
             )}
           </Stack>
 
-          <Anchor href={WASHBURN_TURTLE_LAB_URL} target='_blank' rel='noopener noreferrer' size='sm'>
-            Washburn turtle research (context, publications, donate){' '}
-            <IconExternalLink size={14} style={{ verticalAlign: 'middle' }} />
+          <Anchor
+            href={WASHBURN_TURTLE_LAB_URL}
+            target='_blank'
+            rel='noopener noreferrer'
+            size='sm'
+            display='inline-flex'
+            style={{ alignItems: 'center', gap: 6, width: 'fit-content' }}
+          >
+            <span>Washburn turtle research (context, publications, donate)</span>
+            <IconExternalLink size={14} stroke={1.5} style={{ flexShrink: 0 }} aria-hidden />
           </Anchor>
 
           <form onSubmit={handleSubmit}>
             <Stack gap='md'>
               <Text size='sm' fw={500}>
-                {labEmail ? 'Compose in your mail app' : 'Message via Washburn site'}
+                {labEmail ? 'Compose in your mail app' : 'Message for the lab'}
               </Text>
+              {!labEmail && (
+                <Text size='xs' c='dimmed'>
+                  PicTur does not send this form to the lab. The button below opens the Washburn team’s
+                  contact page in a <strong>new browser tab</strong> (Weebly). Copy your message from
+                  here if you like, then submit it on their site.
+                </Text>
+              )}
               <TextInput
                 label='Your name'
                 placeholder='Your name'
@@ -120,9 +135,23 @@ export default function ContactPage() {
                 onChange={(e) => setMessage(e.target.value)}
                 required
               />
-              <Button type='submit' leftSection={<IconMail size={18} />}>
-                {labEmail ? 'Open email draft' : 'Open Washburn contact form'}
-              </Button>
+              <Stack gap='xs'>
+                <Group wrap='wrap' gap='sm' align='center'>
+                  <Button type='submit' leftSection={<IconMail size={18} />}>
+                    {labEmail ? 'Open email draft' : 'Open lab contact page'}
+                  </Button>
+                  {!labEmail && (
+                    <Text size='xs' c='dimmed' style={{ lineHeight: 1.4 }}>
+                      New tab · Weebly contact form
+                    </Text>
+                  )}
+                </Group>
+                {labEmail && (
+                  <Text size='xs' c='dimmed'>
+                    Opens your default mail app with the fields above filled into the message.
+                  </Text>
+                )}
+              </Stack>
             </Stack>
           </form>
         </Stack>

@@ -176,7 +176,7 @@ export default function Navigation({ children }: NavigationProps) {
   return (
     <AppShell
       header={{ height: isMobile ? 56 : 60 }}
-      footer={{ height: isMobile ? 100 : 88 }}
+      footer={{ height: 'auto' }}
       padding={isMobile ? 'xs' : 'md'}
     >
       <AppShell.Header>
@@ -388,8 +388,8 @@ export default function Navigation({ children }: NavigationProps) {
 
       <AppShell.Main>{children}</AppShell.Main>
 
-      <AppShell.Footer p='xs'>
-        <Stack gap={6} align='center'>
+      <AppShell.Footer py='xs' px='xs'>
+        <Stack gap='xs' align='center'>
           <Group gap='lg' justify='center' wrap='wrap'>
             {footerNavItems.map((item) => {
               const active = location.pathname === item.path;
