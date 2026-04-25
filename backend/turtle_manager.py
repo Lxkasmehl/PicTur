@@ -915,6 +915,14 @@ class TurtleManager:
                 os.remove(new_master_path)
             shutil.move(staged_master_path, new_master_path)
             shutil.move(staged_pt_path, new_pt_path)
+            # Mark the promoted master as uploaded NOW. The filename carries no
+            # date stamp, so _extract_upload_date_from_filename falls back to
+            # mtime — which shutil.copy2 inherits from the source. Without this
+            # touch, the new reference won't appear in today's scratchpad.
+            try:
+                os.utime(new_master_path, None)
+            except OSError:
+                pass
 
             # Step 3: Clean up old image if it was a different extension
             if old_img_path and os.path.exists(old_img_path) and old_img_path != new_master_path:
@@ -1221,7 +1229,7 @@ class TurtleManager:
         out = []
         for root, dirs, files in os.walk(deleted_root):
             for fname in files:
-                if not fname.lower().endswith(('.jpg', '.jpeg', '.png')):
+                if not fname.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
                     continue
                 abs_path = os.path.join(root, fname)
                 # Path relative to turtle_dir — always starts with 'Deleted/...'
@@ -1237,7 +1245,7 @@ class TurtleManager:
                     upload = _eu(fname, fallback_path=abs_path)
                 except Exception:
                     try:
-                        upload = time.strftime('%Y-%m-%d', time.gmtime(os.path.getmtime(abs_path)))
+                        upload = time.strftime('%Y-%m-%d', time.localtime(os.path.getmtime(abs_path)))
                     except OSError:
                         upload = None
 
@@ -1384,6 +1392,14 @@ class TurtleManager:
                     os.remove(new_master_path)
                 shutil.move(staged_master_path, new_master_path)
                 shutil.move(staged_pt_path, new_pt_path)
+                # Mark the promoted master as uploaded NOW so the scratchpad's
+                # mtime fallback in _extract_upload_date_from_filename returns
+                # today. Without this, copy2 preserves the source mtime and
+                # the new reference never shows up in today's scratchpad.
+                try:
+                    os.utime(new_master_path, None)
+                except OSError:
+                    pass
                 # At this point the new reference is live — crash here is safe.
 
                 # Step 3: Clean up old image if it was a different extension

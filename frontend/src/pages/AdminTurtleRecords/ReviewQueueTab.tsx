@@ -3,17 +3,20 @@ import {
   Button,
   Card,
   Center,
+  Checkbox,
   Grid,
   Group,
   Image,
   Loader,
+  Modal,
   Paper,
+  Progress,
   ScrollArea,
   SimpleGrid,
   Stack,
   Text,
 } from '@mantine/core';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   IconCheck,
   IconList,
@@ -38,6 +41,10 @@ export function ReviewQueueTab() {
   const [matchingLoading, setMatchingLoading] = useState<false | 'match' | 'crosscheck'>(false);
   const [matchingConfirm, setMatchingConfirm] = useState<'match' | 'crosscheck' | 'trash' | null>(null);
   const [trashLoading, setTrashLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
   const {
     queueLoading,
     queueItems,
@@ -84,6 +91,72 @@ export function ReviewQueueTab() {
     setCrossCheckResults(null);
     setMatchingConfirm(null);
   }, [selectedItem?.request_id]);
+
+  // Drop selections that no longer exist (e.g. after a delete refresh).
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const present = new Set(queueItems.map((q) => q.request_id));
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (present.has(id)) next.add(id);
+      });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [queueItems]);
+
+  const toggleSelected = (requestId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(requestId)) next.delete(requestId);
+      else next.add(requestId);
+      return next;
+    });
+  };
+
+  const allSelected = useMemo(
+    () => queueItems.length > 0 && queueItems.every((q) => selectedIds.has(q.request_id)),
+    [queueItems, selectedIds],
+  );
+
+  const someSelected = selectedIds.size > 0 && !allSelected;
+
+  const handleSelectAllToggle = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(queueItems.map((q) => q.request_id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkDeleting(true);
+    setBulkProgress({ done: 0, total: ids.length });
+    let succeeded = 0;
+    let failed = 0;
+    for (const id of ids) {
+      try {
+        await deleteQueueItemDirect(id);
+        succeeded++;
+      } catch {
+        failed++;
+      }
+      setBulkProgress((p) => ({ done: p.done + 1, total: p.total }));
+    }
+    setBulkDeleting(false);
+    setBulkConfirmOpen(false);
+    setSelectedIds(new Set());
+    setBulkProgress({ done: 0, total: 0 });
+    notifications.show({
+      title: failed === 0 ? 'Deleted' : 'Partially deleted',
+      message:
+        failed === 0
+          ? `${succeeded} upload${succeeded === 1 ? '' : 's'} removed from queue.`
+          : `${succeeded} removed, ${failed} failed.`,
+      color: failed === 0 ? 'green' : 'orange',
+    });
+  };
 
   // Load selected candidate turtle's existing additional images when a match is selected (must run before any early return)
   useEffect(() => {
@@ -710,15 +783,40 @@ export function ReviewQueueTab() {
           style={{ overflow: 'hidden' }}
         >
           <Stack gap='md' style={{ minWidth: 0 }}>
-            <Text fw={600} size='lg'>
-              Pending Reviews
-            </Text>
-            <Text size='sm' c='dimmed'>
-              Click an item to review matches and approve.
-            </Text>
+            <Group justify='space-between' wrap='wrap' gap='sm'>
+              <Stack gap={2}>
+                <Text fw={600} size='lg'>
+                  Pending Reviews
+                </Text>
+                <Text size='sm' c='dimmed'>
+                  Click a card to review. Use the checkbox to select multiple for deletion.
+                </Text>
+              </Stack>
+              <Group gap='xs' wrap='nowrap'>
+                <Checkbox
+                  size='sm'
+                  label={allSelected ? 'Deselect all' : 'Select all'}
+                  checked={allSelected}
+                  indeterminate={someSelected}
+                  onChange={handleSelectAllToggle}
+                />
+                {selectedIds.size > 0 && (
+                  <Button
+                    color='red'
+                    size='sm'
+                    leftSection={<IconTrash size={16} />}
+                    onClick={() => setBulkConfirmOpen(true)}
+                  >
+                    Delete {selectedIds.size} selected
+                  </Button>
+                )}
+              </Group>
+            </Group>
             <ScrollArea h={560} type='auto' scrollbars='y'>
               <Grid gutter='md' style={{ minWidth: 0 }}>
-                {queueItems.map((item) => (
+                {queueItems.map((item) => {
+                  const isSelected = selectedIds.has(item.request_id);
+                  return (
                   <Grid.Col key={item.request_id} span={{ base: 12, sm: 6, md: 4 }}>
                     <Card
                       shadow='sm'
@@ -727,7 +825,8 @@ export function ReviewQueueTab() {
                       withBorder
                       style={{
                         cursor: 'pointer',
-                        border: '1px solid #dee2e6',
+                        border: isSelected ? '2px solid #fa5252' : '1px solid #dee2e6',
+                        backgroundColor: isSelected ? '#fff5f5' : undefined,
                         height: '100%',
                       }}
                       onClick={() => onItemSelect(item)}
@@ -735,6 +834,13 @@ export function ReviewQueueTab() {
                       <Stack gap='sm'>
                         <Group justify='space-between' wrap='wrap' gap='xs'>
                           <Group gap='xs'>
+                            <Checkbox
+                              size='sm'
+                              checked={isSelected}
+                              onChange={() => toggleSelected(item.request_id)}
+                              onClick={(e) => e.stopPropagation()}
+                              aria-label='Select this upload'
+                            />
                             <Badge
                               color={item.status === 'matched' ? 'green' : 'orange'}
                               variant='light'
@@ -797,7 +903,8 @@ export function ReviewQueueTab() {
                       </Stack>
                     </Card>
                   </Grid.Col>
-                ))}
+                  );
+                })}
               </Grid>
             </ScrollArea>
           </Stack>
@@ -810,6 +917,54 @@ export function ReviewQueueTab() {
         deleting={deleting}
         onConfirm={onConfirmDelete}
       />
+
+      <Modal
+        opened={bulkConfirmOpen}
+        onClose={() => !bulkDeleting && setBulkConfirmOpen(false)}
+        title={`Delete ${selectedIds.size} upload${selectedIds.size === 1 ? '' : 's'}?`}
+        centered
+        closeOnClickOutside={!bulkDeleting}
+        closeOnEscape={!bulkDeleting}
+        withCloseButton={!bulkDeleting}
+      >
+        <Stack gap='md'>
+          <Text size='sm' c='dimmed'>
+            This will permanently remove the selected uploads from the review queue. They
+            will not be processed or added to any turtle. Use this for junk or spam only.
+          </Text>
+          <Text size='sm' fw={500}>
+            This cannot be undone.
+          </Text>
+          {bulkDeleting && (
+            <Stack gap={4}>
+              <Text size='xs' c='dimmed'>
+                Deleting {bulkProgress.done} of {bulkProgress.total}…
+              </Text>
+              <Progress
+                value={bulkProgress.total > 0 ? (bulkProgress.done / bulkProgress.total) * 100 : 0}
+                animated
+              />
+            </Stack>
+          )}
+          <Group justify='flex-end' gap='sm'>
+            <Button
+              variant='default'
+              onClick={() => setBulkConfirmOpen(false)}
+              disabled={bulkDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              color='red'
+              leftSection={<IconTrash size={16} />}
+              loading={bulkDeleting}
+              onClick={handleBulkDelete}
+            >
+              Delete {selectedIds.size} from queue
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </>
   );
 }

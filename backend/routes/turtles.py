@@ -41,12 +41,15 @@ def _extract_upload_date_from_filename(filename, fallback_path=None):
                 ts = int(raw)
                 if ts > 1_000_000_000_000:
                     ts = ts / 1000
-                return time.strftime('%Y-%m-%d', time.gmtime(ts))
+                return time.strftime('%Y-%m-%d', time.localtime(ts))
             except (ValueError, OSError):
                 pass
     if fallback_path and os.path.exists(fallback_path):
         try:
-            return time.strftime('%Y-%m-%d', time.gmtime(os.path.getmtime(fallback_path)))
+            # Local time — the scratchpad's "today" is built from the admin's
+            # wall clock (frontend uses new Date()), so UTC would slip a day
+            # for anyone west of Greenwich during evening hours.
+            return time.strftime('%Y-%m-%d', time.localtime(os.path.getmtime(fallback_path)))
         except OSError:
             pass
     return None

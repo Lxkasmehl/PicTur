@@ -664,6 +664,58 @@ export default function AdminTurtleMatchPage() {
                     </Grid.Col>
                   </Grid>
 
+                  {(() => {
+                    const uploadedCarapace = packetItem?.additional_images?.find(
+                      (a) => a.type === 'carapace',
+                    );
+                    if (!uploadedCarapace) return null;
+                    const matchCarapacePath =
+                      selectedMatchTurtleImages?.primary_carapace ?? null;
+                    return (
+                      <>
+                        <Divider variant='dashed' />
+                        <Grid gutter='md'>
+                          <Grid.Col span={{ base: 12, sm: 6 }}>
+                            <Text size='sm' c='dimmed' mb={4}>
+                              Uploaded Carapace
+                            </Text>
+                            <Image
+                              src={getImageUrl(uploadedCarapace.image_path)}
+                              alt='Uploaded carapace'
+                              radius='md'
+                              style={{
+                                maxHeight: 'min(400px, 50vh)',
+                                objectFit: 'contain',
+                                width: '100%',
+                              }}
+                            />
+                          </Grid.Col>
+                          <Grid.Col span={{ base: 12, sm: 6 }}>
+                            <Text size='sm' c='dimmed' mb={4}>
+                              Match Carapace: {selectedMatch}
+                            </Text>
+                            {matchCarapacePath ? (
+                              <Image
+                                src={getImageUrl(matchCarapacePath)}
+                                alt={`Match carapace ${selectedMatch}`}
+                                radius='md'
+                                style={{
+                                  maxHeight: 'min(400px, 50vh)',
+                                  objectFit: 'contain',
+                                  width: '100%',
+                                }}
+                              />
+                            ) : (
+                              <Text size='xs' c='dimmed' mt='sm'>
+                                No carapace reference on file for this turtle.
+                              </Text>
+                            )}
+                          </Grid.Col>
+                        </Grid>
+                      </>
+                    );
+                  })()}
+
                   {/* Match metadata */}
                   <Grid mt='xs'>
                     <Grid.Col span={{ base: 12, sm: 4 }}>
@@ -852,28 +904,59 @@ export default function AdminTurtleMatchPage() {
                MATCH GRID — uploaded photo + large match cards
                ══════════════════════════════════════════════ */
             <Stack gap='md'>
-              {/* Uploaded photo — full width */}
-              <Paper shadow='sm' p='md' radius='md' withBorder>
-                <Stack gap='sm'>
-                  <Text fw={500} size='lg'>
-                    Uploaded Photo
-                  </Text>
-                  <Image
-                    src={
-                      matchData.uploaded_image_path
-                        ? getImageUrl(matchData.uploaded_image_path)
-                        : ''
-                    }
-                    alt='Uploaded photo'
-                    radius='md'
-                    style={{
-                      maxHeight: 'min(500px, 60vh)',
-                      objectFit: 'contain',
-                      width: '100%',
-                    }}
-                  />
-                </Stack>
-              </Paper>
+              {/* Uploaded photo — full width, with carapace alongside when present */}
+              {(() => {
+                const uploadedCarapaceGrid = packetItem?.additional_images?.find(
+                  (a) => a.type === 'carapace',
+                );
+                return (
+                  <Paper shadow='sm' p='md' radius='md' withBorder>
+                    <Stack gap='sm'>
+                      <Text fw={500} size='lg'>
+                        Uploaded Photo
+                      </Text>
+                      <Grid gutter='md'>
+                        <Grid.Col span={uploadedCarapaceGrid ? { base: 12, sm: 6 } : 12}>
+                          <Text size='sm' c='dimmed' mb={4}>
+                            Plastron
+                          </Text>
+                          <Image
+                            src={
+                              matchData.uploaded_image_path
+                                ? getImageUrl(matchData.uploaded_image_path)
+                                : ''
+                            }
+                            alt='Uploaded plastron'
+                            radius='md'
+                            style={{
+                              maxHeight: 'min(500px, 60vh)',
+                              objectFit: 'contain',
+                              width: '100%',
+                            }}
+                          />
+                        </Grid.Col>
+                        {uploadedCarapaceGrid && (
+                          <Grid.Col span={{ base: 12, sm: 6 }}>
+                            <Text size='sm' c='dimmed' mb={4}>
+                              Carapace
+                            </Text>
+                            <Image
+                              src={getImageUrl(uploadedCarapaceGrid.image_path)}
+                              alt='Uploaded carapace'
+                              radius='md'
+                              style={{
+                                maxHeight: 'min(500px, 60vh)',
+                                objectFit: 'contain',
+                                width: '100%',
+                              }}
+                            />
+                          </Grid.Col>
+                        )}
+                      </Grid>
+                    </Stack>
+                  </Paper>
+                );
+              })()}
 
               {/* Cross-check carapace — only when a carapace additional image exists */}
               {imageId && packetItem?.additional_images?.some(img => img.type === 'carapace') && (
