@@ -8,6 +8,7 @@ import Navigation from './components/Navigation';
 import HomePage from './pages/HomePage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
+import FeedbackPage from './pages/FeedbackPage';
 import LoginPage from './pages/LoginPage';
 import AdminTurtleRecordsPage from './pages/AdminTurtleRecordsPage';
 import AdminTurtleMatchPage from './pages/AdminTurtleMatchPage';
@@ -44,6 +45,7 @@ function App(): React.JSX.Element {
                 <Route path='/' element={<HomePage />} />
                 <Route path='/about' element={<AboutPage />} />
                 <Route path='/contact' element={<ContactPage />} />
+                <Route path='/feedback' element={<FeedbackPage />} />
                 <Route path='/observer' element={<ObserverHubPage />} />
                 <Route path='/login' element={<LoginPage />} />
                 <Route path='/register' element={<LoginPage initialMode='signup' />} />

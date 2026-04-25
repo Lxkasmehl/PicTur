@@ -45,6 +45,7 @@ const navigationItems = [
 const footerNavItems = [
   { label: 'About', path: '/about', testId: 'footer-link-about' as const },
   { label: 'Contact', path: '/contact', testId: 'footer-link-contact' as const },
+  { label: 'Feedback', path: '/feedback', testId: 'footer-link-feedback' as const },
 ];
 
 export default function Navigation({ children }: NavigationProps) {

@@ -25,6 +25,10 @@ test.describe('Navigation (public)', () => {
     await expect(page).toHaveURL('/contact');
     await expect(page.getByRole('heading', { level: 1, name: 'Contact' })).toBeVisible();
 
+    await clickFooterNav(page, 'Feedback');
+    await expect(page).toHaveURL('/feedback');
+    await expect(page.getByRole('heading', { level: 1, name: 'Feedback' })).toBeVisible();
+
     await navClick(page, 'Login');
     await expect(page).toHaveURL('/login');
     await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible();

@@ -9,9 +9,17 @@ const STAFF_PASSWORD = process.env.E2E_STAFF_PASSWORD ?? 'testpassword123';
 const COMMUNITY_EMAIL = process.env.E2E_COMMUNITY_EMAIL ?? 'community@test.com';
 const COMMUNITY_PASSWORD = process.env.E2E_COMMUNITY_PASSWORD ?? 'testpassword123';
 
-/** About / Contact live in the app footer (not the header drawer). */
-export async function clickFooterNav(page: Page, which: 'About' | 'Contact'): Promise<void> {
-  const id = which === 'About' ? 'footer-link-about' : 'footer-link-contact';
+/** About / Contact / Feedback live in the app footer (not the header drawer). */
+export async function clickFooterNav(
+  page: Page,
+  which: 'About' | 'Contact' | 'Feedback',
+): Promise<void> {
+  const id =
+    which === 'About'
+      ? 'footer-link-about'
+      : which === 'Contact'
+        ? 'footer-link-contact'
+        : 'footer-link-feedback';
   const el = page.getByTestId(id);
   await el.scrollIntoViewIfNeeded();
   await el.click();

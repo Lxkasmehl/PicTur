@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **About & Contact in the footer**: Public **About** and **Contact** moved from the header to the footer; drawer breakpoint adjusted for staff/admin. **About** content refocused on Washburn turtle research. **Contact** removes placeholder phone/address; optional **`VITE_CONTACT_EMAIL`** mailto or external form; Mantine styling and Playwright footer test ids (`0966b41`).
+- **Contact form → lab inboxes**: **`POST /api/contact`** on the auth-backend sends one email to **`CONTACT_FORM_RECIPIENTS`** (comma/semicolon) via SMTP, **Reply-To** the visitor. **`VITE_CONTACT_EMAIL`** removed from the flow; Contact page calls the auth API only, with Washburn links as fallback. Docker / env docs updated (`556f553`).
+- **In-app feedback → GitHub**: **Feedback** page at **`/feedback`**, footer link, and **`POST /api/feedback`**. Creates **GitHub issues** via the REST API (no redirect). Optional **Projects (v2)** link and **Status** update via GraphQL. Labels from **`GITHUB_FEEDBACK_LABELS`** plus **`bug`** / **`enhancement`** / **`question`**. Documented in **`.env.docker.example`**.
+
+### Changed
+
+- **`EmailVerificationGuard`**: **`/feedback`** allowed before email verification, like About and Contact.
+- **`.gitignore`**: Ignore **`project-query.graphql`** for local GraphQL helpers.
+
+### Fixed
+
+- **UI polish**: Inline **external-link** icons, clearer **Contact** CTA, automatic footer height (`311444d`).
+
+### Testing
+
+- **Playwright**: Public nav includes **Feedback** via the footer (`navigation.spec.ts`, `fixtures.ts`).
+
 ## [1.2.18] - 2026-04-24 — Review approve research/community sync guard + match-form General Location unlock
 
 ### Fixed
