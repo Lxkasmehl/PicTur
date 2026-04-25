@@ -18,6 +18,7 @@ import {
   IconRecycle,
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
+import type { UploadedPhoto } from '../types/photo';
 import type { PhotoGroup } from '../hooks/usePhotoGroups';
 import { formatFileSize, formatLocation } from '../utils/photoHelpers';
 
@@ -25,7 +26,7 @@ interface PhotoGroupCardProps {
   group: PhotoGroup;
   isExpanded: boolean;
   onToggle: () => void;
-  onPhotoClick: (photo: any) => void;
+  onPhotoClick: (photo: UploadedPhoto) => void;
 }
 
 export function PhotoGroupCard({

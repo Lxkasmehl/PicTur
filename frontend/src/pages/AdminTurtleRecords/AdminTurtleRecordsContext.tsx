@@ -21,6 +21,7 @@ export function AdminTurtleRecordsProvider({
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAdminTurtleRecordsContext(): AdminTurtleRecordsContextValue {
   const ctx = useContext(AdminTurtleRecordsContext);
   if (!ctx) {

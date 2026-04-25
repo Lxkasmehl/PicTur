@@ -177,13 +177,11 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
     await mockAdminUploadNavigatesToMatch(page, 'admin-id-auto-e2e-b');
     await mockReviewQueuePacket(page, 'admin-id-auto-e2e-b');
 
-    let callCount = 0;
     await page.route('**/api/sheets/generate-id', async (route) => {
       if (route.request().method() !== 'POST') {
         await route.continue();
         return;
       }
-      callCount += 1;
       // First call: M, second call: F
       const body = JSON.parse(route.request().postData() || '{}');
       const sex = (body.sex || 'U').toUpperCase();

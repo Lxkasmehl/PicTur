@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.18] - 2026-04-24 — Review approve research/community sync guard + match-form General Location unlock
+
 ### Fixed
 
 - **Review approve — research match**: Confirming a match to an **admin/research** turtle no longer writes or updates the **community** Google Sheet. Admin and community spreadsheets stay separate; only **community → admin** moves still delete the row from the community sheet (`match_from_community`). Resolves unwanted extra rows (e.g. #150).
@@ -306,7 +308,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.17...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.18...HEAD
+[1.2.18]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.18
 [1.2.17]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.17
 [1.2.16]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.16
 [1.2.15]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.15

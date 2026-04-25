@@ -571,7 +571,8 @@ export function useTurtleSheetsDataForm(
       setErrors((prev) => {
         const isDuplicate = checkDuplicateName(value);
         if (isDuplicate) return { ...prev, name: duplicateNameMessage };
-        const { name: _, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest.name;
         return rest;
       });
     }

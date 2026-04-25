@@ -113,7 +113,7 @@ export default function Navigation({ children }: NavigationProps) {
 
     // Calculate final breakpoint (higher = drawer appears at larger screen width)
     return baseBreakpoint + itemAdjustment + userNameAdjustment;
-  }, [role, isStaff, isAdmin, user?.name, user?.email]);
+  }, [isStaff, isAdmin, user?.name, user?.email]);
 
   // Use dynamic breakpoint; on mobile (< 768px) always show drawer for best touch UX
   const isMobile = useMediaQuery('(max-width: 767px)');

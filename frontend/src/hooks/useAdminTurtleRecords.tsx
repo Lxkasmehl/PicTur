@@ -109,7 +109,6 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
       void loadQueue();
     }, 5000);
     return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadQueue intentionally omitted; re-bind when queueItems pending flag changes
   }, [authChecked, role, activeTab, queueItems]);
 
   const refreshQueueItem = async (requestId: string) => {

@@ -118,7 +118,6 @@ export async function grantLocationPermission(page: Page): Promise<void> {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition = function (
         success: PositionCallback,
-        _error?: PositionErrorCallback,
       ) {
         const pos = {
           coords: {
