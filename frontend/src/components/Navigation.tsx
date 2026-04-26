@@ -11,6 +11,7 @@ import {
   useMantineColorScheme,
   ActionIcon,
   Badge,
+  Anchor,
 } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useMemo } from 'react';
@@ -27,6 +28,7 @@ import {
   IconPhoto,
   IconUsers,
   IconFlag,
+  IconCompass,
 } from '@tabler/icons-react';
 import { useUser } from '../hooks/useUser';
 import { logout as apiLogout } from '../services/api';
@@ -61,19 +63,24 @@ export default function Navigation({ children }: NavigationProps) {
   // Get navigation items in the correct order based on role
   const getNavigationItems = () => {
     const items = [...navigationItems];
+    items.splice(1, 0, {
+      label: 'Observer HQ',
+      path: '/observer',
+      icon: IconCompass,
+    });
     if (isStaff) {
-      items.splice(1, 0, {
+      items.splice(2, 0, {
         label: 'Turtle Records',
         path: '/admin/turtle-records',
         icon: IconPhoto,
       });
-      items.splice(2, 0, {
+      items.splice(3, 0, {
         label: 'Release',
         path: '/admin/release',
         icon: IconFlag,
       });
       if (isAdmin) {
-        items.splice(3, 0, {
+        items.splice(4, 0, {
           label: 'User Management',
           path: '/admin/users',
           icon: IconUsers,
@@ -89,8 +96,8 @@ export default function Navigation({ children }: NavigationProps) {
   const dynamicBreakpoint = useMemo(() => {
     const baseBreakpoint = 1000; // Base breakpoint for customer view with normal name
 
-    // Calculate item count based on role (admin: 6, staff: 5, community: 3)
-    const itemCount = isAdmin ? 6 : isStaff ? 5 : 3;
+    // Home + Observer HQ + About + Contact (+ staff/admin ops)
+    const itemCount = isAdmin ? 7 : isStaff ? 6 : 5;
 
     // Admin has 2 extra items, increase breakpoint by ~167px per extra item
     // This makes drawer appear earlier when there are more nav items
@@ -106,7 +113,7 @@ export default function Navigation({ children }: NavigationProps) {
 
     // Calculate final breakpoint (higher = drawer appears at larger screen width)
     return baseBreakpoint + itemAdjustment + userNameAdjustment;
-  }, [role, isStaff, isAdmin, user?.name, user?.email]);
+  }, [isStaff, isAdmin, user?.name, user?.email]);
 
   // Use dynamic breakpoint; on mobile (< 768px) always show drawer for best touch UX
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -165,7 +172,11 @@ export default function Navigation({ children }: NavigationProps) {
   );
 
   return (
-    <AppShell header={{ height: isMobile ? 56 : 60 }} padding={isMobile ? 'xs' : 'md'}>
+    <AppShell
+      header={{ height: isMobile ? 56 : 60 }}
+      footer={{ height: isMobile ? 52 : 44 }}
+      padding={isMobile ? 'xs' : 'md'}
+    >
       <AppShell.Header>
         <Group
           h='100%'
@@ -192,7 +203,7 @@ export default function Navigation({ children }: NavigationProps) {
               }}
               onClick={() => handleNavigation('/')}
             >
-              Turtle Project
+              PicTur
             </Text>
             <Badge
               data-testid='role-badge'
@@ -374,6 +385,41 @@ export default function Navigation({ children }: NavigationProps) {
       </Drawer>
 
       <AppShell.Main>{children}</AppShell.Main>
+
+      <AppShell.Footer p='xs'>
+        <Text size='xs' c='dimmed' ta='center' m={0}>
+          Favicon:{' '}
+          <Anchor
+            href='https://www.flaticon.com/free-icon/turtle_8493027'
+            target='_blank'
+            rel='noopener noreferrer'
+            size='xs'
+            c='dimmed'
+          >
+            turtle icon
+          </Anchor>
+          . Icons made by{' '}
+          <Anchor
+            href='https://www.freepik.com'
+            target='_blank'
+            rel='noopener noreferrer'
+            size='xs'
+            c='dimmed'
+          >
+            Freepik
+          </Anchor>{' '}
+          from{' '}
+          <Anchor
+            href='https://www.flaticon.com/'
+            target='_blank'
+            rel='noopener noreferrer'
+            size='xs'
+            c='dimmed'
+          >
+            www.flaticon.com
+          </Anchor>
+        </Text>
+      </AppShell.Footer>
     </AppShell>
   );
 }

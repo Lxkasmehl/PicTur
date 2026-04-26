@@ -12,63 +12,140 @@ from auth import require_admin
 from services import manager_service
 from services.manager_service import get_sheets_service, get_community_sheets_service
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
+from image_utils import normalize_to_jpeg
 from general_locations_catalog import resolve_general_location_from_sheet_and_value
+from additional_image_labels import normalize_label_list, parse_labels_from_form
 
-# Metadata keys to strip when syncing turtle data to community spreadsheet
-_COMMUNITY_SYNC_STRIP_KEYS = ('sheet_name', 'row_index')
+def format_review_packet_item(packet_dir, request_id):
+    """Build one queue item dict from packet_dir (used by get_review_queue and get_review_packet)."""
+    metadata_path = os.path.join(packet_dir, 'metadata.json')
+    metadata = {}
+    if os.path.exists(metadata_path):
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
 
+    additional_images = []
+    additional_dir = os.path.join(packet_dir, 'additional_images')
 
-def _sync_confirmed_to_community(data, sheets_data, service, new_location, new_turtle_id, match_turtle_id):
-    """
-    After a successful approval, push the confirmed turtle record to the community-facing
-    spreadsheet. Community uploads always sync here (required; separate from research).
-    Raises if community spreadsheet is not configured or sync fails.
-    """
-    comm = get_community_sheets_service()
-    if not comm:
-        raise RuntimeError(
-            "Community spreadsheet is required for confirmations. "
-            "Set GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID in backend .env and share the sheet with the service account."
+    def parse_manifest_or_folder(target_dir):
+        results = []
+        manifest_path = os.path.join(target_dir, 'manifest.json')
+        processed_files = set()
+
+        if os.path.isfile(manifest_path):
+            try:
+                with open(manifest_path, 'r') as f:
+                    manifest = json.load(f)
+                for entry in manifest:
+                    fn = entry.get('filename')
+                    kind = entry.get('type', 'other')
+                    if fn:
+                        p = os.path.join(target_dir, fn)
+                        if os.path.isfile(p):
+                            row = {
+                                'filename': fn,
+                                'type': kind,
+                                'timestamp': entry.get('timestamp'),
+                                'image_path': p,
+                            }
+                            lbs = entry.get('labels')
+                            if lbs:
+                                row['labels'] = normalize_label_list(lbs)
+                            results.append(row)
+                            processed_files.add(fn)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        if os.path.isdir(target_dir):
+            for f in sorted(os.listdir(target_dir)):
+                if f != 'manifest.json' and f not in processed_files and f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+                    results.append({
+                        'filename': f,
+                        'type': 'other',
+                        'labels': [],
+                        'timestamp': None,
+                        'image_path': os.path.join(target_dir, f),
+                    })
+        return results
+
+    if os.path.isdir(additional_dir):
+        additional_images.extend(parse_manifest_or_folder(additional_dir))
+        for item in sorted(os.listdir(additional_dir)):
+            item_path = os.path.join(additional_dir, item)
+            if os.path.isdir(item_path):
+                additional_images.extend(parse_manifest_or_folder(item_path))
+
+    uploaded_image = None
+    for f in os.listdir(packet_dir):
+        if f.lower().endswith(('.jpg', '.png', '.jpeg')) and f != 'metadata.json' and not f.startswith('.'):
+            uploaded_image = os.path.join(packet_dir, f)
+            break
+
+    candidates_dir = os.path.join(packet_dir, 'candidate_matches')
+    failed_path = os.path.join(packet_dir, 'match_search_failed.json')
+    match_search_failed = os.path.isfile(failed_path)
+    match_search_error = None
+    if match_search_failed:
+        try:
+            with open(failed_path, 'r', encoding='utf-8') as f:
+                fail_data = json.load(f)
+            if isinstance(fail_data, dict):
+                err = (fail_data.get('error') or '').strip()
+                match_search_error = err or None
+        except (json.JSONDecodeError, OSError, TypeError):
+            pass
+        if match_search_error is None:
+            match_search_error = 'Match search failed.'
+
+    # Staff/admin /api/upload builds the packet synchronously before search. If search errors,
+    # candidate_matches is never created; without a failure file (older uploads), the folder
+    # is not "still matching" — classify as failed so the queue shows recovery actions.
+    if (
+        request_id.startswith('admin_')
+        and not os.path.isdir(candidates_dir)
+        and not match_search_failed
+    ):
+        match_search_failed = True
+        match_search_error = (
+            'Match search did not complete for this staff/admin upload. '
+            'Try uploading again, or create a new turtle from this find.'
         )
-    if not isinstance(data, dict):
-        data = {}
-    if not isinstance(sheets_data, dict):
-        sheets_data = {}
-    primary_id = data.get('primary_id') or sheets_data.get('primary_id')
-    raw_sheet = (data.get('sheet_name') or sheets_data.get('sheet_name') or new_location or '').strip()
-    # Community sheet tab = first path segment (State); new_location can be "State/Location"
-    sheet_name = raw_sheet.split("/")[0].strip() if raw_sheet else ''
-    if not primary_id or not sheet_name:
-        raise ValueError("Cannot sync to community spreadsheet: missing primary_id or sheet_name")
-    # Resolve full turtle data: for new turtle use sheets_data; for match read from research
-    turtle_data = None
-    if new_location and new_turtle_id and sheets_data:
-        turtle_data = dict(sheets_data)
-    elif match_turtle_id and service:
-        turtle_data = service.get_turtle_data(primary_id, sheet_name)
-    if not turtle_data:
-        raise ValueError("Cannot sync to community spreadsheet: could not resolve turtle data")
-    for key in _COMMUNITY_SYNC_STRIP_KEYS:
-        turtle_data.pop(key, None)
-    turtle_data['primary_id'] = primary_id
-    # For new turtles, ensure primary_id and biology ID exist (community sheet only)
-    if new_location and new_turtle_id:
-        if not turtle_data.get('primary_id'):
-            raise ValueError("Cannot sync to community spreadsheet: missing primary_id for new turtle")
-        if not turtle_data.get('id'):
-            sex = (turtle_data.get('sex') or '').strip().upper()
-            gender = sex if sex in ('M', 'F', 'J') else 'U'
-            turtle_data['id'] = comm.generate_biology_id(gender, sheet_name)
-    comm.create_sheet_with_headers(sheet_name)
-    existing_row = comm.get_turtle_data(primary_id, sheet_name)
-    state = turtle_data.get('general_location') or ''
-    location = turtle_data.get('location') or ''
-    if existing_row:
-        comm.update_turtle_data(primary_id, turtle_data, sheet_name, state, location)
-        print(f"✅ Community spreadsheet: updated turtle {primary_id} on sheet '{sheet_name}'")
-    else:
-        comm.create_turtle_data(turtle_data, sheet_name, state, location)
-        print(f"✅ Community spreadsheet: added turtle {primary_id} to sheet '{sheet_name}'")
+
+    # candidate_matches is created after SuperPoint search succeeds in create_review_packet;
+    # missing dir + no failure marker => matching still running (or legacy stuck community packet).
+    match_search_pending = not os.path.isdir(candidates_dir) and not match_search_failed
+    candidates = []
+    if os.path.isdir(candidates_dir):
+        for candidate_file in sorted(os.listdir(candidates_dir)):
+            if candidate_file.lower().endswith(('.jpg', '.png', '.jpeg')):
+                # Strip extension case-insensitively (.JPG was left on parts, breaking int() for Rank/Conf).
+                root, ext = os.path.splitext(candidate_file)
+                base_name = root if ext.lower() in ('.jpg', '.jpeg', '.png') else candidate_file
+                parts = base_name.split('_')
+                rank, turtle_id, confidence = 0, 'Unknown', 0
+                for part in parts:
+                    if part.startswith('Rank'):
+                        rank = int(part.replace('Rank', ''))
+                    elif part.startswith('ID'):
+                        turtle_id = part.replace('ID', '')
+                    elif part.startswith('Conf'):
+                        confidence = int(part.replace('Conf', ''))
+                    elif part.startswith('Score'):
+                        confidence = 0
+                candidates.append({'rank': rank, 'turtle_id': turtle_id, 'confidence': confidence, 'image_path': os.path.join(candidates_dir, candidate_file)})
+
+    return {
+        'request_id': request_id,
+        'uploaded_image': uploaded_image,
+        'metadata': metadata,
+        'additional_images': additional_images,
+        'candidates': sorted(candidates, key=lambda x: x['rank']),
+        'match_search_pending': match_search_pending,
+        'match_search_failed': match_search_failed,
+        'match_search_error': match_search_error,
+        'status': 'pending',
+        'photo_type': metadata.get('photo_type', 'plastron'),
+    }
 
 
 def register_review_routes(app):
@@ -89,7 +166,7 @@ def register_review_routes(app):
         
         try:
             queue_items = manager_service.manager.get_review_queue()
-            formatted_items = [_format_packet_item(item['path'], item['request_id']) for item in queue_items]
+            formatted_items = [format_review_packet_item(item['path'], item['request_id']) for item in queue_items]
             return jsonify({'success': True, 'items': formatted_items})
         
         except Exception as e:
@@ -115,6 +192,7 @@ def register_review_routes(app):
                 typ = request.form.get(f'type_{idx}', 'other').strip().lower()
                 if typ not in ('microhabitat', 'condition', 'carapace', 'plastron', 'other'):
                     typ = 'other'
+                lbs = parse_labels_from_form(request.form, idx)
                 if not allowed_file(f.filename):
                     continue
                 f.seek(0, os.SEEK_END)
@@ -125,7 +203,12 @@ def register_review_routes(app):
                 ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
                 temp_path = os.path.join(UPLOAD_FOLDER, f"review_extra_{request_id}_{idx}_{int(time.time())}{ext}")
                 f.save(temp_path)
-                files_with_types.append({'path': temp_path, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
+                # HEIC/HEIF → JPEG (no-op for other formats)
+                temp_path = normalize_to_jpeg(temp_path)
+                item = {'path': temp_path, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
+                if lbs:
+                    item['labels'] = lbs
+                files_with_types.append(item)
             if not files_with_types:
                 return jsonify({'error': 'No valid image files provided'}), 400
             success, msg = manager_service.manager.add_additional_images_to_packet(request_id, files_with_types)
@@ -166,101 +249,6 @@ def register_review_routes(app):
             return jsonify({'error': err or 'Failed to remove image'}), 400
         return jsonify({'success': True})
 
-    def _format_packet_item(packet_dir, request_id):
-        """Build one queue item dict from packet_dir (used by get_review_queue and get_review_packet)."""
-        metadata_path = os.path.join(packet_dir, 'metadata.json')
-        metadata = {}
-        if os.path.exists(metadata_path):
-            with open(metadata_path, 'r') as f:
-                metadata = json.load(f)
-
-        additional_images = []
-        additional_dir = os.path.join(packet_dir, 'additional_images')
-
-        # --- NEW LOGIC: Helper to parse manifest or folder ---
-        def parse_manifest_or_folder(target_dir):
-            results = []
-            manifest_path = os.path.join(target_dir, 'manifest.json')
-            processed_files = set()
-
-            if os.path.isfile(manifest_path):
-                try:
-                    with open(manifest_path, 'r') as f:
-                        manifest = json.load(f)
-                    for entry in manifest:
-                        fn = entry.get('filename')
-                        kind = entry.get('type', 'other')
-                        if fn:
-                            p = os.path.join(target_dir, fn)
-                            if os.path.isfile(p):
-                                results.append({
-                                    'filename': fn,
-                                    'type': kind,
-                                    'timestamp': entry.get('timestamp'),
-                                    'image_path': p,
-                                })
-                                processed_files.add(fn)
-                except (json.JSONDecodeError, OSError):
-                    pass
-
-            # Fallback: catch images not in manifest (e.g., from tests or legacy uploads)
-            if os.path.isdir(target_dir):
-                for f in sorted(os.listdir(target_dir)):
-                    if f != 'manifest.json' and f not in processed_files and f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                        results.append({
-                            'filename': f,
-                            'type': 'other',
-                            'timestamp': None,
-                            'image_path': os.path.join(target_dir, f),
-                        })
-            return results
-
-        # Execute our folder scanning
-        if os.path.isdir(additional_dir):
-            # 1. Process legacy root folder
-            additional_images.extend(parse_manifest_or_folder(additional_dir))
-
-            # 2. Process our new Date-Stamped subfolders
-            for item in sorted(os.listdir(additional_dir)):
-                item_path = os.path.join(additional_dir, item)
-                if os.path.isdir(item_path):
-                    additional_images.extend(parse_manifest_or_folder(item_path))
-
-        uploaded_image = None
-        for f in os.listdir(packet_dir):
-            if f.lower().endswith(('.jpg', '.png', '.jpeg')) and f != 'metadata.json' and not f.startswith('.'):
-                uploaded_image = os.path.join(packet_dir, f)
-                break
-
-        candidates_dir = os.path.join(packet_dir, 'candidate_matches')
-        candidates = []
-        if os.path.exists(candidates_dir):
-            for candidate_file in sorted(os.listdir(candidates_dir)):
-                if candidate_file.lower().endswith(('.jpg', '.png', '.jpeg')):
-                    parts = candidate_file.replace('.jpg', '').replace('.png', '').replace('.jpeg', '').split('_')
-                    rank, turtle_id, confidence = 0, 'Unknown', 0
-                    for part in parts:
-                        if part.startswith('Rank'):
-                            rank = int(part.replace('Rank', ''))
-                        elif part.startswith('ID'):
-                            turtle_id = part.replace('ID', '')
-                        elif part.startswith('Conf'):
-                            confidence = int(part.replace('Conf', ''))
-                        elif part.startswith('Score'):
-                            # Legacy packets used Score; treat as 0 confidence
-                            confidence = 0
-                    candidates.append({'rank': rank, 'turtle_id': turtle_id, 'confidence': confidence, 'image_path': os.path.join(candidates_dir, candidate_file)})
-
-        return {
-            'request_id': request_id,
-            'uploaded_image': uploaded_image,
-            'metadata': metadata,
-            'additional_images': additional_images,
-            'candidates': sorted(candidates, key=lambda x: x['rank']),
-            'status': 'matched' if candidates else 'pending',
-            'photo_type': metadata.get('photo_type', 'plastron'),
-        }
-
     @app.route('/api/review-queue/<request_id>', methods=['GET'])
     @require_admin
     def get_review_packet(request_id):
@@ -272,7 +260,7 @@ def register_review_routes(app):
         packet_dir = manager_service.manager._resolve_packet_dir(request_id)
         if not packet_dir or not os.path.isdir(packet_dir):
             return jsonify({'error': 'Request not found'}), 404
-        item = _format_packet_item(packet_dir, request_id)
+        item = format_review_packet_item(packet_dir, request_id)
         return jsonify({'success': True, 'item': item})
 
     @app.route('/api/review-queue/<request_id>/cross-check', methods=['POST'])
@@ -415,7 +403,7 @@ def register_review_routes(app):
                         break
 
         # Return the updated packet
-        item = _format_packet_item(packet_dir, request_id)
+        item = format_review_packet_item(packet_dir, request_id)
         return jsonify({'success': True, 'item': item, 'matches_found': len(results)})
 
     @app.route('/api/flags', methods=['GET'])
@@ -658,30 +646,20 @@ def register_review_routes(app):
                     if packet_dir:
                         manager_service.manager._delete_packet(packet_dir, request_id=request_id)
 
-                # When admin matched a community turtle: remove from community sheet (turtle moved to research).
-                # When admin matched a research turtle: sync to community spreadsheet.
-                if match_turtle_id:
-                    if match_from_community and community_sheet_name:
-                        primary_id = (isinstance(sheets_data, dict) and sheets_data.get('primary_id')) or match_turtle_id
-                        comm = get_community_sheets_service()
-                        if comm:
-                            try:
-                                deleted = comm.delete_turtle_data(primary_id, community_sheet_name)
-                                if deleted:
-                                    print(f"✅ Removed turtle {primary_id} from community sheet '{community_sheet_name}' (moved to admin).")
-                                else:
-                                    print(f"⚠️ Could not remove turtle {primary_id} from community sheet '{community_sheet_name}' (row may not exist).")
-                            except Exception as del_err:
-                                print(f"⚠️ Warning: Failed to remove turtle from community sheet: {del_err}")
-                        # Do NOT sync to community – turtle now lives only in research.
-                    else:
+                # When admin matched a community turtle: remove that row from the community sheet (turtle moves to research only).
+                # Admin/research matches do not write to the community spreadsheet — the two books stay separate.
+                if match_turtle_id and match_from_community and community_sheet_name:
+                    primary_id = (isinstance(sheets_data, dict) and sheets_data.get('primary_id')) or match_turtle_id
+                    comm = get_community_sheets_service()
+                    if comm:
                         try:
-                            _sync_confirmed_to_community(
-                                request.json or {}, (request.json or {}).get('sheets_data'),
-                                get_sheets_service(), None, None, match_turtle_id,
-                            )
-                        except Exception as sync_err:
-                            print(f"⚠️ Warning: Could not sync match to community: {sync_err}")
+                            deleted = comm.delete_turtle_data(primary_id, community_sheet_name)
+                            if deleted:
+                                print(f"✅ Removed turtle {primary_id} from community sheet '{community_sheet_name}' (moved to admin).")
+                            else:
+                                print(f"⚠️ Could not remove turtle {primary_id} from community sheet '{community_sheet_name}' (row may not exist).")
+                        except Exception as del_err:
+                            print(f"⚠️ Warning: Failed to remove turtle from community sheet: {del_err}")
 
                 return jsonify({
                     'success': True,

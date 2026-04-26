@@ -9,7 +9,45 @@ on:
     paths: ['backend/**', 'auth-backend/**', '.github/workflows/backend-integration-tests.yml', 'docker-compose.integration.yml']
 
 jobs:
+  # Fast guardrail: production GPU image uses requirements-docker-cuda.txt only; drift causes startup import failures.
+  cuda-requirements-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install packaging (PEP 508 parser)
+        run: pip install packaging
+      - name: Verify requirements-docker-cuda.txt matches requirements.txt (except torch/torchvision)
+        run: python backend/scripts/check_requirements_cuda_sync.py
+
+  # E2E + integration Compose use docker-compose.yml (CPU Dockerfile only). Production deploy uses
+  # Dockerfile.cuda — build it here and import the full app to catch missing deps / startup import crashes.
+  backend-cuda-image-smoke:
+    name: Production backend image (Dockerfile.cuda) — build + import smoke
+    needs: cuda-requirements-sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend Dockerfile.cuda (same as GPU deploy)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.cuda
+          load: true
+          tags: pictur-backend:cuda-ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke — full app import inside image
+        run: |
+          docker run --rm pictur-backend:cuda-ci \
+            python3 -c "import app; print('app import ok')"
+
   integration:
+    needs: cuda-requirements-sync
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

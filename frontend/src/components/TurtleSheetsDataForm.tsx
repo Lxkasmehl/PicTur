@@ -14,7 +14,7 @@ import {
   Loader,
 } from '@mantine/core';
 import { useImperativeHandle, forwardRef } from 'react';
-import { IconInfoCircle } from '@tabler/icons-react';
+import { IconInfoCircle, IconSkull } from '@tabler/icons-react';
 import { useTurtleSheetsDataForm } from '../hooks/useTurtleSheetsDataForm';
 import type { UseTurtleSheetsDataFormReturn } from './TurtleSheetsDataForm.types';
 import {
@@ -28,6 +28,11 @@ import { TurtleSheetsDataFormFields } from './TurtleSheetsDataFormFields';
 import type { TurtleSheetsDataFormProps, TurtleSheetsDataFormRef } from './TurtleSheetsDataForm.types';
 
 export type { TurtleSheetsDataFormRef } from './TurtleSheetsDataForm.types';
+
+function isSheetsDeceasedYes(v?: string): boolean {
+  const s = (v || '').trim().toLowerCase();
+  return ['yes', 'y', 'true', '1', 'deceased', 'dead'].includes(s);
+}
 
 export const TurtleSheetsDataForm = forwardRef<
   TurtleSheetsDataFormRef,
@@ -49,6 +54,7 @@ export const TurtleSheetsDataForm = forwardRef<
     useBackendLocations = false,
     sheetSource = 'admin',
     requireNewSheetForCommunityMatch = false,
+    matchPageColumnLayout = false,
   },
   ref,
 ) {
@@ -68,6 +74,7 @@ export const TurtleSheetsDataForm = forwardRef<
     useBackendLocations,
     sheetSource,
     requireNewSheetForCommunityMatch,
+    matchPageColumnLayout,
   });
 
   useImperativeHandle(ref, () => ({
@@ -110,6 +117,14 @@ export const TurtleSheetsDataForm = forwardRef<
       >
         <FormHeader mode={mode} primaryId={primaryId} />
 
+        {isSheetsDeceasedYes(hook.formData.deceased) && (
+          <Alert icon={<IconSkull size={18} />} color="gray" title="Recorded as deceased" radius="md">
+            <Text size="sm">
+              This turtle is marked deceased in Google Sheets (gray row and Deceased? column when present).
+            </Text>
+          </Alert>
+        )}
+
         <Alert icon={<IconInfoCircle size={18} />} color='blue' radius='md'>
           <Text size='sm'>
             This data will be synced to Google Sheets. Primary ID is automatically
@@ -120,10 +135,9 @@ export const TurtleSheetsDataForm = forwardRef<
         {hook.isFieldModeRestricted && (
           <Alert color='yellow' radius='md' title='Add-only mode (field use)'>
             <Text size='sm'>
-              You can only add data here; existing values are read-only to avoid
-              accidental changes. You can append to Notes and Dates Refound. To edit an
-              existing field, use &quot;Unlock editing&quot; above that field and
-              confirm.
+              {matchPageColumnLayout
+                ? 'Only selected columns are shown. Read-only fields cannot be edited. For other fields, use “Unlock editing” and confirm before changing values.'
+                : 'You can only add data here; existing values are read-only to avoid accidental changes. You can append to Notes and Dates Refound. To edit an existing field, use “Unlock editing” above that field and confirm.'}
             </Text>
           </Alert>
         )}
@@ -132,7 +146,11 @@ export const TurtleSheetsDataForm = forwardRef<
             <Grid.Col span={12}>
               <SheetSelectionRow
                 loadingSheets={hook.loadingSheets}
-                isFieldModeRestricted={hook.isFieldModeRestricted && !requireNewSheetForCommunityMatch}
+                isFieldModeRestricted={
+                  hook.isFieldModeRestricted &&
+                  !requireNewSheetForCommunityMatch &&
+                  mode !== 'create'
+                }
                 isFieldUnlocked={hook.isFieldUnlocked}
                 requestUnlock={hook.requestUnlock}
                 selectedSheetName={hook.selectedSheetName}
@@ -173,6 +191,7 @@ export const TurtleSheetsDataForm = forwardRef<
                 !(useBackendLocations && hook.selectedSheetName.includes('/'))
               }
               requireNewSheetForCommunityMatch={requireNewSheetForCommunityMatch}
+              generalLocationUseCatalog={hook.generalLocationUseCatalog}
               generalLocationOptions={hook.generalLocationOptions}
               generalLocationLoading={hook.generalLocationLoading}
               generalLocationLocked={hook.generalLocationLocked}
@@ -183,6 +202,7 @@ export const TurtleSheetsDataForm = forwardRef<
                   : () => hook.setShowCreateGeneralLocationModal(true)
               }
               generalLocationSelectRemountKey={hook.selectedSheetName}
+              matchPageColumnLayout={matchPageColumnLayout}
             />
           </Grid>
 

@@ -50,7 +50,12 @@ def test_patch_user_role_as_admin_success(auth_url, integration_env, admin_token
     """PATCH /admin/users/:id/role with admin token and valid role returns 200."""
     if not integration_env or not admin_token:
         pytest.skip("Set BACKEND_URL and AUTH_URL (and seeded users) to run")
-    # Get a user id (e.g. community user)
+    # Demoting community -> staff -> community sets tokens_valid_after on that user (auth-backend).
+    # Use the dedicated role-test seed user, not arbitrary community users (e.g. community@test.com),
+    # or session-scoped JWTs used by other integration tests become 403.
+    role_test_email = os.environ.get(
+        "E2E_ROLE_TEST_EMAIL", "role-test-community@test.com"
+    ).lower()
     list_url = f"{_auth_url(auth_url)}/admin/users"
     list_r = requests.get(
         list_url,
@@ -59,13 +64,22 @@ def test_patch_user_role_as_admin_success(auth_url, integration_env, admin_token
     )
     list_r.raise_for_status()
     users = list_r.json().get("users", [])
-    community_user = next(
-        (u for u in users if u.get("role") == "community" and u.get("email")),
+    target = next(
+        (
+            u
+            for u in users
+            if u.get("email")
+            and str(u["email"]).lower() == role_test_email
+            and u.get("role") == "community"
+        ),
         None,
     )
-    if not community_user:
-        pytest.skip("No community user in seed (need community@test.com)")
-    user_id = community_user["id"]
+    if not target:
+        pytest.skip(
+            f"No seeded role-test community user (expected {role_test_email}); "
+            "run auth-backend seed-test-users"
+        )
+    user_id = target["id"]
     url = f"{_auth_url(auth_url)}/admin/users/{user_id}/role"
     # Change to staff then back to community so test is idempotent
     r = requests.patch(

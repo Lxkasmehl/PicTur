@@ -1,13 +1,13 @@
-# TurtleTracker
+# PicTur
 
-**TurtleTracker: A Community-Driven Web Platform for Turtle Population Monitoring Using Image-Based Identification**
+**PicTur: A Community-Driven Web Platform for Turtle Population Monitoring Using Image-Based Identification**
 
 A system for identifying turtles through photo upload and automatic matching.
 
 ## Project Structure
 
 ```
-TurtleProject/
+PicTur/
 ├── frontend/          # React Frontend (TypeScript)
 ├── auth-backend/      # Node.js/Express Auth Backend (Port 3001)
 ├── backend/           # Flask API Server (Python) (Port 5000)
@@ -60,7 +60,7 @@ You need **Docker** and **Docker Compose** installed.
    docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
    ```
 
-4. Open **http://localhost** in your browser (frontend). Auth API: **http://localhost:3001**, Turtle API: **http://localhost:5000**.
+4. Open **http://localhost** in your browser (frontend). Auth API: **http://localhost:3001**, PicTur API: **http://localhost:5000**.
 
 GPU mode uses `backend/Dockerfile.cuda` and requires the NVIDIA Container Toolkit/runtime.
 If GPU runtime is unavailable, use CPU default (`docker compose up --build`) or the platform launcher fallback script.
@@ -84,7 +84,7 @@ Data (auth DB, review queue, uploads) is stored in Docker volumes and persists b
 #### Prerequisites
 
 - **Node.js** (v18+) for auth-backend and frontend
-- **Python** (3.8+) for turtle backend
+- **Python** (3.8+) for the PicTur backend
 - **npm** or **yarn** for Node.js packages
 - **pip** for Python packages
 
@@ -123,9 +123,9 @@ npm run dev
 
 The auth backend runs on `http://localhost:3001`
 
-### 2. Start Turtle Backend (Port 5000)
+### 2. Start PicTur Backend (Port 5000)
 
-The turtle backend handles photo uploads, matching, and review queue.
+The PicTur backend handles photo uploads, matching, and review queue.
 
 1. Navigate to the backend directory:
 
@@ -145,7 +145,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-The turtle backend runs on `http://localhost:5000`
+The PicTur backend runs on `http://localhost:5000`
 
 ### 3. Start Frontend
 
@@ -186,7 +186,7 @@ You need to run **all three services** simultaneously:
    cd auth-backend && npm run dev
    ```
 
-2. **Terminal 2**: Turtle Backend (Port 5000)
+2. **Terminal 2**: PicTur Backend (Port 5000)
 
    ```bash
    cd backend && python app.py
@@ -274,7 +274,7 @@ Biology IDs are zero-padded to three digits (`F002`, `M010`) and folder names pr
 The frontend is configured to use:
 
 - **Auth Backend**: `http://localhost:3001/api` (for authentication)
-- **Turtle Backend**: `http://localhost:5000/api` (for photo uploads and matching)
+- **PicTur Backend**: `http://localhost:5000/api` (for photo uploads and matching)
 
 If your backends run on different ports, set these environment variables in the frontend:
 
@@ -293,7 +293,7 @@ echo "VITE_API_URL=http://localhost:5000/api" >> .env
 - Google OAuth integration
 - User management and role-based access control
 
-### Turtle Backend Development
+### PicTur Backend Development
 
 - Flask server with CORS for frontend communication
 - Uses `turtle_manager.py` for main logic — approval flow, reference replacement (plastron + carapace, atomic and crash-safe), flash-drive ingest, Google Sheets sync
@@ -329,7 +329,7 @@ Tests run against the real backends (no fake backends). Use Docker to run servic
 ## Further Information
 
 - See `auth-backend/README.md` for detailed auth backend documentation
-- See `backend/README.md` for detailed turtle backend documentation
+- See `backend/README.md` for detailed PicTur backend documentation
 - See `docs/VERSION_AND_RELEASES.md` for versioning, changelog, and GitHub Releases
 
 ## Funding & Acknowledgments

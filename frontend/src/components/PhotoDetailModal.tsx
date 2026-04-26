@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 import { IconX, IconMapPin } from '@tabler/icons-react';
 import type { UploadedPhoto } from '../types/photo';
+import { formatUsDateTimeForDisplay } from '../utils/usDateFormat';
 import { formatFileSize, formatLocation, getGoogleMapsUrl } from '../utils/photoHelpers';
 
 interface PhotoDetailModalProps {
@@ -78,7 +79,7 @@ export function PhotoDetailModal({ opened, onClose, photo }: PhotoDetailModalPro
                 Timestamp:
               </Text>
               <Text size='sm' c='dimmed' style={{ fontFamily: 'monospace' }}>
-                {new Date(photo.timestamp).toLocaleString()}
+                {formatUsDateTimeForDisplay(new Date(photo.timestamp))}
               </Text>
             </Group>
           </Stack>

@@ -174,6 +174,8 @@ export default function AdminTurtleMatchPage() {
     setCrossCheckResults(null);
     setReplaceReference(false);
     setReplaceCarapaceReference(false);
+    setSheetsData(null);
+    setPrimaryId(turtleId);
     setLoadingTurtleData(true);
 
     const match = matchData?.matches.find((m) => m.turtle_id === turtleId);
@@ -771,6 +773,7 @@ export default function AdminTurtleMatchPage() {
                         imagePath: a.image_path,
                         filename: a.filename,
                         type: a.type,
+                        labels: a.labels,
                       }))}
                       requestId={imageId}
                       onRefresh={async () => {
@@ -793,6 +796,7 @@ export default function AdminTurtleMatchPage() {
                         imagePath: a.path,
                         filename: a.path.split(/[/\\]/).pop() ?? a.path,
                         type: a.type,
+                        labels: a.labels,
                       }))}
                       turtleId={selectedMatch}
                       sheetName={selectedMatchData?.location?.split('/')[0]?.trim() ?? null}
@@ -855,7 +859,7 @@ export default function AdminTurtleMatchPage() {
                   initialData={sheetsData || undefined}
                   sheetName={isMatchFromCommunity ? '' : (sheetsData?.sheet_name)}
                   primaryId={primaryId || undefined}
-                  mode={sheetsData ? 'edit' : 'create'}
+                  mode='edit'
                   onSave={handleSaveSheetsData}
                   hideSubmitButton={true}
                   onCombinedSubmit={handleSaveAndConfirm}
@@ -863,6 +867,7 @@ export default function AdminTurtleMatchPage() {
                   initialAvailableSheets={availableSheets.length > 0 ? availableSheets : undefined}
                   sheetSource="admin"
                   requireNewSheetForCommunityMatch={isMatchFromCommunity}
+                  matchPageColumnLayout
                 />
               </Paper>
 
@@ -1242,6 +1247,12 @@ export default function AdminTurtleMatchPage() {
             onSave={handleSaveNewTurtleSheetsData}
             onCancel={() => setShowNewTurtleModal(false)}
             useBackendLocations
+            sheetSource='admin'
+            addOnlyMode
+            matchPageColumnLayout
+            initialAvailableSheets={
+              availableSheets.length > 0 ? availableSheets : undefined
+            }
           />
         </Stack>
       </Modal>

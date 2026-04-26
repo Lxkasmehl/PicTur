@@ -25,7 +25,15 @@ class TurtleDeepMatcher:
         if self.device_str == "cuda":
             logger.info(f"✅ GPU DETECTED: {torch.cuda.get_device_name(0)}")
         else:
-            logger.warning("⚠️ GPU NOT DETECTED. Running in CPU slow mode.")
+            cuda_build = getattr(torch.version, "cuda", None)
+            logger.warning(
+                "⚠️ GPU NOT DETECTED. Running in CPU slow mode. "
+                "torch=%s torch.version.cuda=%r (if None, image has CPU-only PyTorch; "
+                "if set but still CPU, check nvidia-container-toolkit / docker --gpus; "
+                "do not set CUDA_VISIBLE_DEVICES=all — use unset or e.g. 0).",
+                torch.__version__,
+                cuda_build,
+            )
 
         # 2. SuperPoint: Tunable Detection Parameters
         self.extractor = SuperPoint(max_num_keypoints=4096, nms_radius=3).eval().to(self.device)

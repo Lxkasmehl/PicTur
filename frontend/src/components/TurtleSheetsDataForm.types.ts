@@ -33,6 +33,11 @@ export interface TurtleSheetsDataFormProps {
    * Sheet selection is required (admin sheet where the turtle will be stored) and the sheet field is not locked.
    */
   requireNewSheetForCommunityMatch?: boolean;
+  /**
+   * Turtle Match: only a subset of columns is shown; some are read-only and some unlock for edit.
+   * Turtle Records / Sheets Browser: omit or false for full sheet columns.
+   */
+  matchPageColumnLayout?: boolean;
 }
 
 export interface TurtleSheetsDataFormRef {
@@ -61,6 +66,8 @@ export interface TurtleSheetsDataFormFieldsProps {
   requireGeneralLocationForPath?: boolean;
   /** When true, sheet and general_location are always editable (no unlock); used on Match page for community→admin. */
   requireNewSheetForCommunityMatch?: boolean;
+  /** When false, General Location is a plain text field (community spreadsheet; no backend State/Location path). */
+  generalLocationUseCatalog: boolean;
   generalLocationOptions?: { value: string; label: string }[];
   generalLocationLoading?: boolean;
   generalLocationLocked?: boolean;
@@ -68,6 +75,7 @@ export interface TurtleSheetsDataFormFieldsProps {
   onCreateGeneralLocation?: () => void;
   /** Remount General Location select when sheet changes (Mantine Select can show stale label otherwise). */
   generalLocationSelectRemountKey?: string;
+  matchPageColumnLayout?: boolean;
 }
 
 /** Return type of useTurtleSheetsDataForm hook */
@@ -82,6 +90,8 @@ export interface UseTurtleSheetsDataFormReturn {
   selectedGeneralLocationState: string;
   selectedGeneralLocationDefault: string;
   generalLocationOptions: { value: string; label: string }[];
+  /** When false, General Location is free text (community sheet); hook and fields stay in sync. */
+  generalLocationUseCatalog: boolean;
   generalLocationLoading: boolean;
   generalLocationLocked: boolean;
   loadingSheets: boolean;

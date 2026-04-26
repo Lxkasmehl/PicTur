@@ -1,0 +1,43 @@
+name: Deploy on GitHub Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to deploy (must exist on origin, e.g. v1.2.3)"
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          fingerprint: ${{ secrets.DEPLOY_SSH_FINGERPRINT }}
+          command_timeout: 45m
+          script: |
+            set -euo pipefail
+            TAG="${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag }}"
+            cd "${{ vars.DEPLOY_PATH }}"
+            git fetch origin --prune --tags --force
+            # reset --hard matches the tag on disk and drops any local edits (avoids checkout conflicts).
+            git reset --hard "$TAG"
+            git clean -fd
+            # Stop and remove existing project containers first.
+            docker compose down --remove-orphans
+            # If a container still holds the default Compose names (lost labels / manual run), `down` may not remove it.
+            # Must match top-level `name:` in docker-compose.yml (turtleproject).
+            for n in turtleproject-backend-1 turtleproject-auth-backend-1 turtleproject-frontend-1; do
+              docker rm -f "$n" 2>/dev/null || true
+            done
+            docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build -d

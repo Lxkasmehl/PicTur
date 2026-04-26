@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppSelector } from '../store/hooks';
+import { isEmailVerified } from '../utils/emailVerified';
 
 /** Routes that are allowed without email verification (logged-in but unverified users). */
 const ALLOWED_WITHOUT_VERIFICATION = [
@@ -9,11 +10,12 @@ const ALLOWED_WITHOUT_VERIFICATION = [
   '/register',
   '/about',
   '/contact',
+  '/observer',
 ];
 
 /**
  * Redirects logged-in users with unverified email to /verify-email.
- * They can only access login, register, verify-email, about, contact until verified.
+ * They can only access login, register, verify-email, about, contact, observer until verified.
  */
 export default function EmailVerificationGuard({
   children,
@@ -31,8 +33,7 @@ export default function EmailVerificationGuard({
   useEffect(() => {
     if (!authChecked) return;
     if (!user) return;
-    // Treat missing email_verified as verified for backward compatibility (e.g. old sessions)
-    if (user.email_verified !== false) return;
+    if (isEmailVerified(user)) return;
     if (isAllowed) return;
 
     navigate('/verify-email', { replace: true });

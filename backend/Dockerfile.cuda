@@ -1,8 +1,8 @@
-# TurtleTracker Backend -- CUDA-enabled image
+# PicTur Backend -- CUDA-enabled image
 # Tested: RTX 5080 (Blackwell) / driver 590.48.01 / CUDA 13.1 host.
 #
-# Blackwell GPUs require CUDA 12.8+ runtime to be recognized.
-# We use CUDA 13.0 + Ubuntu 22.04 (avoids PEP 668) + venv (clean pip).
+# Blackwell GPUs (sm_120) require CUDA 12.8+ runtime; we use CUDA 13.0 + cu130 wheels.
+# Ubuntu 22.04 (avoids PEP 668) + venv (clean pip).
 
 FROM nvidia/cuda:13.0.1-cudnn-runtime-ubuntu22.04
 
@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgl1 \
         libglib2.0-0 \
         libheif-dev \
+        libde265-0 \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,17 +36,21 @@ RUN python3.11 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# PyTorch -- pin to cu130 wheels BEFORE requirements.txt
-# Two-step install: torch first (from cu130 index only), then
-# requirements.txt (pip sees torch already satisfied, skips it).
-RUN pip install --no-cache-dir \
-        torch torchvision \
-        --index-url https://download.pytorch.org/whl/cu130
-
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# PyPI's default torch wheels are CPU-only; CUDA builds live on download.pytorch.org.
+# kornia/lightglue deps can pull torch from PyPI and overwrite the CUDA build — force-reinstall at the end.
+# cu130 + torch: NVIDIA Blackwell (RTX 5080, sm_120) requires CUDA 12.8+; we use cu130 wheels.
+COPY requirements-docker-cuda.txt .
+RUN pip install --no-cache-dir \
+        torch torchvision \
+        --index-url https://download.pytorch.org/whl/cu130 \
+    && pip install --no-cache-dir -r requirements-docker-cuda.txt \
+    && pip install --no-cache-dir --upgrade --force-reinstall \
+        torch torchvision \
+        --index-url https://download.pytorch.org/whl/cu130 \
+        --no-deps \
+    && python -c "import torch; assert torch.version.cuda, 'Expected CUDA PyTorch (torch.version.cuda must be set)'"
 
 COPY . .
 

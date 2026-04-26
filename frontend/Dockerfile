@@ -1,4 +1,4 @@
-# TurtleTracker Frontend (React/Vite) – build and serve with Nginx
+# PicTur Frontend (React/Vite) – build and serve with Nginx
 # Build stage
 FROM node:20-alpine AS builder
 

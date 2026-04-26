@@ -240,7 +240,7 @@ export function AdminTurtleMatchView() {
                 state={state}
                 location={location}
                 primaryId={primaryId || undefined}
-                mode={sheetsData ? 'edit' : 'create'}
+                mode='edit'
                 onSave={handleSaveSheetsData}
                 hideSubmitButton
                 onCombinedSubmit={handleSaveAndConfirm}
@@ -248,6 +248,7 @@ export function AdminTurtleMatchView() {
                 initialAvailableSheets={
                   availableSheets.length > 0 ? availableSheets : undefined
                 }
+                matchPageColumnLayout
               />
             </Paper>
 
@@ -441,6 +442,10 @@ export function AdminTurtleMatchView() {
             mode='create'
             onSave={handleSaveNewTurtleSheetsData}
             onCancel={() => setShowNewTurtleModal(false)}
+            useBackendLocations
+            sheetSource='admin'
+            addOnlyMode
+            matchPageColumnLayout
             initialAvailableSheets={
               availableSheets.length > 0 ? availableSheets : undefined
             }

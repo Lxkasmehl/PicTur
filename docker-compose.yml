@@ -1,7 +1,10 @@
-# TurtleTracker – run frontend, auth-backend, and backend with Docker Compose
+# PicTur – run frontend, auth-backend, and backend with Docker Compose
 # Usage: docker compose up --build
-# Then open http://localhost (frontend), Auth API on :3001, Turtle API on :5000
+# Then open http://localhost (frontend), Auth API on :3001, PicTur API on :5000
 # Optional: set FRONTEND_PORT in .env (e.g. 8080) if port 80 is in use; then use FRONTEND_URL=http://localhost:8080 for auth.
+
+# Pin project name so container names and `docker compose` state stay stable regardless of clone folder name.
+name: turtleproject
 
 services:
   frontend:
@@ -35,7 +38,16 @@ services:
       # Optional: Google OAuth (set in .env for login with Google)
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Public base URL of the auth API (no trailing slash). Used for Google OAuth if GOOGLE_CALLBACK_URL is unset.
+      AUTH_BACKEND_URL: ${AUTH_BACKEND_URL:-}
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-}
+      # Optional SMTP (set in project root .env for Docker; same vars as auth-backend/.env locally)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     volumes:
       - auth-data:/app/data
 
@@ -53,8 +65,12 @@ services:
       AUTH_URL: ${AUTH_URL:-http://auth-backend:3001/api}
       GOOGLE_SHEETS_SPREADSHEET_ID: ${GOOGLE_SHEETS_SPREADSHEET_ID:-}
       GOOGLE_SHEETS_CREDENTIALS_PATH: ${GOOGLE_SHEETS_CREDENTIALS_PATH:-/app/credentials/google-sheets-credentials.json}
+      GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID: ${GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID:-}
+      BACKUP_OUTPUT_DIR: ${BACKUP_OUTPUT_DIR:-/app/backups}
     volumes:
       - backend-data:/app/data
+      # Backups on host so they survive container/volume removal (see docs/BACKUP.md)
+      - ./backups:/app/backups
       # Mount Google credentials from host (create backend/credentials/ and add JSON)
       - ./backend/credentials:/app/credentials:ro
     # Backend may take a while to warm SuperPoint tensor cache

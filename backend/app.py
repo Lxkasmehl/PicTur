@@ -1,5 +1,5 @@
 """
-Flask API Server for Turtle Project
+Flask API Server for PicTur
 Handles photo uploads, matching, and review queue
 """
 
@@ -10,9 +10,8 @@ import sys
 import config
 
 # Import Flask and CORS
-from flask import Flask, request, jsonify, send_file
+from flask import Flask
 from flask_cors import CORS
-from werkzeug.serving import make_server
 
 # Fix Unicode encoding issues on Windows
 if sys.platform == 'win32':
@@ -36,17 +35,18 @@ from routes.sheets import register_sheets_routes
 from routes.turtles import register_turtle_routes
 from routes.locations import register_locations_routes
 from routes.general_locations import register_general_location_routes
+from routes.admin_backup import register_admin_backup_routes
 
 # Create Flask app
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})
+CORS(app, resources={r"/api/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})
 
 # Add after_request handler to ensure CORS headers are always set
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
     return response
 
 # Register all routes (Delegates logic to the /routes folder)
@@ -58,6 +58,7 @@ register_sheets_routes(app)
 register_turtle_routes(app)
 register_locations_routes(app)
 register_general_location_routes(app)
+register_admin_backup_routes(app)
 
 @app.errorhandler(Exception)
 def handle_exception(err):
@@ -82,13 +83,13 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', '5000'))
 
     try:
-        print("🐢 Starting Turtle API Server...", flush=True)
+        print("🐢 Starting PicTur API Server...", flush=True)
         print(f"🌐 Server will be available at http://localhost:{port}", flush=True)
         if manager_service.manager is not None:
             print(f"📁 Data directory: {manager_service.manager.base_dir}", flush=True)
         sys.stdout.flush()
     except UnicodeEncodeError:
-        print("[TURTLE] Starting Turtle API Server...", flush=True)
+        print("[PICTUR] Starting PicTur API Server...", flush=True)
         print(f"[NET] Server will be available at http://localhost:{port}", flush=True)
         sys.stdout.flush()
 

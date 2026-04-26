@@ -10,7 +10,12 @@ const VALID_TYPES = [
   'image/png',
   'image/gif',
   'image/webp',
+  'image/heic',
+  'image/heif',
 ];
+// Chrome/Firefox often leave file.type empty for HEIC since they can't read it;
+// fall back to the extension so iPhone uploads are accepted on any browser.
+const VALID_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif'];
 
 export function validateFile(file: File): { isValid: boolean; error?: string } {
   if (file.size > MAX_SIZE) {
@@ -19,10 +24,13 @@ export function validateFile(file: File): { isValid: boolean; error?: string } {
       error: `File is too large. Maximum: ${(MAX_SIZE / 1024 / 1024).toFixed(0)}MB`,
     };
   }
-  if (!VALID_TYPES.includes(file.type)) {
+  const typeOk = VALID_TYPES.includes(file.type);
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  const extOk = VALID_EXTENSIONS.includes(ext);
+  if (!typeOk && !extOk) {
     return {
       isValid: false,
-      error: 'Invalid file type. Allowed: JPEG, PNG, GIF, WEBP',
+      error: 'Invalid file type. Allowed: JPEG, PNG, GIF, WEBP, HEIC',
     };
   }
   return { isValid: true };

@@ -12,9 +12,16 @@ const envPath = path.join(__dirname, '../.env');
 const result = dotenv.config({ path: envPath });
 
 if (result.error) {
-  console.log('⚠️  .env file not found or error loading it:', result.error.message);
-  console.log('   Looking for .env at:', envPath);
-  console.log('   Make sure the .env file exists in the auth-backend folder\n');
+  // In Docker, variables come from Compose; there is no file at /app/.env unless mounted.
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET !== 'your-secret-key-change-in-production') {
+    console.log(
+      'ℹ️  No .env file in container (using process environment). OK for Docker Compose.\n'
+    );
+  } else {
+    console.log('⚠️  .env file not found or error loading it:', result.error.message);
+    console.log('   Looking for .env at:', envPath);
+    console.log('   Make sure the .env file exists in the auth-backend folder\n');
+  }
 } else {
   console.log('✅ .env file loaded successfully\n');
 }
@@ -25,6 +32,8 @@ import session from 'express-session';
 import authRoutes from './routes/auth.js';
 import googleAuthRoutes from './routes/googleAuth.js';
 import adminRoutes from './routes/admin.js';
+import communityGameRoutes from './routes/communityGame.js';
+import userUiPreferencesRoutes from './routes/userUiPreferences.js';
 import passport from './config/passport.js';
 // Import email service to initialize SMTP configuration check
 import './services/email.js';
@@ -44,7 +53,7 @@ const allowedOrigins = [
 // This endpoint is used by Playwright to verify the server is ready
 app.get('/api/health', (req, res) => {
   res.status(200).setHeader('Content-Type', 'application/json');
-  res.json({ status: 'ok', message: 'Turtle Auth Backend API is running' });
+  res.json({ status: 'ok', message: 'PicTur Auth Backend API is running' });
 });
 
 // Simple root endpoint for health checks (alternative)
@@ -78,6 +87,8 @@ app.use(passport.session());
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/auth', communityGameRoutes);
+app.use('/api/auth', userUiPreferencesRoutes);
 app.use('/api/auth', googleAuthRoutes);
 app.use('/api/admin', adminRoutes);
 

@@ -15,11 +15,15 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import db from '../db/database.js';
 import type { User } from '../types/user.js';
 
-// Build full callback URL from environment or use default
+// Full OAuth redirect URI (set in Google Cloud Console). Prefer explicit URL in production.
 const getCallbackURL = (): string => {
-  const baseURL =
-    process.env.AUTH_BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
-  return `${baseURL}/api/auth/google/callback`;
+  const explicit = process.env.GOOGLE_CALLBACK_URL?.trim();
+  if (explicit) return explicit;
+  const base = (
+    process.env.AUTH_BACKEND_URL ||
+    `http://localhost:${process.env.PORT || 3001}`
+  ).replace(/\/$/, '');
+  return `${base}/api/auth/google/callback`;
 };
 
 // Only configure Google OAuth if credentials are provided
@@ -134,25 +138,34 @@ if (
           console.log(`✅ Google OAuth: Creating new user (${emailLower})`);
 
           try {
+            const now = new Date().toISOString();
             const result = db
               .prepare(
-                'INSERT INTO users (email, name, google_id, role) VALUES (?, ?, ?, ?)'
+                `INSERT INTO users (email, name, google_id, role, email_verified, email_verified_at, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, 1, ?, ?, ?)`
               )
-              .run(emailLower, profile.displayName || null, profile.id, 'community');
+              .run(
+                emailLower,
+                profile.displayName || null,
+                profile.id,
+                'community',
+                now,
+                now,
+                now
+              );
 
             console.log(`   Insert result:`, result);
             console.log(`   Last insert rowid:`, result.lastInsertRowid);
 
-            // Small delay to ensure database is written (for file system consistency)
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            const newId = Number(result.lastInsertRowid);
 
             // Try to find by ID first (most reliable after insert)
             let newUser = db
               .prepare('SELECT * FROM users WHERE id = ?')
-              .get(result.lastInsertRowid) as User & { password_hash?: string };
+              .get(newId) as User & { password_hash?: string };
 
             console.log(
-              `   New user from database (by ID ${result.lastInsertRowid}):`,
+              `   New user from database (by ID ${newId}):`,
               newUser ? `Found (ID: ${newUser.id}, Email: ${newUser.email})` : 'NOT FOUND'
             );
 
@@ -171,13 +184,11 @@ if (
 
             if (!newUser) {
               console.error('❌ Failed to retrieve newly created user from database');
-              console.error(
-                `   Tried to find user with ID: ${result.lastInsertRowid}, Email: ${emailLower}`
-              );
+              console.error(`   Tried to find user with ID: ${newId}, Email: ${emailLower}`);
 
               // Last resort: create a user object manually from what we know
               const manualUser: User & { password_hash?: string } = {
-                id: result.lastInsertRowid,
+                id: newId,
                 email: emailLower,
                 name: profile.displayName || null,
                 google_id: profile.id,
@@ -191,9 +202,15 @@ if (
             }
 
             return done(null, newUser);
-          } catch (insertError: any) {
+          } catch (insertError: unknown) {
+            const msg = insertError instanceof Error ? insertError.message : String(insertError);
+            const code = (insertError as { code?: string })?.code;
             // If insert fails due to duplicate, try to find the existing user
-            if (insertError.message && insertError.message.includes('already exists')) {
+            if (
+              code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+              msg.includes('UNIQUE constraint') ||
+              msg.includes('already exists')
+            ) {
               console.log(
                 `   Insert failed due to duplicate, searching for existing user...`
               );

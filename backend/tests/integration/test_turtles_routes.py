@@ -241,3 +241,78 @@ def test_post_turtle_additional_then_delete_roundtrip(client, turtle_with_images
     final_paths = {os.path.basename(a.get("path", "")) for a in r4.json()["additional"]}
     assert final_paths == before_paths
     assert filename not in final_paths
+
+
+# --- Label search & PATCH ---
+
+
+def test_search_labels_no_q(client):
+    """GET /api/turtles/images/search-labels without q returns 400."""
+    r = client.get("/api/turtles/images/search-labels")
+    assert r.status_code == 400
+
+
+def test_post_additional_with_labels_and_search(client, turtle_with_images):
+    """POST with labels_0; GET search-labels finds the image by tag substring."""
+    tid = turtle_with_images["turtle_id"]
+    loc = turtle_with_images["location"]
+    img_bytes = _dummy_image_bytes()
+    r = client.post(
+        "/api/turtles/images/additional",
+        data={
+            "turtle_id": tid,
+            "sheet_name": loc,
+            "file_0": ("carapace_labeled_e2e.jpg", BytesIO(img_bytes)),
+            "type_0": "carapace",
+            "labels_0": "burned, e2e_label_smoke",
+        },
+    )
+    assert r.status_code == 200
+    r2 = client.get("/api/turtles/images/search-labels?q=burned")
+    assert r2.status_code == 200
+    matches = r2.json().get("matches") or []
+    hit = next(
+        (m for m in matches if m.get("turtle_id") == tid and m.get("filename")),
+        None,
+    )
+    assert hit is not None
+    assert any("burn" in str(x).lower() for x in (hit.get("labels") or []))
+
+
+def test_patch_additional_labels(client, turtle_with_images):
+    """PATCH additional-labels updates manifest; GET images reflects new labels."""
+    tid = turtle_with_images["turtle_id"]
+    loc = turtle_with_images["location"]
+    img_bytes = _dummy_image_bytes()
+    r_add = client.post(
+        "/api/turtles/images/additional",
+        data={
+            "turtle_id": tid,
+            "sheet_name": loc,
+            "file_0": ("patch_label_target.jpg", BytesIO(img_bytes)),
+            "type_0": "condition",
+        },
+    )
+    assert r_add.status_code == 200
+    r0 = client.get(f"/api/turtles/images?turtle_id={tid}&sheet_name={loc}")
+    assert r0.status_code == 200
+    additional = r0.json()["additional"]
+    fn = next(
+        (os.path.basename(a.get("path", "")) for a in additional if "patch_label_target" in (a.get("path") or "")),
+        None,
+    )
+    assert fn, "uploaded file should appear in additional list"
+
+    r = client.patch(
+        "/api/turtles/images/additional-labels",
+        json={"turtle_id": tid, "sheet_name": loc, "filename": fn, "labels": ["patch_test_tag"]},
+    )
+    assert r.status_code == 200
+    assert r.json().get("success") is True
+
+    r2 = client.get(f"/api/turtles/images?turtle_id={tid}&sheet_name={loc}")
+    assert r2.status_code == 200
+    rows = r2.json()["additional"]
+    row = next((a for a in rows if os.path.basename(a.get("path", "")) == fn), None)
+    assert row is not None
+    assert "patch_test_tag" in (row.get("labels") or [])

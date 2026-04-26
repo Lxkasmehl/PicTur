@@ -1,4 +1,5 @@
 import {
+  Alert,
   Badge,
   Button,
   Card,
@@ -18,6 +19,7 @@ import {
 } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  IconAlertCircle,
   IconCheck,
   IconList,
   IconMapPin,
@@ -160,7 +162,7 @@ export function ReviewQueueTab() {
 
   // Load selected candidate turtle's existing additional images when a match is selected (must run before any early return)
   useEffect(() => {
-    if (!selectedCandidate || !selectedItem) {
+    if (!selectedCandidate || !selectedItem?.request_id) {
       setSelectedCandidateTurtleImages(null);
       return;
     }
@@ -445,97 +447,130 @@ export function ReviewQueueTab() {
                   Select a match to view details
                 </Text>
 
-                <SimpleGrid
-                  cols={crossCheckResults && crossCheckResults.length > 0 ? { base: 1, xs: 2 } : { base: 1, xs: 2, md: 3, lg: 5 }}
-                  spacing='md'
-                >
-                  {selectedItem.candidates.map((candidate) => (
-                    <Card
-                      key={candidate.turtle_id}
-                      shadow='sm'
-                      padding='sm'
-                      radius='md'
-                      withBorder
-                      style={{
-                        cursor: 'pointer',
-                        border:
-                          selectedCandidate === candidate.turtle_id
-                            ? '2px solid #228be6'
-                            : '1px solid #dee2e6',
-                        backgroundColor:
-                          selectedCandidate === candidate.turtle_id
-                            ? '#e7f5ff'
-                            : 'white',
-                        transition: 'transform 0.1s, box-shadow 0.1s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = '';
-                        e.currentTarget.style.boxShadow = '';
-                      }}
-                      onClick={() => onItemSelect(selectedItem, candidate.turtle_id)}
+                {selectedItem.match_search_pending === true ? (
+                  <Center py='xl'>
+                    <Stack align='center' gap='md'>
+                      <Loader size='md' />
+                      <Text size='sm' c='dimmed' ta='center' maw={440}>
+                        Still running photo matching in the background. This can take a few
+                        minutes. The list refreshes automatically; you can leave and come back.
+                      </Text>
+                    </Stack>
+                  </Center>
+                ) : selectedItem.match_search_failed === true ? (
+                  <Stack gap='md'>
+                    <Alert
+                      icon={<IconAlertCircle size={18} />}
+                      title='Automatic matching failed'
+                      color='red'
+                      variant='light'
                     >
-                      {candidate.image_path ? (
-                        <Image
-                          src={getImageUrl(candidate.image_path)}
-                          alt={`Match ${candidate.rank}`}
-                          radius='md'
-                          style={{
-                            aspectRatio: '1',
-                            objectFit: 'cover',
-                            width: '100%',
-                          }}
-                          mb='sm'
-                        />
-                      ) : (
-                        <Center
-                          style={{
-                            aspectRatio: '1',
-                            backgroundColor: '#f8f9fa',
-                            borderRadius: 'var(--mantine-radius-md)',
-                          }}
-                          mb='sm'
-                        >
-                          <IconPhoto size={48} stroke={1.5} style={{ opacity: 0.3 }} />
-                        </Center>
-                      )}
-
-                      <Group justify='space-between' mb={4}>
-                        <Badge color='blue' size='sm' variant='filled'>
-                          #{candidate.rank}
-                        </Badge>
-                        <Badge color='gray' size='sm' variant='light'>
-                          {candidate.confidence}%
-                        </Badge>
-                      </Group>
-                      <Text
-                        fw={500}
-                        size='sm'
-                        truncate
-                        title={
-                          candidateNames[candidate.turtle_id] || candidate.turtle_id
-                        }
+                      <Text size='sm'>
+                        {selectedItem.match_search_error?.trim() ||
+                          'The server could not run match search for this upload. You can still create a new turtle or remove this item from the queue.'}
+                      </Text>
+                    </Alert>
+                    <Text size='sm' c='dimmed' ta='center' maw={440}>
+                      No suggested matches are available. Use{' '}
+                      <Text span fw={600}>
+                        Create New Turtle
+                      </Text>{' '}
+                      below if this is a new individual.
+                    </Text>
+                  </Stack>
+                ) : (
+                  <SimpleGrid
+                    cols={crossCheckResults && crossCheckResults.length > 0 ? { base: 1, xs: 2 } : { base: 1, xs: 2, md: 3, lg: 5 }}
+                    spacing='md'
+                  >
+                    {selectedItem.candidates.map((candidate) => (
+                      <Card
+                        key={candidate.turtle_id}
+                        shadow='sm'
+                        padding='sm'
+                        radius='md'
+                        withBorder
+                        style={{
+                          cursor: 'pointer',
+                          border:
+                            selectedCandidate === candidate.turtle_id
+                              ? '2px solid #228be6'
+                              : '1px solid #dee2e6',
+                          backgroundColor:
+                            selectedCandidate === candidate.turtle_id
+                              ? '#e7f5ff'
+                              : 'white',
+                          transition: 'transform 0.1s, box-shadow 0.1s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = '';
+                          e.currentTarget.style.boxShadow = '';
+                        }}
+                        onClick={() => onItemSelect(selectedItem, candidate.turtle_id)}
                       >
-                        {candidateNames[candidate.turtle_id] || candidate.turtle_id}
-                      </Text>
-                      <Text size='xs' c='dimmed' truncate>
-                        ID:{' '}
-                        {candidateOriginalIds[candidate.turtle_id] ??
-                          candidate.turtle_id}
-                      </Text>
-                      {selectedCandidate === candidate.turtle_id && (
-                        <IconCheck
-                          size={18}
-                          color='#228be6'
-                          style={{ alignSelf: 'center', marginTop: 4 }}
-                        />
-                      )}
-                    </Card>
-                  ))}
-                </SimpleGrid>
+                        {candidate.image_path ? (
+                          <Image
+                            src={getImageUrl(candidate.image_path)}
+                            alt={`Match ${candidate.rank}`}
+                            radius='md'
+                            style={{
+                              aspectRatio: '1',
+                              objectFit: 'cover',
+                              width: '100%',
+                            }}
+                            mb='sm'
+                          />
+                        ) : (
+                          <Center
+                            style={{
+                              aspectRatio: '1',
+                              backgroundColor: '#f8f9fa',
+                              borderRadius: 'var(--mantine-radius-md)',
+                            }}
+                            mb='sm'
+                          >
+                            <IconPhoto size={48} stroke={1.5} style={{ opacity: 0.3 }} />
+                          </Center>
+                        )}
+
+                        <Group justify='space-between' mb={4}>
+                          <Badge color='blue' size='sm' variant='filled'>
+                            #{candidate.rank}
+                          </Badge>
+                          <Badge color='gray' size='sm' variant='light'>
+                            {candidate.confidence}%
+                          </Badge>
+                        </Group>
+                        <Text
+                          fw={500}
+                          size='sm'
+                          truncate
+                          title={
+                            candidateNames[candidate.turtle_id] || candidate.turtle_id
+                          }
+                        >
+                          {candidateNames[candidate.turtle_id] || candidate.turtle_id}
+                        </Text>
+                        <Text size='xs' c='dimmed' truncate>
+                          ID:{' '}
+                          {candidateOriginalIds[candidate.turtle_id] ??
+                            candidate.turtle_id}
+                        </Text>
+                        {selectedCandidate === candidate.turtle_id && (
+                          <IconCheck
+                            size={18}
+                            color='#228be6'
+                            style={{ alignSelf: 'center', marginTop: 4 }}
+                          />
+                        )}
+                      </Card>
+                    ))}
+                  </SimpleGrid>
+                )}
               </Grid.Col>
 
               {crossCheckResults && crossCheckResults.length > 0 && (
@@ -637,10 +672,11 @@ export function ReviewQueueTab() {
                   imagePath: a.image_path,
                   filename: a.filename,
                   type: a.type,
+                  labels: a.labels,
                 }))}
                 requestId={selectedItem.request_id}
                 onRefresh={() => refreshQueueItem(selectedItem.request_id)}
-                disabled={!!processing}
+                disabled={!!processing || selectedItem.match_search_pending === true}
               />
               {selectedCandidate && (
                 <AdditionalImagesSection
@@ -651,6 +687,7 @@ export function ReviewQueueTab() {
                     imagePath: a.path,
                     filename: a.path.split(/[/\\]/).pop() ?? a.path,
                     type: a.type,
+                    labels: a.labels,
                   }))}
                   turtleId={selectedCandidate}
                   sheetName={fullSheetName}
@@ -751,6 +788,33 @@ export function ReviewQueueTab() {
                 </Group>
               </Paper>
             </>
+          ) : selectedItem.match_search_pending === true ? (
+            <Paper shadow='sm' p='xl' radius='md' withBorder>
+              <Center py='xl'>
+                <Text size='sm' c='dimmed' ta='center' maw={420}>
+                  Match suggestions are not ready yet. You can review photos above, or wait until
+                  matching finishes to choose a match or create a new turtle.
+                </Text>
+              </Center>
+            </Paper>
+          ) : selectedItem.match_search_failed === true ? (
+            <Paper shadow='sm' p='xl' radius='md' withBorder>
+              <Center py='xl'>
+                <Stack gap='md' align='center'>
+                  <Text size='sm' c='dimmed' ta='center' maw={420}>
+                    Matching did not complete, so there are no suggested turtles to pick from. You
+                    can still add this find as a new turtle.
+                  </Text>
+                  <Button
+                    leftSection={<IconPlus size={16} />}
+                    onClick={onCreateNewTurtle}
+                    variant='light'
+                  >
+                    Create New Turtle
+                  </Button>
+                </Stack>
+              </Center>
+            </Paper>
           ) : (
             <Paper shadow='sm' p='xl' radius='md' withBorder>
               <Center py='xl'>
@@ -881,9 +945,25 @@ export function ReviewQueueTab() {
                             style={{ maxHeight: 180, objectFit: 'contain' }}
                           />
                         )}
-                        <Text size='sm' c='dimmed'>
-                          {item.candidates.length} matches
-                        </Text>
+                        {item.match_search_pending === true ? (
+                          <Group gap='xs' wrap='nowrap'>
+                            <Loader size='xs' />
+                            <Text size='sm' c='dimmed'>
+                              Finding matches…
+                            </Text>
+                          </Group>
+                        ) : item.match_search_failed === true ? (
+                          <Group gap='xs' wrap='nowrap'>
+                            <IconAlertCircle size={16} color='var(--mantine-color-red-6)' />
+                            <Text size='sm' c='red'>
+                              Match search failed
+                            </Text>
+                          </Group>
+                        ) : (
+                          <Text size='sm' c='dimmed'>
+                            {item.candidates.length} matches
+                          </Text>
+                        )}
                         {item.metadata.state && item.metadata.location && (
                           <Text size='xs' c='dimmed'>
                             {item.metadata.state} / {item.metadata.location}

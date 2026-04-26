@@ -36,7 +36,7 @@ async function createInitialAdmin() {
     // Check if user already exists
     const existingUser = db
       .prepare('SELECT id, role FROM users WHERE email = ?')
-      .get(email) as User | undefined;
+      .get(email.toLowerCase()) as User | undefined;
 
     if (existingUser) {
       if (existingUser.role === 'admin') {
@@ -56,18 +56,20 @@ async function createInitialAdmin() {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create admin user
+    // Create admin user (verified so admin flows work)
+    const now = new Date().toISOString();
     const result = db
       .prepare(
-        'INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, ?)'
+        `INSERT INTO users (email, password_hash, name, role, email_verified, email_verified_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 1, ?, ?, ?)`
       )
-      .run(email, passwordHash, name, 'admin');
+      .run(email.toLowerCase(), passwordHash, name, 'admin', now, now, now);
 
     console.log('✅ Initial admin user created successfully!');
     console.log(`   Email: ${email}`);
     console.log(`   Name: ${name || 'Not set'}`);
     console.log(`   Role: admin`);
-    console.log(`   ID: ${result.lastInsertRowid}`);
+    console.log(`   ID: ${Number(result.lastInsertRowid)}`);
     console.log('');
     console.log('You can now log in with these credentials.');
 

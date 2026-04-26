@@ -16,11 +16,12 @@ def test_default_catalog_includes_seed_values(isolated_catalog):
     catalog = glc.get_general_location_catalog()
 
     assert catalog['states']['Kansas'] == [
+        'Dee Hobelman',
         'Karlyle Woods',
         'Lawrence',
         'North Topeka',
-        'Valencia',
-        'Wichita',
+        'Other',
+        'West Topeka',
     ]
     assert catalog['sheet_defaults']['NebraskaCPBS']['general_location'] == 'CPBS'
     assert isolated_catalog.exists()
@@ -52,10 +53,12 @@ def test_resolve_general_location_from_sheet_and_value(isolated_catalog):
 
     assert glc.get_general_location_options_for_sheet('NebraskaCPBS')['locations'] == ['CPBS']
     assert glc.get_general_location_options_for_sheet('Kansas')['locations'] == [
+        'Dee Hobelman',
         'Karlyle Woods',
         'Lawrence',
         'North Topeka',
-        'Valencia',
+        'Other',
+        'West Topeka',
         'Wichita',
     ]
     assert glc.resolve_general_location_from_sheet_and_value('NebraskaCPBS', 'Anything') == 'CPBS'

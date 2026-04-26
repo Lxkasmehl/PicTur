@@ -64,6 +64,12 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
 
+from additional_image_labels import (
+    label_query_matches,
+    normalize_additional_type,
+    normalize_label_list,
+)
+
 # --- IMPORT THE BRAIN (SUPERPOINT/LIGHTGLUE) ---
 try:
     from turtles.image_processing import brain
@@ -78,6 +84,98 @@ except ImportError as e1:
 
 # --- CONFIGURATION ---
 BASE_DATA_DIR = 'data'
+
+_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp')
+
+
+def _find_image_next_to_pt(pt_path):
+    """Case-insensitive lookup: return the actual image file next to a .pt path.
+
+    Linux is case-sensitive, so a hardcoded lowercase-only extension list fails
+    for files named e.g. ``F128.JPG``. Scan the directory and match the stem
+    with any supported image extension regardless of case.
+
+    Returns the discovered image path, or ``None`` when no image is found.
+    """
+    if not pt_path or not pt_path.endswith('.pt'):
+        return None
+    base = pt_path[:-3]
+    dir_path = os.path.dirname(base) or '.'
+    base_name = os.path.basename(base)
+    if not os.path.isdir(dir_path):
+        return None
+    try:
+        entries = os.listdir(dir_path)
+    except OSError:
+        return None
+    for fname in entries:
+        stem, ext = os.path.splitext(fname)
+        if stem == base_name and ext.lower() in _IMAGE_EXTENSIONS:
+            return os.path.join(dir_path, fname)
+    return None
+
+
+def _find_image_in_dir(dir_path, stem):
+    """Case-insensitive sibling: find ``<stem>.<ext>`` in ``dir_path`` for any image ext."""
+    if not os.path.isdir(dir_path):
+        return None
+    try:
+        entries = os.listdir(dir_path)
+    except OSError:
+        return None
+    for fname in entries:
+        fstem, ext = os.path.splitext(fname)
+        if fstem == stem and ext.lower() in _IMAGE_EXTENSIONS:
+            return os.path.join(dir_path, fname)
+    return None
+
+
+def _ref_data_folder_score(turtle_dir, turtle_id):
+    """
+    How strong is the reference material under this turtle folder (for disambiguation).
+
+    Considers all three reference layouts: ``plastron/`` (current), ``carapace/`` (current),
+    and ``ref_data/`` (legacy). Used when ``data/<hint>/<turtle_id>/`` exists but is empty
+    while the real turtle lives deeper (e.g. ``data/Kansas/Topeka/T42``).
+    """
+    tid = turtle_id or ""
+    best = 0
+    for sub in ("plastron", "carapace", "ref_data"):
+        ref_dir = os.path.join(turtle_dir, sub)
+        if not os.path.isdir(ref_dir):
+            continue
+        if tid and os.path.isfile(os.path.join(ref_dir, f"{tid}.pt")):
+            return 3
+        score = 0
+        if tid and _find_image_in_dir(ref_dir, tid):
+            score = 2
+        else:
+            try:
+                for f in sorted(os.listdir(ref_dir)):
+                    if f.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".webp")):
+                        score = 2
+                        break
+                if score == 0 and os.listdir(ref_dir):
+                    score = 1
+            except OSError:
+                pass
+        if score > best:
+            best = score
+    return best
+
+
+def _is_turtle_data_folder(path):
+    """True if ``path`` has any reference folder: plastron/, carapace/, or legacy ref_data/."""
+    if not path or not os.path.isdir(path):
+        return False
+    try:
+        return any(
+            os.path.isdir(os.path.join(path, sub))
+            for sub in ("plastron", "carapace", "ref_data")
+        )
+    except OSError:
+        return False
+
 
 # Characters invalid in folder names (Windows + common Unix); replaced with _ when syncing sheet names to disk
 _FOLDER_NAME_INVALID = r'\/:*?"<>|'
@@ -118,6 +216,47 @@ def _detect_photo_type(filename):
     return 'plastron'
 
 
+def _location_dir_from_sheet_name(sheet_name):
+    """Turn a sheet/location string (e.g. Kansas/Topeka) into a relative path under data/."""
+    if not sheet_name or not isinstance(sheet_name, str):
+        return None
+    raw = sheet_name.strip().replace("\\", "/")
+    parts = []
+    for p in raw.split("/"):
+        if not str(p).strip():
+            continue
+        seg = _safe_folder_name(p)
+        if seg in (".", ".."):
+            continue
+        parts.append(seg)
+    if not parts:
+        return None
+    return os.path.join(*parts)
+
+
+def _resolved_path_under_base(base_dir, *relative_parts):
+    """realpath(join(base_dir, *parts)); return it only if it stays under realpath(base_dir).
+
+    Blocks ``..``, absolute segments in *relative_parts*, and symlink escapes before makedirs.
+    """
+    if not relative_parts:
+        return None
+    if any(p is None or p == "" for p in relative_parts):
+        return None
+    try:
+        candidate = os.path.join(base_dir, *relative_parts)
+    except (TypeError, ValueError):
+        return None
+    real_base = os.path.realpath(base_dir)
+    real_candidate = os.path.realpath(candidate)
+    try:
+        if os.path.commonpath([real_candidate, real_base]) != real_base:
+            return None
+    except ValueError:
+        return None
+    return real_candidate
+
+
 # --- FLASH DRIVE INGEST: Map drive folder names to backend folder names ---
 # When folder names on the flash drive don't match backend/Google Sheets, add mappings here.
 # Ingest will route files to the correct backend State/Location based on these maps.
@@ -125,10 +264,12 @@ def _detect_photo_type(filename):
 # Flat structure: when drive has location folders directly at root (no State parent),
 # map each folder name to "State/Location". Takes precedence over hierarchical logic.
 DRIVE_LOCATION_TO_BACKEND_PATH = {
-    "North Topeka": "Kansas/North Topeka",
-    "Lawrence": "Kansas/Lawrence",
+    "Dee Hobelman": "Kansas/Dee Hobelman",
     "Karlyle Woods": "Kansas/Karlyle Woods",
-    "Valencia": "Kansas/Valencia",
+    "Lawrence": "Kansas/Lawrence",
+    "North Topeka": "Kansas/North Topeka",
+    "Other": "Kansas/Other",
+    "West Topeka": "Kansas/West Topeka",
     "CPBS": "NebraskaCPBS/CPBS",
     "Crescent Lake": "NebraskaCL/Crescent Lake",
 }
@@ -759,57 +900,66 @@ class TurtleManager:
         if req_id is None:
             req_id = f"Req_{int(time.time() * 1000)}_{safe_name}_{uuid.uuid4().hex[:6]}"
         packet_dir = os.path.join(self.review_queue_dir, req_id)
-        os.makedirs(packet_dir, exist_ok=True)
-
-        # 1. Copy the raw uploaded image into the packet
-        shutil.copy2(image_path, packet_dir)
-
-        # 2. Determine photo_type from user_info
-        meta = user_info if user_info else {}
-        photo_type = meta.get('photo_type', 'plastron')
-
-        # 3. Run the AI Search to find candidates (skip if unclassified)
-        results = []
-        if photo_type != 'unclassified':
-            print(f"🔍 Generating candidates for Review Packet: {req_id} ({photo_type})...")
-            results, _ = self.search_for_matches(image_path, photo_type=photo_type)
-        else:
-            print(f"⏳ Review Packet {req_id}: photo_type unclassified — skipping matching until admin classifies.")
-
-        # 4. Create candidate directory and populate it
         candidates_dir = os.path.join(packet_dir, 'candidate_matches')
-        os.makedirs(candidates_dir, exist_ok=True)
 
-        for rank, match in enumerate(results, start=1):
-            turtle_id = match.get('site_id', 'Unknown')
-            pt_path = match.get('file_path', '')
+        try:
+            os.makedirs(packet_dir, exist_ok=True)
 
-            ref_img_path = None
-            if pt_path and pt_path.endswith('.pt'):
-                base_path = pt_path[:-3]
-                for ext in ['.jpg', '.jpeg', '.png']:
-                    if os.path.exists(base_path + ext):
-                        ref_img_path = base_path + ext
-                        break
+            # 1. Copy the raw uploaded image into the packet
+            shutil.copy2(image_path, packet_dir)
 
-            if ref_img_path:
-                ext = os.path.splitext(ref_img_path)[1]
-                conf_int = int(round(match.get('confidence', 0.0) * 100))
-                cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
-                shutil.copy2(ref_img_path, os.path.join(candidates_dir, cand_filename))
+            # 2. Determine photo_type from user_info
+            meta = user_info if user_info else {}
+            photo_type = meta.get('photo_type', 'plastron')
 
-        # 5. Dump metadata for the frontend (includes photo_type)
-        if 'photo_type' not in meta:
-            meta['photo_type'] = photo_type
-        with open(os.path.join(packet_dir, 'metadata.json'), 'w') as f:
-            json.dump(meta, f)
+            # 3. Run the AI Search to find candidates (skip if unclassified)
+            results = []
+            if photo_type != 'unclassified':
+                print(f"🔍 Generating candidates for Review Packet: {req_id} ({photo_type})...")
+                results, _ = self.search_for_matches(image_path, photo_type=photo_type)
+            else:
+                print(f"⏳ Review Packet {req_id}: photo_type unclassified — skipping matching until admin classifies.")
 
-        # 5. Create additional_images dir (Partner's Dashboard Support)
-        additional_dir = os.path.join(packet_dir, 'additional_images')
-        os.makedirs(additional_dir, exist_ok=True)
+            # 4. Create candidate directory and populate it
+            os.makedirs(candidates_dir, exist_ok=True)
 
-        print(f"📦 Review Packet {req_id} created with {len(results)} candidates.")
-        return req_id
+            for rank, match in enumerate(results, start=1):
+                turtle_id = match.get('site_id', 'Unknown')
+                score = int(match.get('score', 0))
+                pt_path = match.get('file_path', '')
+
+                # Resolve original image — case-insensitive so .JPG works on Linux
+                ref_img_path = _find_image_next_to_pt(pt_path)
+
+                if ref_img_path:
+                    ext = os.path.splitext(ref_img_path)[1]
+                    conf_int = int(round(match.get('confidence', 0.0) * 100))
+                    cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
+                    shutil.copy2(ref_img_path, os.path.join(candidates_dir, cand_filename))
+
+            # 5. Dump metadata for the frontend (includes photo_type)
+            if 'photo_type' not in meta:
+                meta['photo_type'] = photo_type
+            with open(os.path.join(packet_dir, 'metadata.json'), 'w') as f:
+                json.dump(meta, f)
+
+            # 5. Create additional_images dir (Partner's Dashboard Support)
+            additional_dir = os.path.join(packet_dir, 'additional_images')
+            os.makedirs(additional_dir, exist_ok=True)
+
+            print(f"📦 Review Packet {req_id} created with {len(results)} candidates.")
+            return req_id
+        except Exception as e:
+            # Background uploads swallow exceptions; without this marker, the API treats
+            # a missing candidate_matches dir as "still matching" forever.
+            if os.path.isdir(packet_dir) and not os.path.isdir(candidates_dir):
+                fail_path = os.path.join(packet_dir, 'match_search_failed.json')
+                try:
+                    with open(fail_path, 'w', encoding='utf-8') as f:
+                        json.dump({'error': str(e)}, f)
+                except OSError:
+                    pass
+            raise
 
     def get_review_queue(self):
         """Scans the 'Review_Queue' folder and returns the list of pending requests."""
@@ -1345,12 +1495,8 @@ class TurtleManager:
             if replace_reference:
                 print(f"✨ UPGRADING REFERENCE for {match_turtle_id}...")
                 old_pt_path = os.path.join(ref_dir, f"{match_turtle_id}.pt")
-                old_img_path = None
-                for ext in ['.jpg', '.jpeg', '.png']:
-                    possible = os.path.join(ref_dir, f"{match_turtle_id}{ext}")
-                    if os.path.exists(possible):
-                        old_img_path = possible
-                        break
+                # Case-insensitive lookup so .JPG old references are found on Linux
+                old_img_path = _find_image_in_dir(ref_dir, match_turtle_id)
 
                 op_ts = int(time.time() * 1000)
                 new_ext = os.path.splitext(query_image)[1]
@@ -1735,29 +1881,247 @@ class TurtleManager:
     # --- PARTNER'S HELPER AND TRACKING FUNCTIONS (KEPT 100%) ---
 
     def _get_turtle_folder(self, turtle_id, location_hint=None):
-        """Resolve turtle folder path by turtle_id and optional location_hint.
-
-        When location_hint is provided, returns an exact match.
-        Without a hint, scans the entire data directory. If multiple folders
-        match the same turtle_id (biology IDs repeat across states), returns
-        None to avoid silently picking the wrong turtle.
         """
-        if location_hint and location_hint != "Unknown":
-            possible_path = os.path.join(self.base_dir, location_hint, turtle_id)
-            if os.path.exists(possible_path):
-                return possible_path
-        matches = []
-        for root, dirs, files in os.walk(self.base_dir):
-            if os.path.basename(root) == turtle_id:
-                matches.append(root)
-        if len(matches) == 1:
-            return matches[0]
-        if len(matches) > 1:
-            print(f"⚠️ Multiple folders found for '{turtle_id}': {matches}. "
-                  f"Provide a location_hint to disambiguate.")
+        Resolve turtle folder path by turtle_id and optional location_hint.
+
+        If ``join(base_dir, hint, turtle_id)`` exists it used to win unconditionally, which breaks
+        when that directory is an empty shell (e.g. partial path) while the real data lives under
+        a deeper location discovered by walking. We pick the candidate with the strongest ref_data.
+        """
+        if not turtle_id or not isinstance(turtle_id, str):
             return None
+        tid = turtle_id.strip()
+        if not tid:
+            return None
+
+        candidates = []
+        real_seen = set()
+
+        def add_candidate(path):
+            if not path or not os.path.isdir(path):
+                return
+            try:
+                rp = os.path.realpath(path)
+            except OSError:
+                return
+            if rp in real_seen:
+                return
+            real_seen.add(rp)
+            candidates.append(path)
+
+        hinted_path = None
+        if location_hint and str(location_hint).strip() and location_hint != "Unknown":
+            hinted_path = os.path.join(self.base_dir, location_hint, tid)
+            add_candidate(hinted_path)
+
+        try:
+            for root, dirs, files in os.walk(self.base_dir):
+                if os.path.basename(root) == tid:
+                    add_candidate(root)
+        except OSError:
+            pass
+
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+
+        scored = [(_ref_data_folder_score(p, tid), p) for p in candidates]
+        max_score = max(s for s, _ in scored)
+        best = [p for s, p in scored if s == max_score]
+        if len(best) == 1:
+            return best[0]
+        if hinted_path and os.path.isdir(hinted_path):
+            try:
+                hr = os.path.realpath(hinted_path)
+                for p in best:
+                    if os.path.realpath(p) == hr:
+                        return hinted_path
+            except OSError:
+                pass
+        return sorted(best)[0]
+
+    def _state_dir_has_site_subfolders(self, state_path):
+        """
+        True when ``state_path`` has intermediate site folders (each containing turtle dirs).
+
+        Used to avoid creating ``data/Kansas/<primary_id>/`` when real layout is
+        ``data/Kansas/North Topeka/<biology_id>/``.
+        """
+        if not state_path or not os.path.isdir(state_path):
+            return False
+        try:
+            for child in os.listdir(state_path):
+                site = os.path.join(state_path, child)
+                if not os.path.isdir(site):
+                    continue
+                if _is_turtle_data_folder(site):
+                    continue
+                try:
+                    for sub in os.listdir(site):
+                        q = os.path.join(site, sub)
+                        if _is_turtle_data_folder(q):
+                            return True
+                except OSError:
+                    continue
+        except OSError:
+            pass
+        return False
+
+    def _find_turtle_under_single_state_segment(self, state_segment, tid):
+        """``data/<State>/<tid>`` (flat) or ``data/<State>/<Site>/<tid>`` (nested)."""
+        state_path = _resolved_path_under_base(self.base_dir, state_segment)
+        if not state_path or not os.path.isdir(state_path):
+            return None
+        direct = os.path.join(state_path, tid)
+        if _is_turtle_data_folder(direct):
+            return direct
+        try:
+            for child in sorted(os.listdir(state_path)):
+                site = os.path.join(state_path, child)
+                if not os.path.isdir(site):
+                    continue
+                nested = os.path.join(site, tid)
+                if _is_turtle_data_folder(nested):
+                    return nested
+        except OSError:
+            pass
         return None
 
+    def resolve_turtle_dir_for_sheet_upload(self, turtle_id, sheet_name):
+        """
+        Resolve or create the on-disk turtle folder for admin uploads from the Sheets browser.
+
+        When ``sheet_name`` is set (e.g. Kansas/Topeka), prefers ``data/<sheet...>/<turtle_id>/``.
+        If that path does not exist but another folder named ``turtle_id`` is found elsewhere,
+        returns the existing folder (same behaviour as a plain search). If nothing exists,
+        creates ``data/<sheet...>/<turtle_id>/`` with ``ref_data`` and ``loose_images``.
+        """
+        if not turtle_id or not isinstance(turtle_id, str):
+            return None
+        tid = turtle_id.strip()
+        if not tid or os.path.isabs(tid) or "/" in tid or "\\" in tid or tid in (".", ".."):
+            return None
+        rel = _location_dir_from_sheet_name(sheet_name) if sheet_name else None
+        if rel:
+            explicit = _resolved_path_under_base(self.base_dir, rel, tid)
+            if not explicit:
+                return None
+            if os.path.isdir(explicit):
+                return explicit
+            rel_parts = [p for p in rel.replace("\\", "/").split("/") if str(p).strip()]
+            if len(rel_parts) == 1:
+                nested = self._find_turtle_under_single_state_segment(rel_parts[0], tid)
+                if nested:
+                    return nested
+            for root, dirs, files in os.walk(self.base_dir):
+                if os.path.basename(root) == tid:
+                    return root
+            if len(rel_parts) == 1:
+                state_only = _resolved_path_under_base(self.base_dir, rel_parts[0])
+                if state_only and self._state_dir_has_site_subfolders(state_only):
+                    return None
+            os.makedirs(os.path.join(explicit, "ref_data"), exist_ok=True)
+            os.makedirs(os.path.join(explicit, "loose_images"), exist_ok=True)
+            return explicit
+        return self._get_turtle_folder(tid, None)
+
+    def _create_identifier_plastron(self, turtle_id, query_image, ref_dir, loose_dir):
+        """Write first ref_data/<turtle_id>.* + .pt from an image file (caller ensures no identifier)."""
+        os.makedirs(ref_dir, exist_ok=True)
+        os.makedirs(loose_dir, exist_ok=True)
+        new_ext = os.path.splitext(query_image)[1] or ".jpg"
+        dest_image = os.path.join(ref_dir, f"{turtle_id}{new_ext}")
+        dest_pt = os.path.join(ref_dir, f"{turtle_id}.pt")
+        if os.path.exists(dest_pt):
+            try:
+                os.remove(dest_pt)
+            except OSError:
+                pass
+        if os.path.exists(dest_image):
+            try:
+                os.remove(dest_image)
+            except OSError:
+                pass
+        shutil.copy2(query_image, dest_image)
+        if not brain.process_and_save(dest_image, dest_pt):
+            try:
+                if os.path.isfile(dest_image):
+                    os.remove(dest_image)
+            except OSError:
+                pass
+            return False, "Failed to extract features for identifier image"
+        self.refresh_database_index()
+        return True, "Identifier plastron set"
+
+    def _replace_identifier_plastron(self, turtle_id, query_image, ref_dir, loose_dir):
+        """Archive old master image, replace .pt + master image (same staging flow as review approve)."""
+        os.makedirs(ref_dir, exist_ok=True)
+        os.makedirs(loose_dir, exist_ok=True)
+        old_pt_path = os.path.join(ref_dir, f"{turtle_id}.pt")
+        old_img_path = _find_image_in_dir(ref_dir, turtle_id)
+        op_ts = int(time.time() * 1000)
+        new_ext = os.path.splitext(query_image)[1] or ".jpg"
+        staged_master_path = os.path.join(ref_dir, f"{turtle_id}_staged_{op_ts}{new_ext}")
+        staged_pt_path = os.path.join(ref_dir, f"{turtle_id}_staged_{op_ts}.pt")
+        shutil.copy2(query_image, staged_master_path)
+        staged_ok = brain.process_and_save(staged_master_path, staged_pt_path)
+        if not staged_ok:
+            try:
+                if os.path.exists(staged_master_path):
+                    os.remove(staged_master_path)
+                if os.path.exists(staged_pt_path):
+                    os.remove(staged_pt_path)
+            except OSError:
+                pass
+            return False, f"Failed to extract features for replacement image of {turtle_id}"
+        if old_img_path:
+            archive_name = f"Archived_Master_{op_ts}{os.path.splitext(old_img_path)[1]}"
+            shutil.move(old_img_path, os.path.join(loose_dir, archive_name))
+        if os.path.exists(old_pt_path):
+            os.remove(old_pt_path)
+        new_master_path = os.path.join(ref_dir, f"{turtle_id}{new_ext}")
+        new_pt_path = os.path.join(ref_dir, f"{turtle_id}.pt")
+        if os.path.exists(new_master_path):
+            os.remove(new_master_path)
+        shutil.move(staged_master_path, new_master_path)
+        shutil.move(staged_pt_path, new_pt_path)
+        obs_name = f"Obs_{int(time.time())}_{os.path.basename(query_image)}"
+        shutil.copy2(query_image, os.path.join(loose_dir, obs_name))
+        self.refresh_database_index()
+        return True, "Identifier plastron replaced"
+
+    def set_identifier_plastron_from_path(self, turtle_id, query_image, sheet_name, mode):
+        """
+        Set or replace the SuperPoint identifier (ref_data master image + .pt).
+
+        ``mode``: ``set_if_missing`` (error if already present) or ``replace`` (create or upgrade).
+        ``sheet_name`` should be the turtle's location path when the folder may not exist yet.
+        """
+        if mode not in ("set_if_missing", "replace"):
+            return False, "Invalid mode"
+        turtle_dir = self.resolve_turtle_dir_for_sheet_upload(turtle_id, sheet_name)
+        if not turtle_dir:
+            return False, (
+                "Turtle folder not found. Use the full disk path as sheet_name (e.g. Kansas/North Topeka), "
+                "not the Google tab name alone when sites live under the state. Set General location + Location "
+                "on the row, or fix stray empty folders under data/<State>/."
+            )
+        ref_dir = os.path.join(turtle_dir, "ref_data")
+        loose_dir = os.path.join(turtle_dir, "loose_images")
+        os.makedirs(ref_dir, exist_ok=True)
+        os.makedirs(loose_dir, exist_ok=True)
+        has_id = os.path.isfile(os.path.join(ref_dir, f"{turtle_id}.pt")) or bool(
+            _find_image_in_dir(ref_dir, turtle_id)
+        )
+        if mode == "set_if_missing" and has_id:
+            return False, (
+                "This turtle already has an identifier plastron. Use replace mode, or upload "
+                "a non-identifier plastron under Additional photos as type Plastron (additional)."
+            )
+        if not has_id:
+            return self._create_identifier_plastron(turtle_id, query_image, ref_dir, loose_dir)
+        return self._replace_identifier_plastron(turtle_id, query_image, ref_dir, loose_dir)
 
     def add_additional_images_to_packet(self, request_id, files_with_types):
         packet_dir = self._resolve_packet_dir(request_id)
@@ -1772,8 +2136,8 @@ class TurtleManager:
 
         for item in files_with_types:
             src = item.get('path')
-            typ = (item.get('type') or 'other').lower()
-            if typ not in ('microhabitat', 'condition', 'carapace', 'plastron', 'other'): typ = 'other'
+            typ = normalize_additional_type(item.get('type'))
+            lbs = normalize_label_list(item.get('labels'))
             ts = item.get('timestamp') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             if not src or not os.path.isfile(src): continue
             exif_date = _extract_exif_date(src)
@@ -1782,10 +2146,16 @@ class TurtleManager:
             safe_name = "".join(c for c in safe_name if c.isalnum() or c in '._-')
             dest = os.path.join(date_dir, safe_name)
             shutil.copy2(src, dest)
-            manifest.append({
-                "filename": safe_name, "type": typ, "timestamp": ts,
-                "exif_date": exif_date, "original_source": os.path.basename(src),
-            })
+            entry = {
+                'filename': safe_name,
+                'type': typ,
+                'timestamp': ts,
+                'exif_date': exif_date,
+                'original_source': os.path.basename(src),
+            }
+            if lbs:
+                entry['labels'] = lbs
+            manifest.append(entry)
 
         with open(manifest_path, 'w') as f:
             json.dump(manifest, f, indent=4)
@@ -1902,8 +2272,14 @@ class TurtleManager:
             return False, str(e)
 
     def add_additional_images_to_turtle(self, turtle_id, files_with_types, sheet_name=None):
-        turtle_dir = self._get_turtle_folder(turtle_id, sheet_name)
-        if not turtle_dir or not os.path.isdir(turtle_dir): return False, "Turtle folder not found"
+        turtle_dir = self.resolve_turtle_dir_for_sheet_upload(turtle_id, sheet_name)
+        if not turtle_dir or not os.path.isdir(turtle_dir):
+            return (
+                False,
+                "Turtle folder not found. For multi-site states pass State/Site as sheet_name "
+                "(same as General location + Location); the backend will not create turtles directly under "
+                "data/<State>/ when site folders already exist.",
+            )
         today_str = time.strftime('%Y-%m-%d')
         date_dir = os.path.join(turtle_dir, 'additional_images', today_str)
         manifest_path = os.path.join(date_dir, 'manifest.json')
@@ -1915,7 +2291,8 @@ class TurtleManager:
 
         for item in files_with_types:
             src = item.get('path')
-            typ = (item.get('type') or 'other').lower()
+            typ = normalize_additional_type(item.get('type'))
+            lbs = normalize_label_list(item.get('labels'))
             ts = item.get('timestamp') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             if not src or not os.path.isfile(src): continue
             exif_date = _extract_exif_date(src)
@@ -1940,14 +2317,126 @@ class TurtleManager:
                 safe_name = "".join(c for c in safe_name if c.isalnum() or c in '._-')
                 dest = os.path.join(date_dir, safe_name)
                 shutil.copy2(src, dest)
-                manifest.append({
+                entry = {
                     "filename": safe_name, "type": typ, "timestamp": ts, "exif_date": exif_date,
-                })
+                }
+                if lbs:
+                    entry["labels"] = lbs
+                manifest.append(entry)
 
         if date_dir_created:
             with open(manifest_path, 'w') as f:
                 json.dump(manifest, f, indent=4)
         return True, "OK"
+
+    def update_turtle_additional_image_labels(self, turtle_id, filename, sheet_name, labels):
+        """Set labels on one manifest entry (additional_images)."""
+        turtle_dir = self._get_turtle_folder(turtle_id, sheet_name)
+        if not turtle_dir or not os.path.isdir(turtle_dir):
+            return False, "Turtle folder not found"
+        if not filename or os.path.basename(filename) != filename:
+            return False, "Invalid filename"
+        lbs = normalize_label_list(labels)
+        additional_dir = os.path.join(turtle_dir, 'additional_images')
+        if not os.path.isdir(additional_dir):
+            return False, "No additional images folder"
+
+        def try_update(target_dir):
+            manifest_path = os.path.join(target_dir, 'manifest.json')
+            if not os.path.isfile(manifest_path):
+                return False
+            file_path = os.path.join(target_dir, filename)
+            if not os.path.isfile(file_path):
+                return False
+            try:
+                with open(manifest_path, 'r') as f:
+                    manifest = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                return False
+            changed = False
+            for entry in manifest:
+                if entry.get('filename') == filename:
+                    entry['labels'] = lbs
+                    changed = True
+                    break
+            if not changed:
+                return False
+            try:
+                with open(manifest_path, 'w') as f:
+                    json.dump(manifest, f, indent=4)
+            except OSError:
+                return False
+            return True
+
+        if try_update(additional_dir):
+            return True, None
+        for date_folder in os.listdir(additional_dir):
+            date_dir = os.path.join(additional_dir, date_folder)
+            if os.path.isdir(date_dir) and try_update(date_dir):
+                return True, None
+        return False, "Image not found in manifest"
+
+    def search_additional_images_by_label(self, query):
+        """
+        Scan all turtle additional_images manifests for entries whose labels match query (substring, case-insensitive).
+        Excludes Review_Queue. Returns list of dicts with turtle_id, sheet_name (folder path), path, filename, type, labels, timestamp.
+        """
+        q = (query or '').strip()
+        if not q:
+            return []
+        matches = []
+        skip_top = {'Review_Queue', 'benchmarks'}
+        for root, dirs, files in os.walk(self.base_dir):
+            if os.path.basename(root) != 'additional_images':
+                continue
+            rel = os.path.relpath(root, self.base_dir)
+            first = rel.split(os.sep)[0] if rel else ''
+            if first in skip_top:
+                continue
+            turtle_dir = os.path.dirname(root)
+            turtle_id = os.path.basename(turtle_dir)
+            sheet_name = os.path.relpath(turtle_dir, self.base_dir)
+
+            def scan_manifest_in(dir_path):
+                manifest_path = os.path.join(dir_path, 'manifest.json')
+                if not os.path.isfile(manifest_path):
+                    return
+                try:
+                    with open(manifest_path, 'r') as f:
+                        manifest = json.load(f)
+                except (json.JSONDecodeError, OSError):
+                    return
+                if not isinstance(manifest, list):
+                    return
+                for entry in manifest:
+                    fn = entry.get('filename')
+                    if not fn:
+                        continue
+                    labels = entry.get('labels')
+                    if not label_query_matches(labels, q):
+                        continue
+                    p = os.path.join(dir_path, fn)
+                    if not os.path.isfile(p):
+                        continue
+                    kind = normalize_additional_type(entry.get('type'))
+                    matches.append({
+                        'turtle_id': turtle_id,
+                        'sheet_name': sheet_name.replace(os.sep, '/'),
+                        'path': p,
+                        'filename': fn,
+                        'type': kind,
+                        'labels': normalize_label_list(labels),
+                        'timestamp': entry.get('timestamp'),
+                    })
+
+            scan_manifest_in(root)
+            for item in sorted(os.listdir(root)):
+                sub = os.path.join(root, item)
+                if os.path.isdir(sub):
+                    scan_manifest_in(sub)
+
+        matches.sort(key=lambda m: (m.get('sheet_name') or '', m.get('turtle_id') or '', m.get('filename') or ''))
+        return matches
 
     def remove_additional_image_from_turtle(self, turtle_id, filename, sheet_name=None):
         turtle_dir = self._get_turtle_folder(turtle_id, sheet_name)

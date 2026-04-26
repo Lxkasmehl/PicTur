@@ -86,7 +86,7 @@ export default function ContactPage() {
           <Stack gap='md' mt='xl'>
             <Title order={4}>Other Ways to Reach Us</Title>
             <Text size='sm' c='dimmed'>
-              Email: contact@turtleproject.com
+              Email: contact@pictur.com
             </Text>
             <Text size='sm' c='dimmed'>
               Phone: +1 (555) 123-4567

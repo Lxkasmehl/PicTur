@@ -74,7 +74,7 @@ const getTransporter = () => {
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 /** No-reply sender; use for all system emails */
-const getFromEmail = () => process.env.SMTP_FROM?.trim() || 'noreply@turtleproject.com';
+const getFromEmail = () => process.env.SMTP_FROM?.trim() || 'noreply@pictur.com';
 
 /** Shared HTML wrapper for consistent branding and footer */
 function wrapEmailHtml(title: string, bodyHtml: string): string {
@@ -83,7 +83,7 @@ function wrapEmailHtml(title: string, bodyHtml: string): string {
       <h2 style="color: #333;">${title}</h2>
       ${bodyHtml}
       <p style="margin-top: 32px; color: #666; font-size: 14px;">
-        Best regards,<br>The Turtle Project Team
+        Best regards,<br>The PicTur Team
       </p>
     </div>`;
 }
@@ -151,10 +151,10 @@ ${verificationUrl}
 This link expires in ${expiresInHours} hours.
 
 Best regards,
-The Turtle Project Team`;
+The PicTur Team`;
   await sendMailSafe(
     email,
-    'Verify your email – Turtle Project',
+    'Verify your email – PicTur',
     wrapEmailHtml('Verify your email', bodyHtml),
     text
   );
@@ -175,11 +175,11 @@ export const sendAdminPromotionEmail = async ({
     const html = wrapEmailHtml(
       'Admin Promotion',
       `<p>Hello,</p>
-      <p>You have been promoted to <strong>Admin</strong> in the Turtle Project.</p>
+      <p>You have been promoted to <strong>Admin</strong> in PicTur.</p>
       <p>You now have access to admin features and can manage the system.</p>
       <p>You can log in with your existing account to access the admin panel.</p>`
     );
-    const text = `Hello,\n\nYou have been promoted to Admin in the Turtle Project.\n\nYou now have access to admin features and can manage the system.\n\nYou can log in with your existing account to access the admin panel.\n\nBest regards,\nThe Turtle Project Team`;
+    const text = `Hello,\n\nYou have been promoted to Admin in PicTur.\n\nYou now have access to admin features and can manage the system.\n\nYou can log in with your existing account to access the admin panel.\n\nBest regards,\nThe PicTur Team`;
     await sendMailSafe(email, 'You have been promoted to Admin', html, text);
   } else {
     // User doesn't have an account - send invitation with registration link
@@ -190,7 +190,7 @@ export const sendAdminPromotionEmail = async ({
     const registrationUrl = `${FRONTEND_URL}/register?token=${invitationToken}`;
     const bodyHtml = `
       <p>Hello,</p>
-      <p>You have been invited to join the Turtle Project as an <strong>Admin</strong>.</p>
+      <p>You have been invited to join PicTur as an <strong>Admin</strong>.</p>
       <p>To complete your registration and activate your admin account, please click the link below:</p>
       <p style="margin: 30px 0;">
         <a href="${registrationUrl}"
@@ -202,7 +202,7 @@ export const sendAdminPromotionEmail = async ({
       <p style="color: #666; word-break: break-all;">${registrationUrl}</p>
       <p>This invitation link will expire in 7 days.</p>`;
     const html = wrapEmailHtml('Admin Invitation', bodyHtml);
-    const text = `Hello,\n\nYou have been invited to join the Turtle Project as an Admin.\n\nTo complete your registration, please visit:\n\n${registrationUrl}\n\nThis invitation link will expire in 7 days.\n\nBest regards,\nThe Turtle Project Team`;
+    const text = `Hello,\n\nYou have been invited to join PicTur as an Admin.\n\nTo complete your registration, please visit:\n\n${registrationUrl}\n\nThis invitation link will expire in 7 days.\n\nBest regards,\nThe PicTur Team`;
     await sendMailSafe(email, 'You have been invited to join as Admin', html, text);
   }
 };

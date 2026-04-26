@@ -13,6 +13,8 @@ from auth import require_admin
 from services.manager_service import get_sheets_service, get_community_sheets_service
 from general_locations_catalog import resolve_general_location_from_sheet_and_value
 from sheets import sheet_management
+from sheets import lookup as sheets_lookup
+from sheets.value_normalize import normalize_turtle_row_after_read
 
 # Timeout for single attempt to find sheet + get turtle data (avoids hanging on SSL/slow API)
 SHEETS_TURTLE_DATA_TIMEOUT_SEC = 25
@@ -476,6 +478,147 @@ def register_sheets_routes(app):
             print(f"Traceback:\n{error_trace}")
             return jsonify({'error': f'Failed to update turtle data: {str(e)}'}), 500
 
+    # Path must NOT be under /api/sheets/turtle/<id> or "lookup-options" is matched as a primary_id on some stacks.
+    @app.route('/api/sheets/mark-deceased/lookup-options', methods=['GET'])
+    @require_admin
+    def turtle_lookup_options():
+        """
+        Unique values from one column in a sheet tab (for mark-deceased UI autocomplete).
+        Query: sheet_name (required), field = primary_id | biology_id | name,
+        target_spreadsheet = research | community (default research).
+        """
+        try:
+            sheet_name = request.args.get('sheet_name', '').strip()
+            field = (request.args.get('field') or '').strip().lower()
+            target_spreadsheet = (request.args.get('target_spreadsheet') or 'research').strip().lower()
+            if target_spreadsheet not in ('research', 'community'):
+                target_spreadsheet = 'research'
+
+            if not sheet_name:
+                return jsonify({'error': 'sheet_name is required'}), 400
+            if field not in ('primary_id', 'biology_id', 'name'):
+                return jsonify({'error': 'field must be primary_id, biology_id, or name'}), 400
+
+            if target_spreadsheet == 'community':
+                service = get_community_sheets_service()
+                if not service:
+                    return jsonify({'error': 'Community Google Sheets not configured'}), 503
+            else:
+                service = get_sheets_service()
+                if not service:
+                    return jsonify({'error': 'Google Sheets service not configured'}), 503
+
+            options = sheets_lookup.list_unique_column_values(
+                service.service,
+                service.spreadsheet_id,
+                sheet_name,
+                service.list_sheets,
+                field,
+            )
+            return jsonify({'success': True, 'options': options, 'count': len(options)})
+        except Exception as e:
+            error_trace = traceback.format_exc()
+            try:
+                print(f'Error lookup-options: {str(e)}')
+            except UnicodeEncodeError:
+                print(f'Error lookup-options: {str(e)}')
+            print(f'Traceback:\n{error_trace}')
+            return jsonify({'error': f'Failed to load lookup options: {str(e)}'}), 500
+
+    @app.route('/api/sheets/turtle/mark-deceased', methods=['POST'])
+    @require_admin
+    def mark_turtle_deceased():
+        """
+        Mark or clear deceased status without a plastron match: lookup by primary_id, biology id (ID column), or name
+        within a single sheet tab. Adds 'Deceased?' column if missing, updates the cell, and applies row shading.
+        """
+        try:
+            data = request.json or {}
+            sheet_name = data.get('sheet_name', '').strip()
+            primary_id = (data.get('primary_id') or '').strip()
+            biology_id = (data.get('biology_id') or data.get('id') or '').strip()
+            name = (data.get('name') or '').strip()
+            deceased_raw = data.get('deceased', True)
+            if isinstance(deceased_raw, str):
+                deceased = deceased_raw.strip().lower() in ('true', '1', 'yes', 'y')
+            else:
+                deceased = bool(deceased_raw)
+
+            target_spreadsheet = (data.get('target_spreadsheet') or 'research').strip().lower()
+            if target_spreadsheet not in ('research', 'community'):
+                target_spreadsheet = 'research'
+
+            if not sheet_name:
+                return jsonify({'error': 'sheet_name is required'}), 400
+
+            filled = sum(1 for x in (primary_id, biology_id, name) if x)
+            if filled != 1:
+                return jsonify({
+                    'error': 'Provide exactly one of: primary_id, biology_id (or id), name',
+                }), 400
+
+            if target_spreadsheet == 'community':
+                service = get_community_sheets_service()
+                if not service:
+                    return jsonify({'error': 'Community Google Sheets not configured'}), 503
+            else:
+                service = get_sheets_service()
+                if not service:
+                    return jsonify({'error': 'Google Sheets service not configured'}), 503
+
+            matches = sheets_lookup.find_rows_by_lookup(
+                service.service,
+                service.spreadsheet_id,
+                sheet_name,
+                service.list_sheets,
+                primary_id=primary_id or None,
+                biology_id=biology_id or None,
+                name=name or None,
+            )
+            if not matches:
+                return jsonify({'error': 'No matching turtle in this sheet'}), 404
+            if len(matches) > 1:
+                return jsonify({
+                    'error': 'Multiple rows match; narrow the lookup (e.g. use biology ID or primary ID)',
+                    'matches': matches,
+                }), 409
+
+            row = matches[0]
+            resolved_primary = (row.get('primary_id') or '').strip()
+            if not resolved_primary:
+                return jsonify({
+                    'error': 'This row has no Primary ID. Add a Primary ID in Google Sheets first, then try again.',
+                }), 422
+
+            deceased_str = sheets_lookup.deceased_value_for_sheet(deceased)
+            success = service.update_turtle_data(
+                resolved_primary,
+                {'deceased': deceased_str},
+                sheet_name,
+            )
+            if not success:
+                return jsonify({'error': 'Failed to update turtle row'}), 500
+
+            if target_spreadsheet != 'community':
+                _refresh_general_location_validation_for_sheet(service, sheet_name)
+
+            return jsonify({
+                'success': True,
+                'primary_id': resolved_primary,
+                'biology_id': row.get('id') or '',
+                'name': row.get('name') or '',
+                'deceased': deceased_str,
+                'message': 'Deceased status updated',
+            })
+        except Exception as e:
+            error_trace = traceback.format_exc()
+            try:
+                print(f'Error mark-deceased: {str(e)}')
+            except UnicodeEncodeError:
+                print(f'Error mark-deceased: {str(e)}')
+            print(f'Traceback:\n{error_trace}')
+            return jsonify({'error': f'Failed to mark deceased: {str(e)}'}), 500
+
     def _safe_folder_name(name):
         """Sanitize sheet name for filesystem (e.g. for Community_Uploads subfolder)."""
         if not name or not isinstance(name, str):
@@ -685,7 +828,7 @@ def register_sheets_routes(app):
                     escaped_sheet = sheet
                     if any(char in sheet for char in [' ', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '+', '=']):
                         escaped_sheet = f"'{sheet}'"
-                    range_name = f"{escaped_sheet}!A:Z"
+                    range_name = f"{escaped_sheet}!A:ZZ"
                     result = service.service.spreadsheets().values().get(
                         spreadsheetId=service.spreadsheet_id,
                         range=range_name
@@ -714,6 +857,8 @@ def register_sheets_routes(app):
                                 field_name = service.COLUMN_MAPPING[header]
                                 value = row_data[col_idx] if col_idx < len(row_data) else ''
                                 turtle_data[field_name] = value.strip() if value else ''
+
+                        normalize_turtle_row_after_read(turtle_data)
                         
                         # Primary ID should come from "Primary ID" column, not "ID" column
                         primary_id = turtle_data.get('primary_id')
@@ -785,7 +930,7 @@ def register_sheets_routes(app):
                                 escaped_sheet = sheet
                                 if any(char in sheet for char in [' ', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '+', '=']):
                                     escaped_sheet = f"'{sheet}'"
-                                range_name = f"{escaped_sheet}!A:Z"
+                                range_name = f"{escaped_sheet}!A:ZZ"
                                 result = service.get_sheet_values(range_name)
                                 if not result:
                                     sheet_ok = True

@@ -6,7 +6,7 @@
 export const AUTH_API_BASE_URL =
   import.meta.env.VITE_AUTH_API_URL || 'http://localhost:3001/api';
 
-// Turtle Backend API URL - Flask server runs on port 5000
+// PicTur Backend API URL - Flask server runs on port 5000
 export const TURTLE_API_BASE_URL =
   import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 

@@ -7,7 +7,7 @@ if [[ "${1:-}" == "--cpu-only" ]]; then
 fi
 
 start_cpu() {
-  echo "Starting TurtleTracker in CPU mode..."
+  echo "Starting PicTur in CPU mode..."
   docker compose -f docker-compose.yml up --build
 }
 
@@ -28,7 +28,7 @@ if ! grep -qi "nvidia" <<<"$docker_info"; then
   exit $?
 fi
 
-echo "NVIDIA runtime detected. Starting TurtleTracker in GPU mode..."
+echo "NVIDIA runtime detected. Starting PicTur in GPU mode..."
 if docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build; then
   exit 0
 fi

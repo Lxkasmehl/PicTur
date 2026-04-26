@@ -12,18 +12,17 @@ import {
 import { IconFile, IconClock, IconMapPin } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import type { UploadedPhoto } from '../types/photo';
+import { formatUsDateTimeForDisplay } from '../utils/usDateFormat';
 import { formatFileSize, formatLocation, getGoogleMapsUrl } from '../utils/photoHelpers';
 
 interface PhotoCardProps {
   photo: UploadedPhoto;
-  onPhotoClick: (photo: UploadedPhoto) => void;
   showViewAllButton?: boolean;
   totalPhotos?: number;
 }
 
 export function PhotoCard({
   photo,
-  onPhotoClick: _onPhotoClick,
   showViewAllButton,
   totalPhotos,
 }: PhotoCardProps) {
@@ -86,7 +85,7 @@ export function PhotoCard({
               Timestamp:
             </Text>
             <Text size='sm' c='dimmed' ta='right' style={{ fontFamily: 'monospace' }}>
-              {new Date(photo.timestamp).toLocaleString()}
+              {formatUsDateTimeForDisplay(new Date(photo.timestamp))}
             </Text>
           </Group>
           <Group justify='space-between'>

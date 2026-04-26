@@ -1,10 +1,5 @@
 import { test, expect } from '@playwright/test';
-import {
-  loginAsAdmin,
-  loginAsStaff,
-  navClick,
-  openMobileMenu,
-} from './fixtures';
+import { loginAsAdmin, loginAsStaff, navClick, openMobileMenu } from './fixtures';
 
 test.describe('Staff role and User Management', () => {
   test('Staff sees Turtle Records and Release in nav but not User Management', async ({
@@ -14,9 +9,7 @@ test.describe('Staff role and User Management', () => {
     await openMobileMenu(page);
     await expect(page.getByRole('button', { name: 'Turtle Records' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Release' })).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'User Management' }),
-    ).not.toBeVisible();
+    await expect(page.getByRole('button', { name: 'User Management' })).not.toBeVisible();
   });
 
   test('Staff can access Turtle Records and Release pages', async ({ page }) => {
@@ -38,31 +31,24 @@ test.describe('Staff role and User Management', () => {
   test('Admin sees User Management in nav and can open it', async ({ page }) => {
     await loginAsAdmin(page);
     await openMobileMenu(page);
-    await expect(
-      page.getByRole('button', { name: 'User Management' }),
-    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'User Management' })).toBeVisible();
     await navClick(page, 'User Management');
     await expect(page).toHaveURL('/admin/users');
-    await expect(
-      page.getByRole('heading', { name: 'User Management' }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
   });
 
   test('Admin can change a user role via User Management', async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto('/admin/users');
     await expect(page).toHaveURL('/admin/users');
-    await expect(
-      page.getByRole('heading', { name: /All users by role/i }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: /All users by role/i })).toBeVisible();
     // Use dedicated role-test user so community@test.com is never mutated (other tests expect Community badge)
     const roleTestEmail =
       process.env.E2E_ROLE_TEST_EMAIL ?? 'role-test-community@test.com';
     let row = page.locator('table tbody tr').filter({ hasText: roleTestEmail });
     await expect(row).toBeVisible({ timeout: 10000 });
 
-    const roleTrigger = () =>
-      row.getByRole('combobox').or(row.locator('input')).first();
+    const roleTrigger = () => row.getByRole('combobox').or(row.locator('input')).first();
     const waitForRolePatch = () =>
       page.waitForResponse(
         (res) =>
@@ -80,13 +66,20 @@ test.describe('Staff role and User Management', () => {
     const communityTable = page.locator(
       "xpath=//table[preceding-sibling::*[1][contains(., 'Community (')]]",
     );
-    if (!(await communityTable.locator('tbody tr').filter({ hasText: roleTestEmail }).isVisible())) {
+    if (
+      !(await communityTable
+        .locator('tbody tr')
+        .filter({ hasText: roleTestEmail })
+        .isVisible())
+    ) {
       await openDropdown();
       const patchPromise = waitForRolePatch();
       await page.getByRole('option', { name: 'Community' }).click();
       const res = await patchPromise;
       if (!res.ok()) throw new Error(`PATCH to Community failed: ${res.status()}`);
-      await expect(communityTable.locator('tbody tr').filter({ hasText: roleTestEmail })).toBeVisible({
+      await expect(
+        communityTable.locator('tbody tr').filter({ hasText: roleTestEmail }),
+      ).toBeVisible({
         timeout: 15000,
       });
       row = page.locator('table tbody tr').filter({ hasText: roleTestEmail });
@@ -104,7 +97,9 @@ test.describe('Staff role and User Management', () => {
     const staffTable = page.locator(
       "xpath=//table[preceding-sibling::*[1][contains(., 'Staff (')]]",
     );
-    await expect(staffTable.locator('tbody tr').filter({ hasText: roleTestEmail })).toBeVisible({
+    await expect(
+      staffTable.locator('tbody tr').filter({ hasText: roleTestEmail }),
+    ).toBeVisible({
       timeout: 15000,
     });
   });

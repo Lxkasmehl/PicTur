@@ -72,6 +72,13 @@ class BackendApiClient:
             r = requests.post(self._url(path), data=data, headers=headers, timeout=30, **kwargs)
         return _response_with_get_json(r)
 
+    def patch(self, path: str, json=None, content_type=None, **kwargs) -> requests.Response:
+        headers = dict(self._headers)
+        if content_type:
+            headers["Content-Type"] = content_type
+        r = requests.patch(self._url(path), json=json, headers=headers, timeout=30, **kwargs)
+        return _response_with_get_json(r)
+
     def delete(self, path: str, json=None, content_type=None, **kwargs) -> requests.Response:
         headers = dict(self._headers)
         if content_type:
@@ -138,6 +145,21 @@ def staff_token(auth_url, integration_env):
         )
     except Exception as e:
         pytest.skip(f"Cannot get staff token from auth-backend at {auth_url}/auth/login: {e}")
+
+
+@pytest.fixture(scope="session")
+def community_token(auth_url, integration_env):
+    """Obtain community JWT by logging in to auth-backend. Requires seeded community test user."""
+    if not integration_env:
+        return None
+    try:
+        return _login_token(
+            auth_url,
+            os.environ.get("E2E_COMMUNITY_EMAIL", "community@test.com"),
+            os.environ.get("E2E_COMMUNITY_PASSWORD", "testpassword123"),
+        )
+    except Exception as e:
+        pytest.skip(f"Cannot get community token from auth-backend at {auth_url}/auth/login: {e}")
 
 
 @pytest.fixture(scope="session")

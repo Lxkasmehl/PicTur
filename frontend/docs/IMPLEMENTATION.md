@@ -65,7 +65,7 @@ graph TB
     
     subgraph "External Services"
         J --> K[Auth Backend<br/>:3001]
-        J --> L[Turtle Backend<br/>:5000]
+        J --> L[PicTur Backend<br/>:5000]
     end
     
     style A fill:#4dabf7

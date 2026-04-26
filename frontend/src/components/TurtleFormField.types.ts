@@ -21,6 +21,8 @@ export interface TurtleFormFieldProps {
   isFieldModeRestricted: boolean;
   isFieldUnlocked: (field: keyof TurtleSheetsData) => boolean;
   requestUnlock: (field: keyof TurtleSheetsData) => void;
+  /** Match page (and similar): show value disabled with no unlock control. */
+  readOnlyDisplay?: boolean;
   disabled?: boolean;
   error?: string;
   required?: boolean;

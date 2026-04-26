@@ -21,6 +21,7 @@ export function AdminTurtleMatchProvider({
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAdminTurtleMatchContext(): AdminTurtleMatchContextValue {
   const ctx = useContext(AdminTurtleMatchContext);
   if (!ctx) {

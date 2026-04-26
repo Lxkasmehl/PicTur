@@ -3,7 +3,17 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.cuda
+    gpus: all
+    # Ensures GPU reservation on Compose v2 even if `gpus:` is ignored on some setups
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     environment:
-      NVIDIA_VISIBLE_DEVICES: all
+      # nvidia-container-toolkit: "all" is valid here (not for CUDA_VISIBLE_DEVICES!)
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-all}
+      # Optional: set in .env to pin GPUs, e.g. CUDA_VISIBLE_DEVICES=0 (never use "all" here).

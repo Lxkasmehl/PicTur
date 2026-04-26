@@ -63,7 +63,7 @@ router.post(
         // Check if there's already an unused invitation for this email
         const existingInvitation = db
           .prepare(
-            'SELECT * FROM admin_invitations WHERE email = ? AND used = 0 AND expires_at > datetime("now")'
+            'SELECT * FROM admin_invitations WHERE email = ? AND used = 0 AND julianday(expires_at) > julianday(\'now\')'
           )
           .get(email) as any;
 
@@ -164,8 +164,6 @@ router.patch(
       const oldRole = user.role;
 
       // Prevent demoting the last admin so admin routes remain reachable.
-      // Compute count in app code: the in-repo JSON db does not support SQL aggregates (COUNT/etc.);
-      // .get() returns the first matching row, so SELECT COUNT(*) would yield undefined and bypass this check.
       if (oldRole === 'admin' && newRole !== 'admin') {
         const admins = db.prepare('SELECT id FROM users WHERE role = ?').all('admin') as { id: number }[];
         const adminCount = admins.length;
@@ -198,6 +196,66 @@ router.patch(
       });
     } catch (error) {
       console.error('Set role error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Delete user by id (admin only). CASCADE removes related rows (verifications, community_game).
+router.delete(
+  '/users/:id',
+  authenticateToken,
+  requireEmailVerified,
+  requireAdmin,
+  (req: Request, res: Response) => {
+    try {
+      const authUser = (req as AuthRequest).user;
+      if (!authUser) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+
+      const userId = Number(req.params.id);
+      if (!Number.isInteger(userId) || userId < 1) {
+        res.status(400).json({ error: 'Invalid user ID' });
+        return;
+      }
+
+      if (userId === authUser.id) {
+        res.status(400).json({ error: 'You cannot delete your own account while logged in.' });
+        return;
+      }
+
+      const user = db.prepare('SELECT id, email, role FROM users WHERE id = ?').get(userId) as
+        | User
+        | undefined;
+      if (!user) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      if (user.role === 'admin') {
+        const admins = db.prepare('SELECT id FROM users WHERE role = ?').all('admin') as {
+          id: number;
+        }[];
+        if (admins.length <= 1) {
+          res.status(400).json({
+            error: 'Cannot delete the last admin. Promote another user to admin first.',
+          });
+          return;
+        }
+      }
+
+      // JWTs for this user fail on the next request: authenticateToken requires a users row
+      // (signature alone is not enough after deletion).
+      db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+
+      res.json({
+        success: true,
+        message: `User ${user.email} has been deleted`,
+      });
+    } catch (error) {
+      console.error('Delete user error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }

@@ -1,6 +1,6 @@
-# Turtle Auth Backend API
+# PicTur Auth Backend API
 
-Authentication Backend API for the Turtle Project with user management and Google OAuth.
+Authentication Backend API for PicTur with user management and Google OAuth.
 
 ## Overview
 
@@ -62,7 +62,7 @@ FRONTEND_URL=http://localhost:5173
 # SMTP_SECURE=false
 # SMTP_USER=your-email@gmail.com
 # SMTP_PASSWORD=your-app-password
-# SMTP_FROM=noreply@turtleproject.com
+# SMTP_FROM=noreply@pictur.com
 ```
 
 **Important:** Generate secure secrets for `JWT_SECRET` and `SESSION_SECRET`. You can use this command:
@@ -378,7 +378,7 @@ To send real emails (for admin promotions and invitations), you need to configur
    - Go to [App Passwords](https://myaccount.google.com/apppasswords)
    - If you don't see "App Passwords", it may not be available for your account type
    - Select "Mail" and "Other (Custom name)"
-   - Enter "Turtle Project" as the name
+   - Enter "PicTur" as the name
    - Copy the generated 16-character password
 
 3. **Add to `.env`**:
@@ -430,7 +430,7 @@ For other providers (SendGrid, Mailgun, AWS SES, etc.), use their SMTP settings:
 
    - Go to Settings > API Keys
    - Click "Create API Key"
-   - Name it "Turtle Project" and give it "Full Access" or "Mail Send" permissions
+   - Name it "PicTur" and give it "Full Access" or "Mail Send" permissions
    - Copy the API key (you'll only see it once!)
 
 3. **Add to `.env`**:
@@ -441,7 +441,7 @@ For other providers (SendGrid, Mailgun, AWS SES, etc.), use their SMTP settings:
    SMTP_SECURE=false
    SMTP_USER=apikey
    SMTP_PASSWORD=your-sendgrid-api-key-here
-   SMTP_FROM=noreply@turtleproject.com
+   SMTP_FROM=noreply@pictur.com
    ```
 
    **Note:** For `SMTP_FROM`, you can use any email address. SendGrid will send from this address (no verification needed for free tier in most cases).

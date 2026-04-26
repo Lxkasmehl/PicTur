@@ -8,13 +8,20 @@ export interface TurtleSheetsData {
   primary_id?: string;
   sheet_name?: string; // Which Google Sheets tab this turtle belongs to
   transmitter_id?: string;
+  /** Sheet column "Frequency" (legacy header "Freq") */
+  freq?: string;
   id?: string;
   id2?: string;
   pit?: string;
+  /** Legacy sheet header "Pic in 2024 Archive?" (still read from old tabs) */
   pic_in_2024_archive?: string;
+  plastron_picture_in_archive?: string;
+  carapace_picture_in_archive?: string;
   adopted?: string;
   ibutton?: string;
+  /** Sheet column "Date DNA Extracted?" (legacy "DNA Extracted?") */
   dna_extracted?: string;
+  cow_interactions?: string;
   date_1st_found?: string;
   species?: string;
   name?: string;
@@ -22,9 +29,13 @@ export interface TurtleSheetsData {
   ibutton_last_set?: string;
   last_assay_date?: string;
   dates_refound?: string;
+  /** Sheet column between Dates refound and General Location */
+  specific_location?: string;
   general_location?: string;
   location?: string;
   health_status?: string;
+  /** Google Sheets column "Deceased?" — Yes / No */
+  deceased?: string;
   notes?: string;
   transmitter_put_on_by?: string;
   transmitter_on_date?: string;
@@ -32,15 +43,49 @@ export interface TurtleSheetsData {
   transmitter_lifespan?: string;
   radio_replace_date?: string;
   old_frequencies?: string;
-  // Optional mass and morphometrics
+  // Optional mass and morphometrics (sheet headers CCL, Cflat, …; legacy long names still read)
   mass_g?: string;
+  flesh_flies?: string;
   curved_carapace_length_mm?: string;
   straight_carapace_length_mm?: string;
   carapace_width_mm?: string;
   curved_plastron_length_mm?: string;
   straight_plastron_length_mm?: string;
+  plastron_p1_mm?: string;
+  plastron_p2_mm?: string;
   plastron_width_mm?: string;
   dome_height_mm?: string;
+  /** Google Sheet row (1-based header excluded); set when listing from /api/sheets/turtles */
+  row_index?: number;
+}
+
+/**
+ * On-disk folder / ref_data stem: biology **ID** column when set (e.g. F439), else **Primary ID**.
+ * Image APIs walk ``basename == turtle_id``; folders usually match the short biology ID, not the numeric primary.
+ */
+export function turtleDiskFolderId(
+  t: Pick<TurtleSheetsData, 'id' | 'primary_id'>,
+): string {
+  const bio = (t.id || '').trim();
+  if (bio) return bio;
+  return (t.primary_id || '').trim();
+}
+
+/**
+ * Folder hint for turtle image APIs: matches `data/<…>/` on disk.
+ * The spreadsheet tab (`sheet_name`) is often only the state (e.g. `Kansas`); real paths use
+ * `general_location` + `location` (e.g. `Kansas/North Topeka`), same as review-queue `state/location`.
+ */
+export function turtleDataFolderHint(
+  t: Pick<TurtleSheetsData, 'sheet_name' | 'general_location' | 'location'>,
+): string | null {
+  const gl = (t.general_location || '').trim().replace(/\\/g, '/');
+  const loc = (t.location || '').trim().replace(/\\/g, '/');
+  const sheet = (t.sheet_name || '').trim();
+  if (gl && loc) return `${gl}/${loc}`;
+  if (gl && !loc) return gl;
+  if (!gl && loc) return loc;
+  return sheet || null;
 }
 
 export interface GetTurtleSheetsDataResponse {
@@ -101,6 +146,43 @@ export interface UpdateTurtleSheetsDataRequest {
 export interface UpdateTurtleSheetsDataResponse {
   success: boolean;
   message?: string;
+  error?: string;
+}
+
+export interface MarkTurtleDeceasedRequest {
+  sheet_name: string;
+  primary_id?: string;
+  biology_id?: string;
+  id?: string;
+  name?: string;
+  deceased?: boolean;
+  target_spreadsheet?: 'research' | 'community';
+}
+
+export interface MarkTurtleDeceasedMatch {
+  row_index: number;
+  primary_id: string;
+  id: string;
+  name: string;
+}
+
+export interface MarkTurtleDeceasedResponse {
+  success: boolean;
+  primary_id?: string;
+  biology_id?: string;
+  name?: string;
+  deceased?: string;
+  message?: string;
+  error?: string;
+  matches?: MarkTurtleDeceasedMatch[];
+}
+
+export type TurtleLookupField = 'primary_id' | 'biology_id' | 'name';
+
+export interface GetTurtleLookupOptionsResponse {
+  success: boolean;
+  options?: string[];
+  count?: number;
   error?: string;
 }
 
@@ -274,6 +356,69 @@ export const updateTurtleSheetsData = async (
   }
 
   return await response.json();
+};
+
+/** Mark deceased without plastron ID: lookup by primary_id, biology id, or name within one sheet tab. */
+export const markTurtleDeceased = async (
+  body: MarkTurtleDeceasedRequest,
+): Promise<MarkTurtleDeceasedResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await fetch(`${TURTLE_API_BASE_URL}/sheets/turtle/mark-deceased`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  const data = (await response.json()) as MarkTurtleDeceasedResponse;
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to update deceased status');
+  }
+  return data;
+};
+
+/** Distinct values from ID / Name / Primary ID column in one sheet tab (for mark-deceased picker). */
+export const getTurtleLookupOptions = async (
+  sheetName: string,
+  field: TurtleLookupField,
+  targetSpreadsheet: 'research' | 'community' = 'research',
+): Promise<GetTurtleLookupOptionsResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const params = new URLSearchParams({
+    sheet_name: sheetName,
+    field,
+  });
+  if (targetSpreadsheet !== 'research') {
+    params.set('target_spreadsheet', targetSpreadsheet);
+  }
+  const response = await fetch(
+    `${TURTLE_API_BASE_URL}/sheets/mark-deceased/lookup-options?${params.toString()}`,
+    { method: 'GET', headers },
+  );
+  const data = (await response.json()) as GetTurtleLookupOptionsResponse & {
+    exists?: boolean;
+    data?: unknown;
+  };
+  if (!response.ok) {
+    return { success: false, options: [], error: data.error || 'Failed to load options' };
+  }
+  // Wrong route (e.g. matched as GET /turtle/<primary_id>) returns turtle payload without options
+  if (!Array.isArray(data.options)) {
+    return {
+      success: false,
+      options: [],
+      error: 'Unexpected API response. Ensure the backend is updated (mark-deceased lookup-options route).',
+    };
+  }
+  return data;
 };
 
 // Generate a new primary ID
@@ -555,3 +700,64 @@ export const listAllTurtlesFromSheets = async (
 
   return await response.json();
 };
+
+/**
+ * Admin-only: download ZIP with backend data/ mirror + Google Sheets CSV/JSON exports.
+ * Triggers a browser file download.
+ */
+export async function downloadAdminBackupArchive(
+  options: { scope: 'all' } | { scope: 'sheet'; sheet: string },
+  timeoutMs = 600000,
+): Promise<void> {
+  const token = getToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+
+  const params = new URLSearchParams({ scope: options.scope });
+  if (options.scope === 'sheet') {
+    params.set('sheet', options.sheet);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(
+      `${TURTLE_API_BASE_URL}/backup/archive?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      },
+    );
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err as { error?: string }).error || 'Backup download failed');
+    }
+
+    const blob = await response.blob();
+    const cd = response.headers.get('Content-Disposition');
+    let filename = 'turtle-backup.zip';
+    const m = cd && /filename="([^"]+)"/.exec(cd);
+    if (m) {
+      filename = m[1];
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw e;
+  }
+}

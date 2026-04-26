@@ -24,8 +24,16 @@ export {
   promoteToAdmin,
   getUsers,
   setUserRole,
+  deleteUser,
   isStaffRole,
+  isAdminRole,
 } from './api/auth';
+export { fetchCommunityGameState, saveCommunityGameState } from './api/communityGame';
+export {
+  fetchUserUiPreferences,
+  saveUserUiPreferences,
+  type UserUiPreferences,
+} from './api/userPreferences';
 export type {
   User,
   UserRole,
@@ -53,12 +61,15 @@ export {
   getTurtlePrimariesBatch,
   uploadTurtleAdditionalImages,
   uploadTurtleReplaceReference,
+  uploadTurtleIdentifierPlastron,
   deleteTurtleAdditionalImage,
   deleteTurtleImage,
   restoreTurtleImage,
   RestoreCollisionError,
   classifyReviewPacket,
   crossCheckReviewPacket,
+  searchTurtleImagesByLabel,
+  updateTurtleAdditionalImageLabels,
 } from './api/turtle';
 export type {
   PhotoType,
@@ -82,12 +93,15 @@ export type {
   TurtleDeletedCategory,
   DeleteTurtleImageResponse,
   RestoreTurtleImageResponse,
+  TurtleAdditionalLabelSearchMatch,
 } from './api/turtle';
 
 export {
   getTurtleSheetsData,
   createTurtleSheetsData,
   updateTurtleSheetsData,
+  markTurtleDeceased,
+  getTurtleLookupOptions,
   generatePrimaryId,
   generateTurtleId,
   listSheets,
@@ -98,6 +112,8 @@ export {
   createSheet,
   getTurtleNames,
   listAllTurtlesFromSheets,
+  downloadAdminBackupArchive,
+  turtleDataFolderHint,
 } from './api/sheets';
 export type {
   TurtleSheetsData,
@@ -110,6 +126,11 @@ export type {
   ListSheetsResponse,
   GeneratePrimaryIdRequest,
   GeneratePrimaryIdResponse,
+  MarkTurtleDeceasedRequest,
+  MarkTurtleDeceasedResponse,
+  MarkTurtleDeceasedMatch,
+  TurtleLookupField,
+  GetTurtleLookupOptionsResponse,
   GenerateTurtleIdRequest,
   GenerateTurtleIdResponse,
   CreateTurtleSheetsDataRequest,

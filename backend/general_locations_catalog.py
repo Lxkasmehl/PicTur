@@ -23,11 +23,12 @@ _CATALOG_LOCK = threading.RLock()
 _DEFAULT_CATALOG: Dict[str, Any] = {
     'states': {
         'Kansas': [
+            'Dee Hobelman',
             'Karlyle Woods',
             'Lawrence',
             'North Topeka',
-            'Valencia',
-            'Wichita',
+            'Other',
+            'West Topeka',
         ],
         'Nebraska': [
             'CPBS',

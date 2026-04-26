@@ -3,6 +3,7 @@ Photo upload endpoint
 """
 
 import os
+import re
 import shutil
 import json
 import sys
@@ -14,27 +15,93 @@ from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from auth import optional_auth, check_auth_revocation
+from image_utils import normalize_to_jpeg
 from services import manager_service
+from additional_image_labels import normalize_additional_type, parse_labels_from_form
 
-# ARCHITECT NOTE: Kept .pt conversion for SuperPoint integration
-def convert_pt_to_image_path(pt_path):
+_EXTRA_UPLOAD_KEY = re.compile(
+    r'^extra_(microhabitat|condition|carapace|plastron|other)_(\d+)$', re.IGNORECASE
+)
+
+
+def _collect_extra_upload_files(request, request_id):
     """
-    Convert a .pt file path to the corresponding image file path.
-    Tries common image extensions (.jpg, .jpeg, .png).
-    Returns the image path if found, otherwise returns the original pt_path.
+    Parse extra_microhabitat_0, extra_labels_0, etc. from multipart form.
+    Returns list of dicts suitable for add_additional_images_to_packet.
+    """
+    files_with_types = []
+    entries = []
+    for key in request.files.keys():
+        m = _EXTRA_UPLOAD_KEY.match(key)
+        if not m:
+            continue
+        f = request.files[key]
+        if not f or not f.filename:
+            continue
+        if not allowed_file(f.filename):
+            continue
+        idx = int(m.group(2))
+        typ_raw = m.group(1)
+        entries.append((idx, typ_raw, key, f))
+    entries.sort(key=lambda e: e[0])
+    for idx, typ_raw, key, f in entries:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(0)
+        if size > MAX_FILE_SIZE:
+            continue
+        typ = normalize_additional_type(typ_raw)
+        lbs = parse_labels_from_form(request.form, str(idx), key_prefix='extra_labels')
+        ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
+        extra_temp = os.path.join(UPLOAD_FOLDER, f"extra_{request_id}_{typ}_{int(time.time())}{ext}")
+        f.save(extra_temp)
+        extra_temp = normalize_to_jpeg(extra_temp)
+        item = {
+            'path': extra_temp,
+            'type': typ,
+            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        }
+        if lbs:
+            item['labels'] = lbs
+        files_with_types.append(item)
+    return files_with_types
+
+_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp')
+
+
+def find_image_for_pt(pt_path):
+    """Find the image file next to a .pt file, matching the extension case-insensitively.
+
+    The filesystem on Linux is case-sensitive, so a hard-coded lowercase extension
+    list would miss files named e.g. ``F128.JPG`` (uppercase). This helper scans
+    the containing directory for any file with the same stem and a supported
+    image extension regardless of case.
+
+    Returns the discovered image path, or ``pt_path`` unchanged when no image is
+    found (callers already treat that as "no image").
     """
     if not pt_path or not pt_path.endswith('.pt'):
         return pt_path
-
-    base_path = pt_path[:-3]  # Remove .pt extension
-    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
-
-    for ext in image_extensions:
-        image_path = base_path + ext
-        if os.path.exists(image_path) and os.path.isfile(image_path):
-            return image_path
-
+    base = pt_path[:-3]
+    dir_path = os.path.dirname(base) or '.'
+    base_name = os.path.basename(base)
+    if not os.path.isdir(dir_path):
+        return pt_path
+    try:
+        entries = os.listdir(dir_path)
+    except OSError:
+        return pt_path
+    for fname in entries:
+        stem, ext = os.path.splitext(fname)
+        if stem == base_name and ext.lower() in _IMAGE_EXTENSIONS:
+            return os.path.join(dir_path, fname)
     return pt_path
+
+
+# ARCHITECT NOTE: Kept .pt conversion for SuperPoint integration
+def convert_pt_to_image_path(pt_path):
+    """Backwards-compatible wrapper — delegates to case-insensitive lookup."""
+    return find_image_for_pt(pt_path)
 
 def register_upload_routes(app):
     """Register upload routes"""
@@ -92,6 +159,9 @@ def register_upload_routes(app):
             filename = secure_filename(file.filename)
             temp_path = os.path.join(UPLOAD_FOLDER, filename)
             file.save(temp_path)
+            # HEIC/HEIF → JPEG so SuperPoint + frontend can handle it
+            temp_path = normalize_to_jpeg(temp_path)
+            filename = os.path.basename(temp_path)
 
             if not os.path.exists(temp_path):
                 return jsonify({'error': 'Failed to save file'}), 500
@@ -130,22 +200,8 @@ def register_upload_routes(app):
                 with open(os.path.join(additional_dir, 'manifest.json'), 'w') as f:
                     json.dump([], f)
 
-                # Process additional partner frontend files
-                files_with_types = []
-                for key in list(request.files.keys()):
-                    if key.startswith('extra_') and key != 'file':
-                        rest = key.replace('extra_', '', 1).strip().lower()
-                        typ = 'microhabitat' if rest.startswith('microhabitat') else 'condition' if rest.startswith('condition') else 'carapace' if rest.startswith('carapace') else 'plastron' if rest.startswith('plastron') else 'other'
-                        f = request.files[key]
-                        if f and f.filename and allowed_file(f.filename):
-                            f.seek(0, os.SEEK_END)
-                            size = f.tell()
-                            f.seek(0)
-                            if size <= MAX_FILE_SIZE:
-                                ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
-                                extra_temp = os.path.join(UPLOAD_FOLDER, f"extra_{request_id}_{typ}_{int(time.time())}{ext}")
-                                f.save(extra_temp)
-                                files_with_types.append({'path': extra_temp, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
+                # Process additional partner frontend files (microhabitat / condition / carapace / plastron + optional labels)
+                files_with_types = _collect_extra_upload_files(request, request_id)
 
                 if files_with_types:
                     manager_service.manager.add_additional_images_to_packet(request_id, files_with_types)
@@ -157,60 +213,76 @@ def register_upload_routes(app):
                             except OSError: pass
 
                 match_sheet = (request.form.get('match_sheet') or '').strip() or None
-
-                # ARCHITECT FIX: Correctly unpacks tuple from SuperPoint search and applies filter
-                # Admin uploads are always plastron — no photo_type selector needed
-                results = manager_service.manager.search_for_matches(query_save_path, location_filter=match_sheet, photo_type='plastron')
-
-                # Safely unpack the tuple (matches, elapsed_time)
-                if isinstance(results, tuple) and len(results) == 2:
-                    matches, _ = results
-                else:
-                    matches = results if results else []
-
-                # Write candidate images to disk so the Review Queue can
-                # display them if the admin backs out of the match page.
                 candidates_dir = os.path.join(packet_dir, 'candidate_matches')
-                os.makedirs(candidates_dir, exist_ok=True)
-                for rank, match in enumerate(matches, start=1):
-                    pt_path = match.get('file_path', '') or ''
-                    if pt_path and pt_path.endswith('.pt'):
-                        base_path = pt_path[:-3]
-                        for ext in ['.jpg', '.jpeg', '.png']:
-                            if os.path.exists(base_path + ext):
-                                turtle_id = match.get('site_id', 'Unknown')
-                                conf_int = int(round(match.get('confidence', 0.0) * 100))
-                                cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
-                                shutil.copy2(base_path + ext, os.path.join(candidates_dir, cand_filename))
-                                break
 
-                formatted_matches = []
-                for match in matches:
-                    pt_path = match.get('file_path', '') or ''
-                    image_path = convert_pt_to_image_path(pt_path)
-                    loc = (match.get('location') or 'Unknown').strip() or 'Unknown'
-                    formatted_matches.append({
-                        'turtle_id': match.get('site_id', 'Unknown') or 'Unknown',
-                        'location': loc,
-                        'confidence': float(match.get('confidence', 0.0)),
-                        'file_path': image_path,
-                        'filename': os.path.basename(image_path) if image_path else ''
+                try:
+                    # Admin uploads are always plastron — photo_type is fixed
+                    results = manager_service.manager.search_for_matches(
+                        query_save_path, location_filter=match_sheet, photo_type='plastron'
+                    )
+
+                    # Safely unpack the tuple (matches, elapsed_time)
+                    if isinstance(results, tuple) and len(results) == 2:
+                        matches, _ = results
+                    else:
+                        matches = results if results else []
+
+                    # Write candidate images to disk so the Review Queue can
+                    # display them if the admin backs out of the match page.
+                    # Uses case-insensitive lookup so .JPG files are handled.
+                    os.makedirs(candidates_dir, exist_ok=True)
+                    for rank, match in enumerate(matches, start=1):
+                        pt_path = match.get('file_path', '') or ''
+                        img_src = find_image_for_pt(pt_path)
+                        if img_src and img_src != pt_path and os.path.isfile(img_src):
+                            ext = os.path.splitext(img_src)[1]
+                            turtle_id = match.get('site_id', 'Unknown')
+                            conf_int = int(round(match.get('confidence', 0.0) * 100))
+                            cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
+                            shutil.copy2(img_src, os.path.join(candidates_dir, cand_filename))
+
+                    formatted_matches = []
+                    for match in matches:
+                        pt_path = match.get('file_path', '') or ''
+                        image_path = convert_pt_to_image_path(pt_path)
+                        loc = (match.get('location') or 'Unknown').strip() or 'Unknown'
+                        formatted_matches.append({
+                            'turtle_id': match.get('site_id', 'Unknown') or 'Unknown',
+                            'location': loc,
+                            'confidence': float(match.get('confidence', 0.0)),
+                            'file_path': image_path,
+                            'filename': os.path.basename(image_path) if image_path else ''
+                        })
+
+                    message = (
+                        f'Photo processed successfully. {len(formatted_matches)} matches found.'
+                        if len(formatted_matches) > 0
+                        else 'Photo processed successfully. No matches found. You can create a new turtle.'
+                    )
+
+                    # Save metadata with photo_type so review queue can display it
+                    with open(os.path.join(packet_dir, 'metadata.json'), 'w') as mf:
+                        json.dump({'photo_type': 'plastron'}, mf)
+
+                    return jsonify({
+                        'success': True,
+                        'request_id': request_id,
+                        'matches': formatted_matches,
+                        'uploaded_image_path': query_save_path,
+                        'photo_type': 'plastron',
+                        'message': message
                     })
-
-                message = f'Photo processed successfully. {len(formatted_matches)} matches found.' if len(formatted_matches) > 0 else 'Photo processed successfully. No matches found. You can create a new turtle.'
-
-                # Save metadata with photo_type so review queue can display it
-                with open(os.path.join(packet_dir, 'metadata.json'), 'w') as mf:
-                    json.dump({'photo_type': 'plastron'}, mf)
-
-                return jsonify({
-                    'success': True,
-                    'request_id': request_id,
-                    'matches': formatted_matches,
-                    'uploaded_image_path': query_save_path,
-                    'photo_type': 'plastron',
-                    'message': message
-                })
+                except Exception as search_exc:
+                    # Same as create_review_packet: without this, GET /review-queue treats the
+                    # packet as match_search_pending forever (no candidate_matches dir).
+                    if os.path.isdir(packet_dir) and not os.path.isdir(candidates_dir):
+                        fail_path = os.path.join(packet_dir, 'match_search_failed.json')
+                        try:
+                            with open(fail_path, 'w', encoding='utf-8') as f:
+                                json.dump({'error': str(search_exc)}, f)
+                        except OSError:
+                            pass
+                    raise
 
             else:
                 # Community or Anonymous Upload Process
@@ -248,21 +320,7 @@ def register_upload_routes(app):
                 request_id = f"Req_{int(time.time() * 1000)}_{safe_name}_{uuid.uuid4().hex[:6]}"
 
                 # Save extra files to disk now (must happen inside request context)
-                files_with_types = []
-                for key in list(request.files.keys()):
-                    if key.startswith('extra_') and key != 'file':
-                        rest = key.replace('extra_', '', 1).strip().lower()
-                        typ = 'microhabitat' if rest.startswith('microhabitat') else 'condition' if rest.startswith('condition') else 'carapace' if rest.startswith('carapace') else 'plastron' if rest.startswith('plastron') else 'other'
-                        f = request.files[key]
-                        if f and f.filename and allowed_file(f.filename):
-                            f.seek(0, os.SEEK_END)
-                            size = f.tell()
-                            f.seek(0)
-                            if size <= MAX_FILE_SIZE:
-                                ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
-                                extra_temp = os.path.join(UPLOAD_FOLDER, f"extra_{request_id}_{typ}_{int(time.time())}{ext}")
-                                f.save(extra_temp)
-                                files_with_types.append({'path': extra_temp, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
+                files_with_types = _collect_extra_upload_files(request, request_id)
 
                 # Run matching and packet creation in the background so the
                 # community member is not blocked waiting for AI processing

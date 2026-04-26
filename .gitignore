@@ -17,3 +17,9 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.docker.example
+
+# Local backup output (see docs/BACKUP.md)
+backups/
+
+github_actions_deploy
+github_actions_deploy.pub

@@ -76,6 +76,8 @@ export function useAdminTurtleMatch(
       return;
     }
     setSelectedMatch(turtleId);
+    setSheetsData(null);
+    setPrimaryId(turtleId);
     setLoadingTurtleData(true);
 
     const match = matchData?.matches.find((m) => m.turtle_id === turtleId);

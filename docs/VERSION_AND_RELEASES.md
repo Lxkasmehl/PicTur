@@ -1,6 +1,6 @@
 # Version Control and Releases
 
-This guide explains how TurtleTracker tracks versions, maintains a changelog, and uses GitHub Releases.
+This guide explains how PicTur tracks versions, maintains a changelog, and uses GitHub Releases.
 
 ## Where versions are tracked
 
