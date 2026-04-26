@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import {
+  isSmtpConfigured,
   parseContactFormRecipients,
   sendContactFormNotification,
 } from '../services/email.js';
@@ -7,6 +8,31 @@ import {
 const router = Router();
 
 const SIMPLE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const RATE_WINDOW_MS = 60 * 60 * 1000;
+const RATE_MAX = 6;
+
+const rateBuckets = new Map<string, number[]>();
+
+function clientIp(req: Request): string {
+  // req.ip respects Express trust proxy settings and ignores untrusted forwarded headers.
+  const rawIp = req.ip || req.socket.remoteAddress;
+  if (!rawIp) return 'unknown';
+  return rawIp.startsWith('::ffff:') ? rawIp.slice(7) : rawIp;
+}
+
+function rateLimitOk(ip: string): boolean {
+  const now = Date.now();
+  const windowStart = now - RATE_WINDOW_MS;
+  let hits = rateBuckets.get(ip) || [];
+  hits = hits.filter((t) => t > windowStart);
+  if (hits.length >= RATE_MAX) {
+    rateBuckets.set(ip, hits);
+    return false;
+  }
+  hits.push(now);
+  rateBuckets.set(ip, hits);
+  return true;
+}
 
 function validateBody(body: unknown): { name: string; email: string; message: string } | null {
   if (!body || typeof body !== 'object') return null;
@@ -22,6 +48,11 @@ function validateBody(body: unknown): { name: string; email: string; message: st
 
 /** Public: submit PicTur / lab outreach message; delivers to CONTACT_FORM_RECIPIENTS (SMTP). */
 router.post('/contact', async (req: Request, res: Response) => {
+  const ip = clientIp(req);
+  if (!rateLimitOk(ip)) {
+    return res.status(429).json({ error: 'Too many submissions. Please try again later.' });
+  }
+
   const parsed = validateBody(req.body);
   if (!parsed) {
     return res.status(400).json({ error: 'Invalid name, email, or message.' });
@@ -32,6 +63,13 @@ router.post('/contact', async (req: Request, res: Response) => {
     return res.status(503).json({
       error: 'Contact form is not configured on this server.',
       code: 'CONTACT_DISABLED',
+    });
+  }
+
+  if (!isSmtpConfigured()) {
+    return res.status(503).json({
+      error: 'Contact form is temporarily unavailable.',
+      code: 'CONTACT_UNAVAILABLE',
     });
   }
 

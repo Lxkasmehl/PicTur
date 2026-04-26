@@ -21,11 +21,10 @@ const RATE_MAX = 8;
 const rateBuckets = new Map<string, number[]>();
 
 function clientIp(req: Request): string {
-  const xff = req.headers['x-forwarded-for'];
-  if (typeof xff === 'string' && xff.length > 0) {
-    return xff.split(',')[0].trim();
-  }
-  return req.socket.remoteAddress || 'unknown';
+  // req.ip respects Express trust proxy settings and ignores untrusted forwarded headers.
+  const rawIp = req.ip || req.socket.remoteAddress;
+  if (!rawIp) return 'unknown';
+  return rawIp.startsWith('::ffff:') ? rawIp.slice(7) : rawIp;
 }
 
 function rateLimitOk(ip: string): boolean {

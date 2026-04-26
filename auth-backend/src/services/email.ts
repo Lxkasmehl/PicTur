@@ -1,31 +1,11 @@
 import nodemailer from 'nodemailer';
 
-// Check if SMTP is configured
-const isSmtpConfigured = () => {
-  // Get raw values and trim whitespace
+export function isSmtpConfigured(): boolean {
   const host = process.env.SMTP_HOST?.trim();
   const user = process.env.SMTP_USER?.trim();
   const password = process.env.SMTP_PASSWORD?.trim();
-
-  const hasHost = !!host && host.length > 0;
-  const hasUser = !!user && user.length > 0;
-  const hasPassword = !!password && password.length > 0;
-
-  if (!hasHost || !hasUser || !hasPassword) {
-    console.log('📧 SMTP Configuration: ❌ Missing required variables');
-    console.log(`  SMTP_HOST: ${hasHost ? '✅ Set' : '❌ Missing'}`);
-    console.log(`  SMTP_USER: ${hasUser ? '✅ Set' : '❌ Missing'}`);
-    console.log(`  SMTP_PASSWORD: ${hasPassword ? '✅ Set' : '❌ Missing'}`);
-    console.log('  → Emails will be logged to console (development mode)\n');
-    return false;
-  }
-
-  console.log('📧 SMTP Configuration: ✅ All required variables are set');
-  console.log(`  Host: ${host}`);
-  console.log(`  Port: ${process.env.SMTP_PORT || '587'}`);
-  console.log(`  User: ${user}\n`);
-  return true;
-};
+  return Boolean(host && user && password);
+}
 
 // Create transporter (using environment variables or console logging for development)
 const createTransporter = () => {
