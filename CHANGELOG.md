@@ -21,10 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **UI polish**: Inline **external-link** icons, clearer **Contact** CTA, automatic footer height (`311444d`).
+- **First-visit mobile tutorial viewport**: Fixed a mobile rendering issue where opening the instructions tutorial on a fresh device could initially render the app in desktop-like scale. Mobile media queries now resolve on initial render for home/tutorial flow, and tutorial scroll height uses dynamic viewport sizing for more stable phone layout.
 
 ### Testing
 
 - **Playwright**: Public nav includes **Feedback** via the footer (`navigation.spec.ts`, `fixtures.ts`).
+
 
 ## [1.2.18] - 2026-04-24 — Review approve research/community sync guard + match-form General Location unlock
 
