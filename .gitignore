@@ -22,3 +22,5 @@ backups/
 
 github_actions_deploy
 github_actions_deploy.pub
+
+project-query.graphql
