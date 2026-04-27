@@ -2297,12 +2297,17 @@ class TurtleManager:
             if not src or not os.path.isfile(src): continue
             exif_date = _extract_exif_date(src)
             stamp_date = exif_date or time.strftime('%Y-%m-%d', time.gmtime())
+            # Prefer the user's original filename when the upload route preserved it;
+            # the temp path basename is opaque (turtle_extra_<tid>_<idx>_<ts>.jpg) and
+            # makes labels/searches harder.
+            raw_name = item.get('original_filename')
+            name_suffix = os.path.basename(raw_name) if raw_name else os.path.basename(src)
 
             if typ in _other_dir:
                 # Route carapace/plastron to their proper folders
                 dest_dir = os.path.join(turtle_dir, _other_dir[typ])
                 os.makedirs(dest_dir, exist_ok=True)
-                safe_name = f"{typ}_{int(time.time() * 1000)}_{stamp_date}_{os.path.basename(src)}"
+                safe_name = f"{typ}_{int(time.time() * 1000)}_{stamp_date}_{name_suffix}"
                 safe_name = "".join(c for c in safe_name if c.isalnum() or c in '._-')
                 shutil.copy2(src, os.path.join(dest_dir, safe_name))
                 print(f"📸 {typ.capitalize()} added to {turtle_id}/{_other_dir[typ]}: {safe_name}")
@@ -2313,7 +2318,7 @@ class TurtleManager:
                     if os.path.exists(manifest_path):
                         with open(manifest_path, 'r') as f: manifest = json.load(f)
                     date_dir_created = True
-                safe_name = f"{typ}_{int(time.time() * 1000)}_{stamp_date}_{os.path.basename(src)}"
+                safe_name = f"{typ}_{int(time.time() * 1000)}_{stamp_date}_{name_suffix}"
                 safe_name = "".join(c for c in safe_name if c.isalnum() or c in '._-')
                 dest = os.path.join(date_dir, safe_name)
                 shutil.copy2(src, dest)
