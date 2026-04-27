@@ -51,6 +51,15 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
     await expect(page.getByRole('tab', { name: /Review Queue/ })).toBeVisible();
 
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
+    await tabPanel.waitFor({ state: 'visible', timeout: 5000 });
+    // Wait for the queue panel to settle (items or empty state) before branching —
+    // webkit/Mobile Safari can otherwise race the count check ahead of the fetch.
+    await Promise.race([
+      tabPanel.getByText('No pending reviews').waitFor({ state: 'visible', timeout: 10_000 }),
+      tabPanel.getByText(/\d+ matches/).first().waitFor({ state: 'visible', timeout: 10_000 }),
+      tabPanel.getByText(/Finding matches/i).first().waitFor({ state: 'visible', timeout: 10_000 }),
+      tabPanel.getByText(/Match search failed/i).first().waitFor({ state: 'visible', timeout: 10_000 }),
+    ]);
     const hasItems =
       (await tabPanel.getByText(/\d+ matches/).count()) > 0 ||
       (await tabPanel.getByText(/Finding matches/i).count()) > 0 ||
@@ -93,7 +102,7 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
     const hasItems = (await matchLink.count()) > 0;
     if (hasItems) {
       await matchLink.click();
-      await expect(page.getByText('Additional Photos')).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText('Additional Photos', { exact: true })).toBeVisible({ timeout: 5000 });
     } else {
       await expect(page.getByText('No pending reviews')).toBeVisible({ timeout: 10_000 });
     }
@@ -173,10 +182,12 @@ test.describe('Admin Turtle Records (Sheets Browser)', () => {
       return;
     }
     await turtleCards.first().click();
-    await expect(tabPanel.getByText('Turtle photos (Microhabitat / Condition)')).toBeVisible({
+    // Section title was renamed by the main merge from
+    // "Turtle photos (Microhabitat / Condition)" to "Additional Turtle Photos".
+    await expect(tabPanel.getByText('Additional Turtle Photos', { exact: true })).toBeVisible({
       timeout: 5000,
     });
-    const photosSection = tabPanel.getByText('Turtle photos (Microhabitat / Condition)').locator('..').locator('..');
+    const photosSection = tabPanel.getByText('Additional Turtle Photos', { exact: true }).locator('..').locator('..');
     const fileInput = photosSection.locator('input[type="file"]').first();
     await fileInput.setInputFiles({
       name: 'e2e-sheets-extra.jpg',
