@@ -632,11 +632,11 @@ test.describe('Admin Turtle Match', () => {
 
     // Photos for this upload section is rendered inside the modal above the Google Sheets divider.
     await expect(dialog.getByText('Photos for this upload', { exact: false })).toBeVisible();
-    // Upload buttons from AdditionalImagesSection should be present inside the dialog.
-    await expect(dialog.getByRole('button', { name: /Microhabitat/ })).toBeVisible();
-    await expect(dialog.getByRole('button', { name: /Condition/ })).toBeVisible();
-    await expect(dialog.getByRole('button', { name: /Carapace/ })).toBeVisible();
-    await expect(dialog.getByRole('button', { name: /Additional/ })).toBeVisible();
+    // Upload buttons from AdditionalImagesSection are Mantine Button component="label" — render as <label>, not <button> — so match by visible text.
+    await expect(dialog.getByText('Microhabitat', { exact: false }).first()).toBeVisible();
+    await expect(dialog.getByText('Condition', { exact: false }).first()).toBeVisible();
+    await expect(dialog.getByText('Carapace', { exact: false }).first()).toBeVisible();
+    await expect(dialog.getByText('Additional', { exact: false }).first()).toBeVisible();
   });
 
   test('Replace plastron reference checkbox renders above Google Sheets form, not at bottom', async ({
