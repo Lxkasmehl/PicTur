@@ -37,7 +37,6 @@ import {
   restoreTurtleImage,
   RestoreCollisionError,
   type TurtleAdditionalLabelSearchMatch,
-  type TurtleImageAdditional,
   type TurtleImagesResponse,
   type TurtleDeletedImage,
 } from '../../services/api';
@@ -51,7 +50,6 @@ import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
 import { OldTurtlePhotosSection, type HistoryPhotoExternal } from '../../components/OldTurtlePhotosSection';
 import { ConfirmDeletePhotoModal, type DeleteModalContext } from '../../components/ConfirmDeletePhotoModal';
-import { formatSingleDateTokenToUs } from '../../utils/usDateFormat';
 import { validateFile } from '../../utils/fileValidation';
 import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
 
@@ -100,23 +98,6 @@ function sheetRowsSame(a: TurtleSheetsData | null, b: TurtleSheetsData): boolean
 function isSheetsDeceasedYes(v?: string | null): boolean {
   const s = (v || '').trim().toLowerCase();
   return ['yes', 'y', 'true', '1', 'deceased', 'dead'].includes(s);
-}
-
-function groupAdditionalByDateFolder(images: TurtleImageAdditional[]): { label: string; items: TurtleImageAdditional[] }[] {
-  const map = new Map<string, TurtleImageAdditional[]>();
-  const dateRegex = /(\d{4}-\d{2}-\d{2})[/\\]/;
-  for (const img of images) {
-    const m = img.path.match(dateRegex);
-    const key = m ? m[1] : 'Other / legacy';
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(img);
-  }
-  const keys = [...map.keys()].sort((a, b) => {
-    if (a === 'Other / legacy') return 1;
-    if (b === 'Other / legacy') return -1;
-    return b.localeCompare(a);
-  });
-  return keys.map((label) => ({ label, items: map.get(label)! }));
 }
 
 function matchPassesSheetFilter(matchSheet: string, filter: string): boolean {
@@ -195,7 +176,7 @@ export function SheetsBrowserTab() {
       return [];
     });
     setPendingPrompt(null);
-  }, [turtleId, sheetName]);
+  }, [diskTurtleId, dataPathHint]);
 
   // Revoke any lingering object URLs on unmount
   useEffect(() => {
@@ -253,7 +234,7 @@ export function SheetsBrowserTab() {
   };
 
   const commitStagedPhotos = async (): Promise<boolean> => {
-    if (!turtleId || stagedPhotos.length === 0) return true;
+    if (!diskTurtleId || stagedPhotos.length === 0) return true;
     setCommitting(true);
     try {
       // Winners: plastron/carapace flagged replaceReference AND the last such staged of their type.
@@ -268,19 +249,19 @@ export function SheetsBrowserTab() {
 
       if (nonReplace.length > 0) {
         await uploadTurtleAdditionalImages(
-          turtleId,
+          diskTurtleId,
           nonReplace.map((s) => ({ type: s.photoType, file: s.file })),
-          sheetName,
+          dataPathHint,
         );
       }
 
       // Replace-reference calls are sequential: each archives the current reference first.
       for (const s of replaceWinners) {
         await uploadTurtleReplaceReference(
-          turtleId,
+          diskTurtleId,
           s.file,
           s.photoType as ReferenceType,
-          sheetName,
+          dataPathHint,
         );
       }
 
@@ -305,9 +286,9 @@ export function SheetsBrowserTab() {
     // Run the original sheet save
     const result = await onSaveTurtle(...(args as Parameters<typeof onSaveTurtle>));
     // Refetch images so UI reflects new references/loose/history
-    if (turtleId) {
+    if (diskTurtleId) {
       try {
-        const res = await getTurtleImages(turtleId, sheetName);
+        const res = await getTurtleImages(diskTurtleId, dataPathHint);
         setTurtleImages(res);
       } catch {
         /* ignore */
@@ -321,9 +302,9 @@ export function SheetsBrowserTab() {
   const handleCommitImagesOnly = async () => {
     const committed = await commitStagedPhotos();
     if (!committed) return;
-    if (turtleId) {
+    if (diskTurtleId) {
       try {
-        const res = await getTurtleImages(turtleId, sheetName);
+        const res = await getTurtleImages(diskTurtleId, dataPathHint);
         setTurtleImages(res);
       } catch {
         /* ignore */
@@ -345,9 +326,9 @@ export function SheetsBrowserTab() {
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   const refetchImages = async () => {
-    if (!turtleId) return;
+    if (!diskTurtleId) return;
     try {
-      const res = await getTurtleImages(turtleId, sheetName);
+      const res = await getTurtleImages(diskTurtleId, dataPathHint);
       setTurtleImages(res);
     } catch {
       /* ignore */
@@ -386,7 +367,7 @@ export function SheetsBrowserTab() {
   };
 
   const handlePhotoDelete = (photo: HistoryPhotoExternal) => {
-    if (!turtleId) return;
+    if (!diskTurtleId) return;
     const isActivePlastron = turtleImages?.primary_info?.path === photo.path;
     const isActiveCarapace = turtleImages?.primary_carapace_info?.path === photo.path;
     if (isActivePlastron) {
@@ -404,10 +385,10 @@ export function SheetsBrowserTab() {
   };
 
   const confirmPendingDelete = async () => {
-    if (!pendingDelete || !turtleId) return;
+    if (!pendingDelete || !diskTurtleId) return;
     setDeleteBusy(true);
     try {
-      const res = await deleteTurtleImage(turtleId, pendingDelete.path, sheetName);
+      const res = await deleteTurtleImage(diskTurtleId, pendingDelete.path, dataPathHint);
       setPendingDelete(null);
       notifications.show({
         title: res.reverted ? 'Deleted & reverted' : 'Moved to Deleted',
@@ -431,9 +412,9 @@ export function SheetsBrowserTab() {
   };
 
   const handleRestore = async (photo: TurtleDeletedImage) => {
-    if (!turtleId) return;
+    if (!diskTurtleId) return;
     try {
-      const res = await restoreTurtleImage(turtleId, photo.deleted_rel_path, sheetName);
+      const res = await restoreTurtleImage(diskTurtleId, photo.deleted_rel_path, dataPathHint);
       notifications.show({
         title: 'Restored',
         message: res.is_reference
@@ -545,22 +526,6 @@ export function SheetsBrowserTab() {
     const seen = new Set<string>();
     return out.filter((x) => (seen.has(x.path) ? false : (seen.add(x.path), true)));
   })();
-
-  const additionalGroups = useMemo(() => {
-    const all = turtleImages?.additional ?? [];
-    return groupAdditionalByDateFolder(all);
-  }, [turtleImages?.additional]);
-
-  const latestDate = useMemo(() => {
-    const all = turtleImages?.additional ?? [];
-    let latest = '';
-    const dr = /(\d{4}-\d{2}-\d{2})[/\\]/;
-    for (const img of all) {
-      const m = img.path.match(dr);
-      if (m && m[1] > latest) latest = m[1];
-    }
-    return latest;
-  }, [turtleImages?.additional]);
 
   const filteredPhotoMatches = useMemo(() => {
     return photoMatches.filter((m) =>
@@ -1059,7 +1024,7 @@ export function SheetsBrowserTab() {
       <Grid.Col span={{ base: 12, md: 8 }}>
         {selectedTurtle ? (
           <Stack gap='md'>
-            {turtleId && turtleImages && (turtleImages.history_dates.length > 0 || (turtleImages.deleted?.length ?? 0) > 0) && (
+            {diskTurtleId && turtleImages && (turtleImages.history_dates.length > 0 || (turtleImages.deleted?.length ?? 0) > 0) && (
               <OldTurtlePhotosSection
                 historyDates={turtleImages.history_dates}
                 additional={turtleImages.additional}
@@ -1173,7 +1138,7 @@ export function SheetsBrowserTab() {
                 </Stack>
               </Paper>
             )}
-            {turtleId && (
+            {diskTurtleId && (
               <AdditionalImagesSection
                 title='Additional Turtle Photos'
                 images={todaysAdditionalImages.map((a) => ({
@@ -1182,8 +1147,8 @@ export function SheetsBrowserTab() {
                   type: a.type,
                   labels: a.labels,
                 }))}
-                turtleId={turtleId}
-                sheetName={sheetName}
+                turtleId={diskTurtleId}
+                sheetName={dataPathHint}
                 onStagePhoto={handleStagePhoto}
                 disabled={committing}
                 onDelete={handleScratchpadDelete}
