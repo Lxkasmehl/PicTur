@@ -10,26 +10,35 @@ export type SubmitContactFormResult =
   | { ok: true }
   | { ok: false; error: string; status: number; code?: string };
 
+function networkFailureMessage(err: unknown): string {
+  if (err instanceof Error && err.message.trim()) return err.message;
+  return 'Could not reach the server. Check your connection and try again.';
+}
+
 export async function submitContactForm(
   body: SubmitContactFormInput,
 ): Promise<SubmitContactFormResult> {
-  const res = await fetch(`${AUTH_API_BASE_URL}/contact`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = (await res.json().catch(() => ({}))) as {
-    error?: string;
-    code?: string;
-    ok?: boolean;
-  };
-  if (!res.ok) {
-    return {
-      ok: false,
-      error: data.error || res.statusText || 'Request failed',
-      status: res.status,
-      code: data.code,
+  try {
+    const res = await fetch(`${AUTH_API_BASE_URL}/contact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      code?: string;
+      ok?: boolean;
     };
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: data.error || res.statusText || 'Request failed',
+        status: res.status,
+        code: data.code,
+      };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: networkFailureMessage(err), status: 0 };
   }
-  return { ok: true };
 }
