@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **First-visit mobile tutorial viewport**: Fixed a mobile rendering issue where opening the instructions tutorial on a fresh device could initially render the app in desktop-like scale. Mobile media queries now resolve on initial render for home/tutorial flow, and tutorial scroll height uses dynamic viewport sizing for more stable phone layout.
 
+### Changed
+
+- Renamed the Google Sheets column label **Specific Location** to **Specific Property** across the WebApp form and backend sheet column mapping.
+- Added reminder text to the **Location** field (Column S) in the WebApp form: enter who first found the turtle.
+- Updated the related sheet-column mapping test to validate **Specific Property** ordering before **General Location**.
+
 ## [1.2.18] - 2026-04-24 — Review approve research/community sync guard + match-form General Location unlock
 
 ### Fixed
