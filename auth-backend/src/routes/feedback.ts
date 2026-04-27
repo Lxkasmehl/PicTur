@@ -6,6 +6,7 @@ import {
   resolveProjectStatusBacklogIds,
   setProjectItemSingleSelect,
 } from '../services/githubFeedback.js';
+import { createInMemoryIpWindowRateLimiter } from '../utils/inMemoryIpWindowRateLimit.js';
 
 const router = Router();
 
@@ -18,27 +19,16 @@ const DESCRIPTION_MAX = 8000;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 const RATE_MAX = 8;
 
-const rateBuckets = new Map<string, number[]>();
+const { rateLimitOk } = createInMemoryIpWindowRateLimiter({
+  windowMs: RATE_WINDOW_MS,
+  maxHits: RATE_MAX,
+});
 
 function clientIp(req: Request): string {
   // req.ip respects Express trust proxy settings and ignores untrusted forwarded headers.
   const rawIp = req.ip || req.socket.remoteAddress;
   if (!rawIp) return 'unknown';
   return rawIp.startsWith('::ffff:') ? rawIp.slice(7) : rawIp;
-}
-
-function rateLimitOk(ip: string): boolean {
-  const now = Date.now();
-  const windowStart = now - RATE_WINDOW_MS;
-  let hits = rateBuckets.get(ip) || [];
-  hits = hits.filter((t) => t > windowStart);
-  if (hits.length >= RATE_MAX) {
-    rateBuckets.set(ip, hits);
-    return false;
-  }
-  hits.push(now);
-  rateBuckets.set(ip, hits);
-  return true;
 }
 
 function validateBody(body: unknown): {
