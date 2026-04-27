@@ -231,6 +231,10 @@ test.describe('Admin Community turtle move to admin', () => {
         .click();
     }
 
+    // Fixed AppShell footer overlaps the action bar after scroll-into-view; unblock hit-testing for the click.
+    await page.addStyleTag({
+      content: `.mantine-AppShell-footer { pointer-events: none !important; }`,
+    });
     await page.getByRole('button', { name: 'Save to Sheets & Confirm Match' }).click();
 
     await expect(page).toHaveURL('/', { timeout: 15_000 });
