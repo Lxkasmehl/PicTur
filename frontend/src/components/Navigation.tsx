@@ -177,7 +177,7 @@ export default function Navigation({ children }: NavigationProps) {
   return (
     <AppShell
       header={{ height: isMobile ? 56 : 60 }}
-      footer={{ height: 'auto' }}
+      footer={{ height: isMobile ? 100 : 88 }}
       padding={isMobile ? 'xs' : 'md'}
     >
       <AppShell.Header>
