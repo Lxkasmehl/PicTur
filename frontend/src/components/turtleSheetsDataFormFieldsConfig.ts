@@ -66,9 +66,16 @@ export const TURTLE_SHEETS_FORM_FIELDS: TurtleFormFieldConfig[] = [
     span: { base: 12, md: 3 },
   },
   { key: 'dates_refound', label: 'Dates refound', placeholder: 'Comma-separated dates', type: 'text', span: { base: 12, md: 6 } },
-  { key: 'specific_location', label: 'Specific Location', placeholder: 'Specific location (sheet column)', type: 'text', span: { base: 12, md: 6 } },
+  { key: 'specific_location', label: 'Specific Property', placeholder: 'Specific property (sheet column)', type: 'text', span: { base: 12, md: 6 } },
   { key: 'general_location', label: 'General Location', placeholder: 'General location', type: 'text', span: { base: 12, md: 6 } },
-  { key: 'location', label: 'Location', placeholder: 'Location', type: 'text', span: { base: 12, md: 6 } },
+  {
+    key: 'location',
+    label: 'Location',
+    placeholder: 'Who first found this turtle?',
+    description: 'Reminder: write who first found the turtle.',
+    type: 'text',
+    span: { base: 12, md: 6 },
+  },
   {
     key: 'cow_interactions',
     label: 'Cow Interactions?',

@@ -57,7 +57,7 @@ def test_frequency_and_dna_headers_for_writes():
     assert FIELD_TO_COLUMN['dna_extracted'] == 'Date DNA Extracted?'
 
 
-def test_compute_insert_index_inserts_specific_location_before_general():
+def test_compute_insert_index_inserts_specific_property_before_general():
     headers = [
         'Primary ID',
         'Frequency',
@@ -66,7 +66,7 @@ def test_compute_insert_index_inserts_specific_location_before_general():
         'General Location',
         'Location',
     ]
-    idx = compute_insert_index_for_missing_column(headers, 'Specific Location')
+    idx = compute_insert_index_for_missing_column(headers, 'Specific Property')
     assert headers[idx] == 'General Location'
 
 

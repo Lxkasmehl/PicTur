@@ -18,15 +18,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`EmailVerificationGuard`**: **`/feedback`** allowed before email verification, like About and Contact.
 - **`.gitignore`**: Ignore **`project-query.graphql`** for local GraphQL helpers.
 
+### Testing
+
+- **Playwright**: Public nav includes **Feedback** via the footer (`navigation.spec.ts`, `fixtures.ts`).
+
+## [1.2.19] - 2026-04-27 — Mobile tutorial viewport + Specific Property label and Location reminder
+
 ### Fixed
 
 - **UI polish**: Inline **external-link** icons, clearer **Contact** CTA, automatic footer height (`311444d`).
 - **First-visit mobile tutorial viewport**: Fixed a mobile rendering issue where opening the instructions tutorial on a fresh device could initially render the app in desktop-like scale. Mobile media queries now resolve on initial render for home/tutorial flow, and tutorial scroll height uses dynamic viewport sizing for more stable phone layout.
 
-### Testing
+### Changed
 
-- **Playwright**: Public nav includes **Feedback** via the footer (`navigation.spec.ts`, `fixtures.ts`).
-
+- Renamed the Google Sheets column label **Specific Location** to **Specific Property** across the WebApp form and backend sheet column mapping.
+- Added reminder text to the **Location** field (Column S) in the WebApp form: enter who first found the turtle.
+- Updated the related sheet-column mapping test to validate **Specific Property** ordering before **General Location**.
 
 ## [1.2.18] - 2026-04-24 — Review approve research/community sync guard + match-form General Location unlock
 
@@ -329,7 +336,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.18...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.19...HEAD
+[1.2.19]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.19
 [1.2.18]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.18
 [1.2.17]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.17
 [1.2.16]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.16
