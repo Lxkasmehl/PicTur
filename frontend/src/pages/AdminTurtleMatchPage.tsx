@@ -79,6 +79,9 @@ export default function AdminTurtleMatchPage() {
   const [findMetadata] = useState<FindMetadata | null>(null);
   const [selectedMatchTurtleImages, setSelectedMatchTurtleImages] = useState<TurtleImagesResponse | null>(null);
   const [crossCheckResults, setCrossCheckResults] = useState<Array<{ turtle_id: string; location: string; confidence: number; score: number; image_path: string }> | null>(null);
+  /** Per-candidate summary fetched from the row's Sheets tab.
+   *  Keyed by `${turtle_id}|${location}` because biology IDs are not globally unique. */
+  const [candidateSummaries, setCandidateSummaries] = useState<Record<string, { primary_id?: string; name?: string }>>({});
   const [crossCheckLoading, setCrossCheckLoading] = useState(false);
   const [replaceReference, setReplaceReference] = useState(false);
   const [replaceCarapaceReference, setReplaceCarapaceReference] = useState(false);
@@ -104,6 +107,63 @@ export default function AdminTurtleMatchPage() {
       .then(setSelectedMatchTurtleImages)
       .catch(() => setSelectedMatchTurtleImages(null));
   }, [selectedMatch, selectedMatchData]);
+
+  // Fetch per-candidate (primary_id, name) from Sheets so cards can show
+  // the chosen turtle name alongside the on-disk id. Parallel calls; first
+  // path segment of `location` is the sheet tab (Community_Uploads is
+  // routed to the community spreadsheet via the state arg).
+  useEffect(() => {
+    const items: Array<{ turtleId: string; location: string }> = [];
+    if (matchData?.matches) {
+      for (const m of matchData.matches) items.push({ turtleId: m.turtle_id, location: m.location || '' });
+    }
+    if (crossCheckResults) {
+      for (const m of crossCheckResults) items.push({ turtleId: m.turtle_id, location: m.location || '' });
+    }
+    if (items.length === 0) {
+      setCandidateSummaries({});
+      return;
+    }
+    const seen = new Set<string>();
+    const unique = items.filter((it) => {
+      const k = `${it.turtleId}|${it.location}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    let cancelled = false;
+    Promise.all(
+      unique.map(async (it) => {
+        const parts = (it.location || '').replace(/\\/g, '/').split('/').filter(Boolean);
+        if (parts.length === 0) return null;
+        const isCommunity = parts[0] === 'Community_Uploads';
+        const sheet = isCommunity ? (parts[1] || '') : parts[0];
+        const stateArg = isCommunity ? 'Community_Uploads' : parts[0];
+        const locArg = isCommunity ? (parts[1] || '') : parts.slice(1).join('/');
+        if (!sheet) return null;
+        try {
+          const res = await getTurtleSheetsData(it.turtleId, sheet, stateArg, locArg);
+          if (res.success && res.data) {
+            return [
+              `${it.turtleId}|${it.location}`,
+              { primary_id: res.data.primary_id, name: res.data.name },
+            ] as const;
+          }
+        } catch {
+          /* ignore — card just won't show name/primary_id */
+        }
+        return null;
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      const map: Record<string, { primary_id?: string; name?: string }> = {};
+      for (const e of entries) if (e) map[e[0]] = e[1];
+      setCandidateSummaries(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [matchData, crossCheckResults]);
 
   // Load sheets once when staff/admin (avoids each TurtleSheetsDataForm calling listSheets)
   useEffect(() => {
@@ -1037,7 +1097,11 @@ export default function AdminTurtleMatchPage() {
                       cols={crossCheckResults && crossCheckResults.length > 0 ? { base: 1, xs: 2 } : { base: 1, xs: 2, md: 3, lg: 5 }}
                       spacing='md'
                     >
-                      {matchData.matches.map((match, index) => (
+                      {matchData.matches.map((match, index) => {
+                        const summary = candidateSummaries[`${match.turtle_id}|${match.location || ''}`];
+                        const showSecondaryId =
+                          summary?.primary_id && summary.primary_id !== match.turtle_id;
+                        return (
                         <Card
                           key={`${match.turtle_id}-${index}`}
                           shadow='sm'
@@ -1097,11 +1161,22 @@ export default function AdminTurtleMatchPage() {
                           <Text fw={500} size='sm' truncate>
                             {match.turtle_id}
                           </Text>
+                          {summary?.name && (
+                            <Text size='xs' fw={500} c='dark' truncate>
+                              {summary.name}
+                            </Text>
+                          )}
+                          {showSecondaryId && (
+                            <Text size='xs' c='dimmed' truncate>
+                              {summary!.primary_id}
+                            </Text>
+                          )}
                           <Text size='xs' c='dimmed' truncate>
                             {match.location}
                           </Text>
                         </Card>
-                      ))}
+                        );
+                      })}
                     </SimpleGrid>
                   </Grid.Col>
 
@@ -1119,7 +1194,11 @@ export default function AdminTurtleMatchPage() {
                         Cross-check results from carapace image
                       </Text>
                       <SimpleGrid cols={{ base: 1, xs: 2 }} spacing='md'>
-                        {crossCheckResults.map((match, index) => (
+                        {crossCheckResults.map((match, index) => {
+                          const summary = candidateSummaries[`${match.turtle_id}|${match.location || ''}`];
+                          const showSecondaryId =
+                            summary?.primary_id && summary.primary_id !== match.turtle_id;
+                          return (
                           <Card
                             key={`${match.turtle_id}-xcheck-${index}`}
                             shadow='sm'
@@ -1174,11 +1253,22 @@ export default function AdminTurtleMatchPage() {
                             <Text fw={500} size='sm' truncate>
                               {match.turtle_id}
                             </Text>
+                            {summary?.name && (
+                              <Text size='xs' fw={500} c='dark' truncate>
+                                {summary.name}
+                              </Text>
+                            )}
+                            {showSecondaryId && (
+                              <Text size='xs' c='dimmed' truncate>
+                                {summary!.primary_id}
+                              </Text>
+                            )}
                             <Text size='xs' c='dimmed' truncate>
                               {match.location}
                             </Text>
                           </Card>
-                        ))}
+                          );
+                        })}
                       </SimpleGrid>
                     </Grid.Col>
                   )}
