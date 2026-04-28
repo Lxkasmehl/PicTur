@@ -9,18 +9,36 @@ Input layout (typically a host-mounted folder like /ingest):
         F999 Carapace.jpg
         ...
 
+Every turtle this script touches receives the full dual-reference layout:
+    plastron/
+    plastron/Old References/
+    plastron/Other Plastrons/
+    carapace/
+    carapace/Old References/
+    carapace/Other Carapaces/
+
+Unused subdirs stay empty until a manual upload fills them — keeps every
+turtle's folder shape symmetric so a plastron-only or carapace-only ingest
+ends up looking the same as a combined one.
+
 For each (location, bio_id) pair:
-  - Existing turtle + plastron file -> keep existing ref; migrate ref_data/ to
-    plastron/ if needed; place extras in plastron/Other Plastrons/.
-  - Existing turtle + carapace file -> first file becomes the carapace ref,
-    extras go to carapace/Other Carapaces/.
-  - No turtle on server -> create a bio-id-named folder with only the needed
-    subdirs (no ref_data placeholder, no empty plastron/ for carapace-only).
+  - Existing turtle + plastron file -> keep existing reference; migrate
+    legacy ref_data/ to plastron/ if needed; new files go to
+    plastron/Other Plastrons/.
+  - Existing turtle + carapace file -> first file becomes the carapace
+    reference (if there isn't one yet), extras go to
+    carapace/Other Carapaces/.
+  - No turtle on server -> create a bio-id-named folder with the full
+    subdir tree; place whatever references the ingest provides.
   - Empty loose_images/ subfolders on migrated turtles are removed.
 
-Feature-extraction (.pt files) is deferred: drops images only. The next
-backend startup runs refresh_database_index(), which extracts missing .pt
-files and pushes both caches to VRAM.
+Feature extraction (.pt files) runs INLINE by default — every newly-placed
+reference image gets its sibling .pt before the script exits. Use
+--no-extract to skip (filesystem-only smoke tests, fast reruns when you
+already have the tensors). Backend startup's refresh_database_index() only
+INDEXES existing .pt files; it does not generate them. So if you skip
+extraction here, those references stay invisible to matching until you
+re-run with extraction or upload them via the admin UI.
 
 Turtles not yet in the sheets end up bio-id-only named (e.g. F999/). When
 someone later matches against them through the normal upload flow, the
@@ -28,8 +46,9 @@ sheet row gets created and a primary_id is assigned. Running
 backfill_folder_names.py afterwards renames the folder to F999_T177...
 
 Usage (from inside the backend container):
-    python ingest_rebuild_folder.py --ingest-path /ingest             # dry run
-    python ingest_rebuild_folder.py --ingest-path /ingest --apply     # execute
+    python ingest_rebuild_folder.py --ingest-path /ingest                          # dry run
+    python ingest_rebuild_folder.py --ingest-path /ingest --apply                  # execute + extract
+    python ingest_rebuild_folder.py --ingest-path /ingest --apply --no-extract     # files only
 
 From the host (Windows example; mount the ingest folder read-only into the
 container on startup):
@@ -37,8 +56,13 @@ container on startup):
         -v "C:/Users/gking/Desktop/Rebuild Ingest:/ingest:ro" \
         backend python ingest_rebuild_folder.py --ingest-path /ingest --apply
 
-After running, restart the backend so new .pt files get extracted into VRAM:
-    docker compose restart backend
+IMPORTANT: stop the backend before running --apply with extraction, unless
+you have plenty of GPU memory — both processes load SuperPoint, doubling
+VRAM use. After running, start the backend so refresh_database_index()
+indexes the new .pt files into both VRAM caches:
+    docker compose stop backend          # before
+    docker compose run --rm ...          # ingest + extract
+    docker compose start backend         # after
 """
 
 from __future__ import annotations
@@ -67,6 +91,18 @@ from turtle_manager import BASE_DATA_DIR, DRIVE_LOCATION_TO_BACKEND_PATH
 INGEST_FILENAME_RE = re.compile(
     r'^([A-Za-z])(\d+)\s+(Plastron|Carapace)(?:\s+(\d+))?$',
     re.IGNORECASE,
+)
+
+# Standard turtle folder layout. Every turtle the script touches gets all of
+# these so plastron-only and carapace-only ingests produce the same shape as
+# combined ones — future manual uploads can rely on the structure existing.
+TURTLE_REFERENCE_SUBDIRS = (
+    'plastron',
+    'plastron/Old References',
+    'plastron/Other Plastrons',
+    'carapace',
+    'carapace/Old References',
+    'carapace/Other Carapaces',
 )
 
 
@@ -185,6 +221,22 @@ def _migrate_ref_data_to_plastron(turtle_dir: str, ref_stem: str,
                     reporter.warn(f"Could not remove {loose}: {e}")
 
 
+def _ensure_full_subdirs(turtle_dir: str, reporter: DryRunReporter, apply: bool):
+    """Create the full plastron/ + carapace/ subdir tree under turtle_dir.
+
+    Idempotent — only logs and creates dirs that don't already exist. Run once
+    per turtle so a carapace-only or plastron-only ingest still produces the
+    same folder shape as a combined one.
+    """
+    for sub in TURTLE_REFERENCE_SUBDIRS:
+        path = os.path.join(turtle_dir, sub)
+        if os.path.isdir(path):
+            continue
+        reporter.plan('mkdir', detail=f"create {path}")
+        if apply:
+            os.makedirs(path, exist_ok=True)
+
+
 def _ensure_reference_image(ref_dir: str, ref_stem: str, source_entry: Dict,
                             reporter: DryRunReporter, apply: bool) -> bool:
     """Copy source file to ref_dir as {ref_stem}{ext}. Skip if a reference already exists.
@@ -236,9 +288,59 @@ def _copy_extra(extras_dir: str, source_entry: Dict,
             reporter.error(f"Failed to copy extra {source_entry['source_path']}: {e}")
 
 
+def _extract_reference_pt(image_path: str, brain, reporter: DryRunReporter, apply: bool):
+    """Generate the sibling .pt for a reference image.
+
+    Skips silently when ``brain`` is None (extraction disabled) or when the .pt
+    already exists. Failures are downgraded to warnings so one bad image
+    doesn't abort the whole run.
+    """
+    pt_path = os.path.splitext(image_path)[0] + '.pt'
+    if os.path.exists(pt_path):
+        return
+    reporter.plan('extract-pt',
+                  new_path=pt_path,
+                  detail=f"SuperPoint features for {os.path.basename(image_path)}")
+    if not apply or brain is None:
+        return
+    try:
+        ok = brain.process_and_save(image_path, pt_path)
+    except Exception as e:
+        reporter.warn(f"SuperPoint crashed for {image_path}: {e}")
+        return
+    if not ok:
+        reporter.warn(f"SuperPoint extraction returned False for {image_path}")
+
+
+def _extract_missing_for_turtle(turtle_dir: str, ref_stem: str, brain,
+                                 reporter: DryRunReporter, apply: bool):
+    """Ensure plastron/{ref_stem}.pt and carapace/{ref_stem}.pt exist when their
+    sibling reference images do.
+
+    Single pass at the end of _handle_turtle covers both fresh placements (the
+    image was just copied in) and migrated ref_data/ images that arrived
+    without a .pt. No-op when ``brain`` is None.
+    """
+    for sub in ('plastron', 'carapace'):
+        ref_dir = os.path.join(turtle_dir, sub)
+        if not os.path.isdir(ref_dir):
+            continue
+        try:
+            entries = os.listdir(ref_dir)
+        except OSError:
+            continue
+        for fname in entries:
+            stem, ext = os.path.splitext(fname)
+            if stem != ref_stem or ext.lower() not in IMAGE_EXTS:
+                continue
+            _extract_reference_pt(os.path.join(ref_dir, fname), brain, reporter, apply)
+            break  # only one reference image per ref dir
+
+
 def _handle_turtle(turtle_dir: Optional[str], state: str, location: str,
                    bio_id: str, plastrons: List[Dict], carapaces: List[Dict],
-                   data_root: str, reporter: DryRunReporter, apply: bool):
+                   data_root: str, reporter: DryRunReporter, apply: bool,
+                   *, brain=None):
     """Process a single (bio_id, location) group of ingest files."""
     location_dir = os.path.join(data_root, state, location)
     is_new = turtle_dir is None
@@ -259,6 +361,10 @@ def _handle_turtle(turtle_dir: Optional[str], state: str, location: str,
         # stay consistent with refresh_database_index's expectations.
         ref_stem = os.path.basename(turtle_dir)
         _migrate_ref_data_to_plastron(turtle_dir, ref_stem, reporter, apply)
+
+    # Symmetric layout: every turtle gets both plastron/ and carapace/ trees,
+    # whether or not this ingest fills both sides.
+    _ensure_full_subdirs(turtle_dir, reporter, apply)
 
     # Plastron handling
     if plastrons:
@@ -301,9 +407,13 @@ def _handle_turtle(turtle_dir: Optional[str], state: str, location: str,
                 _copy_extra(os.path.join(carapace_dir, 'Other Carapaces'),
                             extra, reporter, apply)
 
+    # After all placement and migration, generate any missing reference .pt
+    # files. No-op when extraction is disabled.
+    _extract_missing_for_turtle(turtle_dir, ref_stem, brain, reporter, apply)
+
 
 def _process_location_folder(ingest_location_dir: str, data_root: str,
-                             reporter: DryRunReporter, apply: bool):
+                             reporter: DryRunReporter, apply: bool, *, brain=None):
     """Process one top-level location folder from the ingest tree."""
     location_name = os.path.basename(ingest_location_dir)
     mapped = resolve_backend_path(location_name)
@@ -328,7 +438,7 @@ def _process_location_folder(ingest_location_dir: str, data_root: str,
         carapaces = by_bio[bio_id]['carapace']
         turtle_dir = find_turtle_folder(data_root, state, location, bio_id=bio_id)
         _handle_turtle(turtle_dir, state, location, bio_id,
-                       plastrons, carapaces, data_root, reporter, apply)
+                       plastrons, carapaces, data_root, reporter, apply, brain=brain)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -339,6 +449,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help='Execute the planned changes (default is dry run).')
     parser.add_argument('--data-root', default=None,
                         help='Override the backend data directory (defaults to BASE_DATA_DIR).')
+    parser.add_argument('--no-extract', action='store_true',
+                        help='Skip SuperPoint .pt extraction for newly-placed references. '
+                             'Default behavior extracts inline; use this for filesystem-only '
+                             'smoke tests when you already have the tensors or just need '
+                             'to see file moves quickly.')
     args = parser.parse_args(argv)
 
     data_root = args.data_root or os.path.join(os.path.dirname(os.path.abspath(__file__)), BASE_DATA_DIR)
@@ -349,9 +464,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"ERROR: ingest path not found: {args.ingest_path}", file=sys.stderr)
         return 2
 
+    # SuperPoint is already loaded by turtle_manager's import chain — getting
+    # ``brain`` here is essentially a free reference grab. We gate it behind
+    # --apply + not --no-extract so we don't run process_and_save during dry
+    # runs or filesystem-only ingest.
+    brain = None
+    if args.apply and not args.no_extract:
+        try:
+            from turtles.image_processing import brain as _brain
+            brain = _brain
+        except Exception as e:
+            print(f"ERROR: could not access SuperPoint brain: {e}", file=sys.stderr)
+            print("       Re-run with --no-extract for filesystem-only ingest, or fix the brain import.",
+                  file=sys.stderr)
+            return 2
+
     print(f"Ingest path: {args.ingest_path}")
     print(f"Data root:   {data_root}")
     print(f"Mode:        {'APPLY' if args.apply else 'DRY RUN'}")
+    print(f"Extract .pt: {'YES (inline)' if brain is not None else 'NO (filesystem only)'}")
 
     reporter = DryRunReporter(apply=args.apply)
 
@@ -359,14 +490,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         full = os.path.join(args.ingest_path, entry)
         if not os.path.isdir(full):
             continue
-        _process_location_folder(full, data_root, reporter, args.apply)
+        _process_location_folder(full, data_root, reporter, args.apply, brain=brain)
 
     reporter.print_manifest()
-    print(
-        "\nReminder: restart the backend (`docker compose restart backend`) so\n"
-        "refresh_database_index() extracts .pt files for new images and loads\n"
-        "both VRAM caches.\n"
-    )
+    if brain is not None:
+        print(
+            "\nReminder: start the backend (`docker compose start backend`) so\n"
+            "refresh_database_index() picks the new .pt files up into both VRAM caches.\n"
+        )
+    else:
+        print(
+            "\nReminder: extraction was skipped. Newly-placed references have no .pt yet,\n"
+            "so they are invisible to matching. Re-run without --no-extract or upload them\n"
+            "via the admin UI to generate features.\n"
+        )
     return 0 if not reporter.errors else 1
 
 
