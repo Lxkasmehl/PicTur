@@ -76,7 +76,11 @@ export const authenticateToken = (
   next();
 };
 
-/** If a Bearer token is present, validates it and sets req.user; missing token continues without user. */
+/**
+ * If a Bearer token is present and valid, sets req.user; missing token continues without user.
+ * Invalid/expired/revoked tokens are ignored so the request proceeds anonymously (clients often
+ * send stale Authorization headers on public endpoints).
+ */
 export const optionalAuthenticateToken = (
   req: Request,
   res: Response,
@@ -88,8 +92,11 @@ export const optionalAuthenticateToken = (
     return;
   }
   if (resolved.kind === 'invalid') {
-    const status = resolved.message === 'Server configuration error' ? 500 : 403;
-    res.status(status).json({ error: resolved.message });
+    if (resolved.message === 'Server configuration error') {
+      res.status(500).json({ error: resolved.message });
+      return;
+    }
+    next();
     return;
   }
   (req as AuthRequest).user = resolved.user;
