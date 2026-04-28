@@ -18,7 +18,7 @@ import {
   IconZoomIn,
   IconUpload,
 } from '@tabler/icons-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { getImageUrl } from '../services/api';
 import { validateFile } from '../utils/fileValidation';
 import {
@@ -29,8 +29,12 @@ import {
   updateTurtleAdditionalImageLabels,
 } from '../services/api';
 import { notifications } from '@mantine/notifications';
-
-export type AdditionalPhotoKind = 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'other';
+import {
+  ADDITIONAL_PHOTO_KIND_OPTIONS,
+  additionalPhotoKindLabel,
+  normalizeAdditionalPhotoKind,
+  type AdditionalPhotoKind,
+} from '../constants/additionalPhotoKinds';
 
 /** Single additional image for display (packet or turtle). */
 export interface AdditionalImageDisplay {
@@ -52,45 +56,84 @@ interface AdditionalImagesSectionProps {
   hideAddButtons?: boolean;
 }
 
-const TYPE_ORDER: AdditionalPhotoKind[] = ['carapace', 'plastron', 'microhabitat', 'condition', 'other'];
-
-const KIND_OPTIONS = [
-  { value: 'carapace', label: 'Carapace' },
-  { value: 'plastron', label: 'Plastron (additional)' },
-  { value: 'microhabitat', label: 'Microhabitat' },
-  { value: 'condition', label: 'Condition' },
-  { value: 'other', label: 'Other' },
-] as const;
-
-/** Turtle-record additional photos support plastron-extra in manifest; review packets use a narrower type set. */
-const KIND_OPTIONS_REVIEW_PACKET = KIND_OPTIONS.filter((o) => o.value !== 'plastron');
-
-function normalizeKind(t: string): AdditionalPhotoKind {
-  const s = (t || 'other').toLowerCase();
-  if (
-    s === 'microhabitat' ||
-    s === 'condition' ||
-    s === 'carapace' ||
-    s === 'plastron' ||
-    s === 'other'
-  )
-    return s;
-  return 'other';
-}
-
-function kindSectionLabel(k: AdditionalPhotoKind): string {
-  if (k === 'other') return 'Other';
-  if (k === 'plastron') return 'Plastron (additional)';
-  return k;
-}
+const TYPE_ORDER: AdditionalPhotoKind[] = [
+  'carapace',
+  'plastron',
+  'anterior',
+  'posterior',
+  'left-side',
+  'right-side',
+  'people',
+  'microhabitat',
+  'condition',
+  'injury',
+  'other',
+];
 
 type StagedRow = {
   id: string;
   file: File;
   previewUrl: string;
-  type: 'carapace' | 'plastron' | 'microhabitat' | 'condition' | 'other';
+  type: AdditionalPhotoKind;
   labels: string[];
 };
+
+interface UploadTypeButtonProps {
+  kind: AdditionalPhotoKind;
+  disabled: boolean;
+  onFiles: (kind: AdditionalPhotoKind, files: FileList | null) => void;
+}
+
+function UploadTypeButton({ kind, disabled, onFiles }: UploadTypeButtonProps) {
+  const [dragOver, setDragOver] = useState(false);
+
+  const onDropFiles = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOver(false);
+    if (disabled) return;
+    onFiles(kind, event.dataTransfer.files);
+  };
+
+  return (
+    <Button
+      size="sm"
+      variant={dragOver ? 'filled' : 'light'}
+      leftSection={<IconPhotoPlus size={14} />}
+      component="label"
+      disabled={disabled}
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (!disabled) setDragOver(true);
+      }}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        if (!disabled) setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDropFiles}
+      style={
+        dragOver
+          ? {
+              border: '1px dashed var(--mantine-color-blue-filled)',
+            }
+          : undefined
+      }
+    >
+      {additionalPhotoKindLabel(kind)}
+      <input
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          onFiles(kind, e.target.files);
+          e.target.value = '';
+        }}
+      />
+    </Button>
+  );
+}
 
 export function AdditionalImagesSection({
   title = 'Additional photos',
@@ -112,10 +155,9 @@ export function AdditionalImagesSection({
 
   const isPacket = !!requestId;
   const isTurtle = !!turtleId;
-  const supportsPlastronExtra = !isPacket;
   const canEdit = (isPacket || isTurtle) && !disabled;
   const canEditLabels = isTurtle && !disabled;
-  const stagingKindOptions = supportsPlastronExtra ? KIND_OPTIONS : KIND_OPTIONS_REVIEW_PACKET;
+  const stagingKindOptions = ADDITIONAL_PHOTO_KIND_OPTIONS;
 
   useEffect(() => {
     return () => {
@@ -179,10 +221,7 @@ export function AdditionalImagesSection({
     }
   };
 
-  const addFilesToStaging = (
-    type: StagedRow['type'],
-    files: FileList | null,
-  ) => {
+  const addFilesToStaging = (type: AdditionalPhotoKind, files: FileList | null) => {
     if (!files?.length) return;
     const next: StagedRow[] = [];
     for (let i = 0; i < files.length; i++) {
@@ -272,7 +311,8 @@ export function AdditionalImagesSection({
     }
   };
 
-  const byKind = (k: AdditionalPhotoKind) => images.filter((img) => normalizeKind(img.type) === k);
+  const byKind = (k: AdditionalPhotoKind) =>
+    images.filter((img) => normalizeAdditionalPhotoKind(img.type) === k);
 
   const content = (
     <>
@@ -283,13 +323,9 @@ export function AdditionalImagesSection({
         {!embedded && (
           <Text size="xs" c="dimmed">
             Add photos first, set type and tags per image, then upload.
-            {supportsPlastronExtra ? (
-              <>
-                {' '}
-                Plastron (additional) keeps an extra underside shot in the manifest only (it does not replace
-                the SuperPoint .pt reference).
-              </>
-            ) : null}{' '}
+            {' '}
+            Plastron (additional) keeps an extra underside shot in the manifest only (it does not replace
+            the SuperPoint .pt reference).{' '}
             Tags are searchable under Admin → Turtle records → Sheets → Photo tags.
           </Text>
         )}
@@ -297,106 +333,17 @@ export function AdditionalImagesSection({
         {canEdit && !hideAddButtons && (
           <>
             <Text size="xs" fw={500}>
-              1. Choose photos (grouped by suggested type — you can change type per row below)
+              1. Choose or drag photos onto a category (you can change type per row below)
             </Text>
             <Group gap="xs">
-              <Button
-                size="sm"
-                variant="light"
-                leftSection={<IconPhotoPlus size={14} />}
-                component="label"
-                disabled={disabled || uploading}
-              >
-                Carapace
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    addFilesToStaging('carapace', e.target.files);
-                    e.target.value = '';
-                  }}
-                />
-              </Button>
-              {supportsPlastronExtra && (
-                <Button
-                  size="sm"
-                  variant="light"
-                  leftSection={<IconPhotoPlus size={14} />}
-                  component="label"
+              {TYPE_ORDER.map((kind) => (
+                <UploadTypeButton
+                  key={kind}
+                  kind={kind}
                   disabled={disabled || uploading}
-                >
-                  Plastron (extra)
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    hidden
-                    onChange={(e) => {
-                      addFilesToStaging('plastron', e.target.files);
-                      e.target.value = '';
-                    }}
-                  />
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant="light"
-                leftSection={<IconPhotoPlus size={14} />}
-                component="label"
-                disabled={disabled || uploading}
-              >
-                Microhabitat
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    addFilesToStaging('microhabitat', e.target.files);
-                    e.target.value = '';
-                  }}
+                  onFiles={addFilesToStaging}
                 />
-              </Button>
-              <Button
-                size="sm"
-                variant="light"
-                leftSection={<IconPhotoPlus size={14} />}
-                component="label"
-                disabled={disabled || uploading}
-              >
-                Condition
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    addFilesToStaging('condition', e.target.files);
-                    e.target.value = '';
-                  }}
-                />
-              </Button>
-              <Button
-                size="sm"
-                variant="light"
-                leftSection={<IconPhotoPlus size={14} />}
-                component="label"
-                disabled={disabled || uploading}
-              >
-                Other
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    addFilesToStaging('other', e.target.files);
-                    e.target.value = '';
-                  }}
-                />
-              </Button>
+              ))}
             </Group>
 
             {staged.length > 0 && (
@@ -499,9 +446,8 @@ export function AdditionalImagesSection({
                         size="xs"
                         fw={500}
                         c="dimmed"
-                        tt={k === 'other' ? undefined : 'capitalize'}
                       >
-                        {kindSectionLabel(k)}
+                        {additionalPhotoKindLabel(k)}
                       </Text>
                       <Group gap="md" wrap="wrap" align="flex-start">
                         {list.map((img) => (

@@ -20,7 +20,7 @@ from services import manager_service
 from additional_image_labels import normalize_additional_type, parse_labels_from_form
 
 _EXTRA_UPLOAD_KEY = re.compile(
-    r'^extra_(microhabitat|condition|carapace|other)_(\d+)$', re.IGNORECASE
+    r'^extra_([a-z0-9_-]+)_(\d+)$', re.IGNORECASE
 )
 
 

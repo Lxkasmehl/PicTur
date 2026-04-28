@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Additional turtle photo categories** shared across homepage upload (PreviewCard), Admin Sheets browser, Review Queue, and Admin Match: anterior, posterior, left/right side, people, injury, and existing types (carapace, plastron, microhabitat, condition, other). Filenames continue to encode the category (e.g. `right-side_…`).
+- **Drag-and-drop** onto each category button to stage additional photos (same UX pattern on homepage and admin additional-photo sections).
+- **Sheets browser — Photo tags**: optional **Photo category** filter; search supports **category only**, **tags only**, or **combined** tag + category. **`GET /api/turtles/images/search-labels`** accepts `q` and/or `type` (at least one required).
+
+### Changed
+
+- **Legacy labels**: `head` / `tail` are no longer offered as buttons; stored values still normalize to **anterior** / **posterior** for backward compatibility.
+- **Review queue** additional-image uploads use the same normalized category set as turtle records.
+- **Admin token validation** (`backend/auth.py`): if **`AUTH_URL`** uses `localhost` and validation fails, retry once against **`127.0.0.1`** to avoid Windows/dev hostname resolution mismatches.
+
+### Testing
+
+- Backend integration tests for **`search-labels`** type-only and combined filters and for **`right-side`** on review packet additional-images.
+- Playwright: Sheets browser type-only search; homepage extended category buttons and drag-and-drop staging (mobile/WebKit skipped where event simulation is unreliable).
+
 ## [1.2.19] - 2026-04-27 — Mobile tutorial viewport + Specific Property label and Location reminder
 
 ### Fixed

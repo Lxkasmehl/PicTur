@@ -14,7 +14,7 @@ from services.manager_service import get_sheets_service, get_community_sheets_se
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from image_utils import normalize_to_jpeg
 from general_locations_catalog import resolve_general_location_from_sheet_and_value
-from additional_image_labels import normalize_label_list, parse_labels_from_form
+from additional_image_labels import normalize_additional_type, normalize_label_list, parse_labels_from_form
 
 def format_review_packet_item(packet_dir, request_id):
     """Build one queue item dict from packet_dir (used by get_review_queue and get_review_packet)."""
@@ -174,7 +174,7 @@ def register_review_routes(app):
     @app.route('/api/review-queue/<request_id>/additional-images', methods=['POST'])
     @require_admin
     def add_review_packet_additional_images(request_id):
-        """Add microhabitat/condition images to an existing review packet (Admin only)."""
+        """Add additional images to an existing review packet (Admin only)."""
         if not manager_service.manager_ready.wait(timeout=30):
             return jsonify({'error': 'TurtleManager is still initializing.'}), 503
         if manager_service.manager is None:
@@ -188,9 +188,7 @@ def register_review_routes(app):
                 if not f or not f.filename:
                     continue
                 idx = key.replace('file_', '')
-                typ = request.form.get(f'type_{idx}', 'other').strip().lower()
-                if typ not in ('microhabitat', 'condition', 'carapace', 'plastron', 'other'):
-                    typ = 'other'
+                typ = normalize_additional_type(request.form.get(f'type_{idx}'))
                 lbs = parse_labels_from_form(request.form, idx)
                 if not allowed_file(f.filename):
                     continue

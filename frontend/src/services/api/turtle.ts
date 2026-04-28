@@ -28,6 +28,19 @@ export interface LocationHint {
   source: 'gps' | 'manual';
 }
 
+export type AdditionalImageType =
+  | 'microhabitat'
+  | 'condition'
+  | 'carapace'
+  | 'plastron'
+  | 'anterior'
+  | 'posterior'
+  | 'left-side'
+  | 'right-side'
+  | 'people'
+  | 'injury'
+  | 'other';
+
 /** Additional image (microhabitat, condition, carapace) in a review packet */
 export interface AdditionalImage {
   filename: string;
@@ -110,7 +123,7 @@ export interface UploadFlagOptions {
 }
 
 export interface UploadExtraFile {
-  type: 'microhabitat' | 'condition' | 'carapace' | 'other';
+  type: AdditionalImageType;
   file: File;
   /** Stored as searchable tags on the additional image (same request as upload). */
   labels?: string[];
@@ -227,7 +240,7 @@ export const getReviewQueue = async (): Promise<ReviewQueueResponse> => {
 export const uploadReviewPacketAdditionalImages = async (
   requestId: string,
   files: Array<{
-    type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'other';
+    type: AdditionalImageType;
     file: File;
     labels?: string[];
   }>,
@@ -441,14 +454,18 @@ export const getTurtleImages = async (
   return await response.json();
 };
 
-/** Find additional images whose labels match q (substring, case-insensitive). Admin only. */
+/** Find additional images by labels and/or image type (case-insensitive). Admin only. */
 export const searchTurtleImagesByLabel = async (
   q: string,
+  photoType?: string | null,
 ): Promise<{ matches: TurtleAdditionalLabelSearchMatch[] }> => {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  const params = new URLSearchParams({ q: q.trim() });
+  const params = new URLSearchParams();
+  const trimmed = q.trim();
+  if (trimmed) params.set('q', trimmed);
+  if (photoType?.trim()) params.set('type', photoType.trim());
   const response = await fetch(
     `${TURTLE_API_BASE_URL}/turtles/images/search-labels?${params.toString()}`,
     { method: 'GET', headers },
@@ -537,7 +554,7 @@ export const uploadTurtleIdentifierPlastron = async (
 export const uploadTurtleAdditionalImages = async (
   turtleId: string,
   files: Array<{
-    type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'other';
+    type: AdditionalImageType;
     file: File;
     /** Applied to this file only (comma-separated sent as labels_i) */
     labels?: string[];

@@ -309,7 +309,7 @@ export function ReviewQueueTab() {
             <Stack gap='md'>
               <div>
                 <Text fw={600} size='sm' mb={4}>
-                  Microhabitat / Condition photos
+                  Additional photos
                 </Text>
                 <Text size='xs' c='dimmed' mb='sm'>
                   From this upload and, when a match is selected, already stored for that turtle.
