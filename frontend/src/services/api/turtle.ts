@@ -549,12 +549,14 @@ export interface TurtleImagesResponse {
 export const getTurtleImages = async (
   turtleId: string,
   sheetName?: string | null,
+  primaryId?: string | null,
 ): Promise<TurtleImagesResponse> => {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const params = new URLSearchParams({ turtle_id: turtleId });
   if (sheetName) params.set('sheet_name', sheetName);
+  if (primaryId && primaryId !== turtleId) params.set('primary_id', primaryId);
   const response = await fetch(
     `${TURTLE_API_BASE_URL}/turtles/images?${params.toString()}`,
     { method: 'GET', headers },
@@ -612,9 +614,12 @@ export const updateTurtleAdditionalImageLabels = async (
   }
 };
 
-/** Batch get primary (plastron) image paths for multiple turtles (Admin only). */
+/** Batch get primary (plastron) image paths for multiple turtles (Admin only).
+ *  primary_id is an optional fallback id used when the on-disk folder still
+ *  carries the Primary ID after the sheet's biology ID has changed.
+ */
 export const getTurtlePrimariesBatch = async (
-  turtles: Array<{ turtle_id: string; sheet_name?: string | null }>,
+  turtles: Array<{ turtle_id: string; sheet_name?: string | null; primary_id?: string | null }>,
 ): Promise<{ images: Array<{ turtle_id: string; sheet_name: string | null; primary: string | null }> }> => {
   const token = getToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };

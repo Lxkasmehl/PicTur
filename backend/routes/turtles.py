@@ -86,12 +86,19 @@ def register_turtle_routes(app):
 
         turtle_id = (request.args.get('turtle_id') or '').strip()
         sheet_name = (request.args.get('sheet_name') or '').strip() or None
+        # Fallback id used when the on-disk folder still carries the original
+        # Primary ID after the sheet's biology ID has been changed/assigned —
+        # the folder-rename chronodrop will eventually reconcile, but until
+        # then we still need to find the data.
+        primary_id_fallback = (request.args.get('primary_id') or '').strip() or None
         if not turtle_id:
             return jsonify({'error': 'turtle_id required'}), 400
 
         manager = manager_service.manager
         location_hint = sheet_name
         turtle_dir = manager._get_turtle_folder(turtle_id, location_hint)
+        if (not turtle_dir or not os.path.isdir(turtle_dir)) and primary_id_fallback and primary_id_fallback != turtle_id:
+            turtle_dir = manager._get_turtle_folder(primary_id_fallback, location_hint)
         if not turtle_dir or not os.path.isdir(turtle_dir):
             return jsonify({
                 'primary': None,
@@ -343,10 +350,13 @@ def register_turtle_routes(app):
         for item in turtles[:200]:  # limit to avoid overload
             tid = (item.get('turtle_id') or '').strip()
             sheet = (item.get('sheet_name') or '').strip() or None
+            pid = (item.get('primary_id') or '').strip() or None
             if not tid:
                 results.append({'turtle_id': tid, 'sheet_name': sheet, 'primary': None})
                 continue
             turtle_dir = manager._get_turtle_folder(tid, sheet)
+            if (not turtle_dir or not os.path.isdir(turtle_dir)) and pid and pid != tid:
+                turtle_dir = manager._get_turtle_folder(pid, sheet)
             primary_path = None
             if turtle_dir and os.path.isdir(turtle_dir):
                 for ref_folder in ('plastron', 'ref_data'):

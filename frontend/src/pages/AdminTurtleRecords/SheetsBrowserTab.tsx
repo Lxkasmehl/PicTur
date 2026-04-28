@@ -158,16 +158,19 @@ export function SheetsBrowserTab() {
   const diskTurtleId = selectedTurtle ? turtleDiskFolderId(selectedTurtle) : '';
   /** Matches `data/<path>/` on disk (not the Google tab name alone). */
   const dataPathHint = selectedTurtle ? turtleDataFolderHint(selectedTurtle) : null;
+  /** Fallback id used when the on-disk folder still carries the original Primary ID
+   *  after the sheet's biology ID was changed (folder-rename chronodrop pending). */
+  const selectedPrimaryId = (selectedTurtle?.primary_id || '').trim() || null;
 
   useEffect(() => {
     if (!diskTurtleId) {
       setTurtleImages(null);
       return;
     }
-    getTurtleImages(diskTurtleId, dataPathHint)
+    getTurtleImages(diskTurtleId, dataPathHint, selectedPrimaryId)
       .then(setTurtleImages)
       .catch(() => setTurtleImages(null));
-  }, [diskTurtleId, dataPathHint]);
+  }, [diskTurtleId, dataPathHint, selectedPrimaryId]);
 
   // Clear staged photos whenever the selected turtle changes (they apply to a specific turtle).
   useEffect(() => {
@@ -288,7 +291,7 @@ export function SheetsBrowserTab() {
     // Refetch images so UI reflects new references/loose/history
     if (diskTurtleId) {
       try {
-        const res = await getTurtleImages(diskTurtleId, dataPathHint);
+        const res = await getTurtleImages(diskTurtleId, dataPathHint, selectedPrimaryId);
         setTurtleImages(res);
       } catch {
         /* ignore */
@@ -304,7 +307,7 @@ export function SheetsBrowserTab() {
     if (!committed) return;
     if (diskTurtleId) {
       try {
-        const res = await getTurtleImages(diskTurtleId, dataPathHint);
+        const res = await getTurtleImages(diskTurtleId, dataPathHint, selectedPrimaryId);
         setTurtleImages(res);
       } catch {
         /* ignore */
@@ -328,7 +331,7 @@ export function SheetsBrowserTab() {
   const refetchImages = async () => {
     if (!diskTurtleId) return;
     try {
-      const res = await getTurtleImages(diskTurtleId, dataPathHint);
+      const res = await getTurtleImages(diskTurtleId, dataPathHint, selectedPrimaryId);
       setTurtleImages(res);
     } catch {
       /* ignore */
@@ -451,13 +454,18 @@ export function SheetsBrowserTab() {
         key: turtleKey(t),
         turtle_id: turtleDiskFolderId(t),
         sheet_name: turtleDataFolderHint(t) ?? t.sheet_name ?? null,
+        primary_id: (t.primary_id || '').trim() || null,
       }))
       .filter((r) => r.turtle_id);
     if (rows.length === 0) {
       setPrimaryImages({});
       return;
     }
-    getTurtlePrimariesBatch(rows.map((r) => ({ turtle_id: r.turtle_id, sheet_name: r.sheet_name })))
+    getTurtlePrimariesBatch(rows.map((r) => ({
+      turtle_id: r.turtle_id,
+      sheet_name: r.sheet_name,
+      primary_id: r.primary_id,
+    })))
       .then((res) => {
         const map: Record<string, string | null> = {};
         res.images.forEach((img, i) => {
@@ -1106,11 +1114,11 @@ export function SheetsBrowserTab() {
                                   : 'Identifier plastron set; search index updated.',
                                 color: 'green',
                               });
-                              const res = await getTurtleImages(diskTurtleId, dataPathHint);
+                              const res = await getTurtleImages(diskTurtleId, dataPathHint, selectedPrimaryId);
                               setTurtleImages(res);
                               if (selectedTurtle) {
                                 const pr = await getTurtlePrimariesBatch([
-                                  { turtle_id: diskTurtleId, sheet_name: dataPathHint },
+                                  { turtle_id: diskTurtleId, sheet_name: dataPathHint, primary_id: selectedPrimaryId },
                                 ]);
                                 const p = pr.images[0]?.primary ?? null;
                                 setPrimaryImages((prev) => ({ ...prev, [turtleKey(selectedTurtle)]: p }));
@@ -1154,7 +1162,7 @@ export function SheetsBrowserTab() {
                 onDelete={handleScratchpadDelete}
                 onRefresh={async () => {
                   if (!diskTurtleId) return;
-                  const res = await getTurtleImages(diskTurtleId, dataPathHint);
+                  const res = await getTurtleImages(diskTurtleId, dataPathHint, selectedPrimaryId);
                   setTurtleImages(res);
                 }}
               />
