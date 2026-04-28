@@ -19,6 +19,7 @@ import { store } from './store';
 import { useAppSelector } from './store/hooks';
 import { communityTheme, staffTheme, adminTheme } from './store/slices/themeSlice';
 import AuthProvider from './components/AuthProvider';
+import BackupCountdownOverlay from './components/BackupCountdownOverlay';
 import GamePersistence from './components/game/GamePersistence';
 import ObserverHubPage from './pages/ObserverHubPage';
 
@@ -61,6 +62,7 @@ function App(): React.JSX.Element {
               </Routes>
               </EmailVerificationGuard>
             </Navigation>
+            <BackupCountdownOverlay />
           </Router>
         </ThemeProvider>
       </AuthProvider>

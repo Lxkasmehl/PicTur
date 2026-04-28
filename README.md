@@ -230,6 +230,12 @@ You need to run **all three services** simultaneously:
    - Order top-to-bottom: uploaded-vs-candidate comparison → **Additional Photos** panel → **Replace plastron / carapace reference** checkboxes → Google Sheets data form → action buttons (Cancel / Save to Sheets & Confirm Match / Create New Turtle Instead). The replace-reference decision sits directly under the photos it affects.
    - Each candidate card (plastron and cross-checked carapace) shows the on-disk biology id, the turtle's **chosen name** from Google Sheets when set, and the auto-generated **Primary ID** when distinct from the biology id, plus location and confidence. Per-candidate name/Primary ID is read from Sheets in parallel after the match list resolves; Sheets writes are never made from this page.
 
+6. **Backup countdown overlay (staff + admin only)**:
+   - Five minutes before the nightly chronodrop kicks off (`03:00` server time by default), an orange floating badge appears bottom-right on every admin page with a live `mm:ss` countdown and the message *"Server backup in X:XX — please save your work."*
+   - At T-0 the overlay flips to a full-screen un-dismissable modal (*"Nightly backup is running — the system will resume automatically"*) that blocks interaction while the chronodrop runs and, when needed, while the backend container restarts to pick up renamed turtle folders.
+   - The modal polls the backend's health endpoint every 5 seconds and dismisses itself the moment the server is back up *and* the expected duration has elapsed. After 10 minutes of stalled maintenance it surfaces a contact-admin hint.
+   - Schedule and duration are configurable via the backend env vars `BACKUP_SCHEDULE_HOUR`, `BACKUP_SCHEDULE_MINUTE`, and `BACKUP_DURATION_SECONDS`. Window times come from the new `GET /api/backup/window` endpoint, so the server is the source of truth — client clock drift cannot skew the countdown.
+
 ### Community Users
 
 1. **Photo Upload**:

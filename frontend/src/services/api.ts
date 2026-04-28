@@ -29,6 +29,7 @@ export {
   isAdminRole,
 } from './api/auth';
 export { fetchCommunityGameState, saveCommunityGameState } from './api/communityGame';
+export { getBackupWindow, type BackupWindow } from './api/backup';
 export {
   fetchUserUiPreferences,
   saveUserUiPreferences,

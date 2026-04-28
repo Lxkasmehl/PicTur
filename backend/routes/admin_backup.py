@@ -8,12 +8,13 @@ import json
 import os
 import posixpath
 import re
+import time
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import Response, jsonify, request
 
-from auth import require_admin_only
+from auth import require_admin, require_admin_only
 from backup.run import _safe_filename
 from services import manager_service
 from services.manager_service import get_community_sheets_service, get_sheets_service
@@ -170,8 +171,44 @@ def _build_backup_zip(scope: str, sheet_name: str | None) -> tuple[bytes, str]:
     return buf.getvalue(), fname
 
 
+def _compute_next_backup_window():
+    """Compute the next chronodrop window in server-local time.
+
+    The schedule is hard-pinned to the cron line in scripts/daily-backup.sh
+    (default 03:00); env vars BACKUP_SCHEDULE_HOUR / BACKUP_SCHEDULE_MINUTE
+    let an admin shift it without redeploying. BACKUP_DURATION_SECONDS is
+    the conservative max-window the UI uses to lock interaction.
+    """
+    schedule_hour = int(os.environ.get("BACKUP_SCHEDULE_HOUR", "3"))
+    schedule_minute = int(os.environ.get("BACKUP_SCHEDULE_MINUTE", "0"))
+    duration_seconds = int(os.environ.get("BACKUP_DURATION_SECONDS", "480"))
+
+    now = datetime.now()
+    today_run = now.replace(
+        hour=schedule_hour, minute=schedule_minute, second=0, microsecond=0
+    )
+    next_run = today_run if today_run > now else today_run + timedelta(days=1)
+    server_tz = time.tzname[time.localtime().tm_isdst] or "UTC"
+
+    return {
+        "next_start_unix": int(next_run.timestamp()),
+        "duration_seconds": duration_seconds,
+        "schedule_hour": schedule_hour,
+        "schedule_minute": schedule_minute,
+        "server_tz": server_tz,
+    }
+
+
 def register_admin_backup_routes(app):
     # Not under /api/admin/* — that prefix is served by the Express auth backend in production.
+    @app.route("/api/backup/window", methods=["GET", "OPTIONS"])
+    @require_admin
+    def get_backup_window():
+        """Schedule info for the admin-page countdown overlay (staff + admin)."""
+        if request.method == "OPTIONS":
+            return "", 200
+        return jsonify(_compute_next_backup_window())
+
     @app.route("/api/backup/archive", methods=["GET", "OPTIONS"])
     @require_admin_only
     def download_admin_backup_archive():
