@@ -1,8 +1,9 @@
 """
 Backfill turtle folder names to match the current state of Google Sheets.
 
-Idempotent and safe to run daily (intended to be wired into the chronodrop
-after the main-branch merge). Reads Sheets only — NEVER writes to them.
+Idempotent and safe to run daily (wired into the chronodrop —
+``scripts/daily-backup.sh`` runs this between the Sheets export and the
+data backup). Reads Sheets only — NEVER writes to them.
 
 Three jobs in one pass:
   A. Rename `{bio_id}` folders to `{bio_id}_{primary_id}` once the sheet has
@@ -21,6 +22,13 @@ Usage (from inside the backend container):
 From the host via docker:
     docker compose exec backend python backfill_folder_names.py
     docker compose exec backend python backfill_folder_names.py --apply
+
+Exit codes (used by the chronodrop wrapper to decide whether to restart):
+    0 — dry run, or --apply with no changes needed.
+    1 — one or more errors occurred (regardless of mode).
+    2 — --apply executed at least one rename/rehome successfully. The
+        wrapper restarts the backend so the VRAM cache reloads with the
+        new file paths.
 """
 
 from __future__ import annotations
@@ -219,7 +227,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     _process_spreadsheet(community, 'community', data_root, reporter, args.apply, seen_primary_ids)
 
     reporter.print_manifest()
-    return 0 if not reporter.errors else 1
+    if reporter.errors:
+        return 1
+    if args.apply and reporter.ops:
+        # Signal the wrapper that on-disk changes were made and it should
+        # restart the backend so the VRAM cache reloads with new paths.
+        return 2
+    return 0
 
 
 if __name__ == '__main__':
