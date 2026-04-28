@@ -2,7 +2,7 @@
 # Run Google Sheets export (CSV/JSON), folder-name backfill, and backend data/
 # (images) backup in one shot.
 #
-# Intended for cron at 02:00 server time. Logs should be redirected by cron
+# Intended for cron at 03:00 server time. Logs should be redirected by cron
 # (see docs/BACKUP.md).
 #
 # Sequence:
