@@ -224,9 +224,11 @@ You need to run **all three services** simultaneously:
 
 4. **Create New Turtle** (from either the Admin Match page or the Sheets Browser):
    - Between the auto-generated Primary ID and the Google Sheets form, a **Photos for this upload** panel offers Microhabitat / Condition / Carapace / Additional upload buttons and displays any photos already attached to the packet. Admins can correct a forgotten photo at creation time instead of discovering the gap post-approval.
+   - All sheet-data fields start **fully editable** — the per-field click-to-unlock flow only applies when *editing* an existing turtle.
 
 5. **Admin Match Page — Match Selected view**:
    - Order top-to-bottom: uploaded-vs-candidate comparison → **Additional Photos** panel → **Replace plastron / carapace reference** checkboxes → Google Sheets data form → action buttons (Cancel / Save to Sheets & Confirm Match / Create New Turtle Instead). The replace-reference decision sits directly under the photos it affects.
+   - Each candidate card (plastron and cross-checked carapace) shows the on-disk biology id, the turtle's **chosen name** from Google Sheets when set, and the auto-generated **Primary ID** when distinct from the biology id, plus location and confidence. Per-candidate name/Primary ID is read from Sheets in parallel after the match list resolves; Sheets writes are never made from this page.
 
 ### Community Users
 
