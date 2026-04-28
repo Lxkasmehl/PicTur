@@ -104,6 +104,7 @@ test.describe('Contact and Feedback forms', () => {
     await page
       .getByLabel('Details')
       .fill('It would be helpful to export turtle records as CSV from the records page.');
+    await page.getByLabel('Your name (optional)').fill('E2E Feedback Friend');
     await page.getByLabel('Contact email (optional)').fill('e2e-feedback@example.com');
     await page.locator('form').evaluate((form) => {
       (form as HTMLFormElement).requestSubmit();
@@ -114,11 +115,13 @@ test.describe('Contact and Feedback forms', () => {
       category: 'bug',
       title: 'Add export button',
       description: 'It would be helpful to export turtle records as CSV from the records page.',
+      contactName: 'E2E Feedback Friend',
       contactEmail: 'e2e-feedback@example.com',
     });
 
     await expect(page.getByLabel('Short summary')).toHaveValue('');
     await expect(page.getByLabel('Details')).toHaveValue('');
+    await expect(page.getByLabel('Your name (optional)')).toHaveValue('');
     await expect(page.getByLabel('Contact email (optional)')).toHaveValue('');
   });
 

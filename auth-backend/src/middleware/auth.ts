@@ -10,23 +10,25 @@ export interface AuthRequest extends Request {
   };
 }
 
-export const authenticateToken = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
+export type BearerUserResult =
+  | { kind: 'missing' }
+  | { kind: 'invalid'; message: string }
+  | { kind: 'ok'; user: { id: number; email: string; role: 'community' | 'staff' | 'admin' } };
+
+/**
+ * Validates Authorization Bearer when present. Used by required and optional auth middleware.
+ */
+export function resolveBearerUser(req: Request): BearerUserResult {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
   if (!token) {
-    res.status(401).json({ error: 'Access token required' });
-    return;
+    return { kind: 'missing' };
   }
 
   const jwtSecret = process.env.JWT_SECRET;
   if (!jwtSecret) {
-    res.status(500).json({ error: 'Server configuration error' });
-    return;
+    return { kind: 'invalid', message: 'Server configuration error' };
   }
 
   try {
@@ -36,29 +38,62 @@ export const authenticateToken = (
       role: 'community' | 'staff' | 'admin';
       iat?: number;
     };
-    // Require an existing user so deleted accounts cannot keep using signed JWTs until expiry.
-    // Also invalidate tokens issued at or before tokens_valid_after (e.g. after role demotion).
-    // Use <= so same-second tokens are revoked (iat and validAfter are second-granular).
     const row = db
       .prepare('SELECT tokens_valid_after FROM users WHERE id = ?')
       .get(decoded.id) as { tokens_valid_after: string | null } | undefined;
     if (!row) {
-      res.status(403).json({ error: 'Token has been revoked' });
-      return;
+      return { kind: 'invalid', message: 'Token has been revoked' };
     }
     const validAfter = row.tokens_valid_after;
     if (validAfter && decoded.iat != null) {
       const validAfterSeconds = Math.floor(new Date(validAfter).getTime() / 1000);
       if (decoded.iat <= validAfterSeconds) {
-        res.status(403).json({ error: 'Token has been revoked' });
-        return;
+        return { kind: 'invalid', message: 'Token has been revoked' };
       }
     }
-    (req as AuthRequest).user = decoded;
-    next();
-  } catch (error) {
-    res.status(403).json({ error: 'Invalid or expired token' });
+    return { kind: 'ok', user: decoded };
+  } catch {
+    return { kind: 'invalid', message: 'Invalid or expired token' };
   }
+}
+
+export const authenticateToken = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  const resolved = resolveBearerUser(req);
+  if (resolved.kind === 'missing') {
+    res.status(401).json({ error: 'Access token required' });
+    return;
+  }
+  if (resolved.kind === 'invalid') {
+    const status = resolved.message === 'Server configuration error' ? 500 : 403;
+    res.status(status).json({ error: resolved.message });
+    return;
+  }
+  (req as AuthRequest).user = resolved.user;
+  next();
+};
+
+/** If a Bearer token is present, validates it and sets req.user; missing token continues without user. */
+export const optionalAuthenticateToken = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  const resolved = resolveBearerUser(req);
+  if (resolved.kind === 'missing') {
+    next();
+    return;
+  }
+  if (resolved.kind === 'invalid') {
+    const status = resolved.message === 'Server configuration error' ? 500 : 403;
+    res.status(status).json({ error: resolved.message });
+    return;
+  }
+  (req as AuthRequest).user = resolved.user;
+  next();
 };
 
 /**

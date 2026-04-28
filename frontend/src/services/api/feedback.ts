@@ -1,4 +1,4 @@
-import { AUTH_API_BASE_URL } from './config';
+import { AUTH_API_BASE_URL, getToken } from './config';
 
 export type FeedbackCategory = 'bug' | 'feature' | 'feedback';
 
@@ -7,6 +7,7 @@ export interface SubmitFeedbackInput {
   title: string;
   description: string;
   contactEmail?: string;
+  contactName?: string;
 }
 
 export type SubmitFeedbackResult =
@@ -20,9 +21,13 @@ function networkFailureMessage(err: unknown): string {
 
 export async function submitFeedbackForm(body: SubmitFeedbackInput): Promise<SubmitFeedbackResult> {
   try {
+    const token = getToken();
     const res = await fetch(`${AUTH_API_BASE_URL}/feedback`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(body),
     });
     const data = (await res.json().catch(() => ({}))) as {

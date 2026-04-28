@@ -7,6 +7,8 @@ import {
   setProjectItemSingleSelect,
 } from '../services/githubFeedback.js';
 import { createInMemoryIpWindowRateLimiter } from '../utils/inMemoryIpWindowRateLimit.js';
+import { optionalAuthenticateToken, type AuthRequest } from '../middleware/auth.js';
+import db from '../db/database.js';
 
 const router = Router();
 
@@ -16,6 +18,7 @@ type Category = (typeof CATEGORIES)[number];
 
 const TITLE_MAX = 200;
 const DESCRIPTION_MAX = 8000;
+const CONTACT_NAME_MAX = 200;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 const RATE_MAX = 8;
 
@@ -36,6 +39,7 @@ function validateBody(body: unknown): {
   title: string;
   description: string;
   contactEmail: string | null;
+  contactName: string | null;
 } | null {
   if (!body || typeof body !== 'object') return null;
   const o = body as Record<string, unknown>;
@@ -54,7 +58,15 @@ function validateBody(body: unknown): {
     contactEmail = ce;
   }
 
-  return { category: category as Category, title, description, contactEmail };
+  let contactName: string | null = null;
+  if (o.contactName !== undefined && o.contactName !== null && o.contactName !== '') {
+    const cn = typeof o.contactName === 'string' ? o.contactName.trim() : '';
+    if (cn.length < 1 || cn.length > CONTACT_NAME_MAX) return null;
+    if (/[\r\n\t]/.test(cn)) return null;
+    contactName = cn;
+  }
+
+  return { category: category as Category, title, description, contactEmail, contactName };
 }
 
 function categoryLabel(c: Category): string {
@@ -78,6 +90,8 @@ function buildIssueBody(params: {
   category: Category;
   description: string;
   contactEmail: string | null;
+  contactName: string | null;
+  submitterSource: 'account' | 'anonymous';
   userAgent: string | null;
 }): string {
   const lines: string[] = [
@@ -88,8 +102,17 @@ function buildIssueBody(params: {
     params.description,
     '',
   ];
-  if (params.contactEmail) {
-    lines.push('### Contact (optional)', '', params.contactEmail, '');
+  if (params.submitterSource === 'account') {
+    lines.push('### Submitter (signed-in PicTur account)', '');
+    if (params.contactName) lines.push(`- **Name:** ${params.contactName}`);
+    if (params.contactEmail) lines.push(`- **Email:** ${params.contactEmail}`);
+    if (!params.contactName && !params.contactEmail) lines.push('_(no name or email on file)_');
+    lines.push('');
+  } else if (params.contactName || params.contactEmail) {
+    lines.push('### Contact (optional)', '');
+    if (params.contactName) lines.push(`- **Name:** ${params.contactName}`);
+    if (params.contactEmail) lines.push(`- **Email:** ${params.contactEmail}`);
+    lines.push('');
   }
   lines.push('---', '', '_Submitted via PicTur feedback form._');
   if (params.userAgent) {
@@ -100,7 +123,7 @@ function buildIssueBody(params: {
 }
 
 /** Public: submit app feedback; creates a GitHub issue when GITHUB_FEEDBACK_* is configured. */
-router.post('/feedback', async (req: Request, res: Response) => {
+router.post('/feedback', optionalAuthenticateToken, async (req: Request, res: Response) => {
   const cfg = getGithubFeedbackConfig();
   if (!cfg) {
     return res.status(503).json({
@@ -117,15 +140,40 @@ router.post('/feedback', async (req: Request, res: Response) => {
   const parsed = validateBody(req.body);
   if (!parsed) {
     return res.status(400).json({
-      error: 'Invalid category, title, or description (or optional email).',
+      error:
+        'Invalid category, title, or description, or optional contact fields (name and/or email).',
     });
+  }
+
+  const authUser = (req as AuthRequest).user;
+  let contactEmail: string | null;
+  let contactName: string | null;
+  let submitterSource: 'account' | 'anonymous';
+
+  if (authUser) {
+    const row = db
+      .prepare('SELECT email, name FROM users WHERE id = ?')
+      .get(authUser.id) as { email: string; name: string | null } | undefined;
+    if (!row) {
+      return res.status(403).json({ error: 'Account not found.' });
+    }
+    contactEmail = row.email;
+    const trimmedName = typeof row.name === 'string' ? row.name.trim() : '';
+    contactName = trimmedName.length > 0 ? trimmedName : null;
+    submitterSource = 'account';
+  } else {
+    contactEmail = parsed.contactEmail;
+    contactName = parsed.contactName;
+    submitterSource = 'anonymous';
   }
 
   const ua = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null;
   const body = buildIssueBody({
     category: parsed.category,
     description: parsed.description,
-    contactEmail: parsed.contactEmail,
+    contactEmail,
+    contactName,
+    submitterSource,
     userAgent: ua,
   });
 

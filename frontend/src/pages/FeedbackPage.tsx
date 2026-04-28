@@ -15,6 +15,7 @@ import { IconBug, IconBulb, IconMessageCircle, IconSend, IconInfoCircle } from '
 import { useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { submitFeedbackForm, type FeedbackCategory } from '../services/api/feedback';
+import { useUser } from '../hooks/useUser';
 
 const categoryOptions: { value: FeedbackCategory; label: string }[] = [
   { value: 'bug', label: 'Bug report' },
@@ -23,9 +24,11 @@ const categoryOptions: { value: FeedbackCategory; label: string }[] = [
 ];
 
 export default function FeedbackPage() {
+  const { isLoggedIn } = useUser();
   const [category, setCategory] = useState<FeedbackCategory | null>('bug');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -38,11 +41,17 @@ export default function FeedbackPage() {
         category,
         title,
         description,
-        ...(contactEmail.trim() ? { contactEmail: contactEmail.trim() } : {}),
+        ...(!isLoggedIn
+          ? {
+              ...(contactName.trim() ? { contactName: contactName.trim() } : {}),
+              ...(contactEmail.trim() ? { contactEmail: contactEmail.trim() } : {}),
+            }
+          : {}),
       });
       if (result.ok) {
         setTitle('');
         setDescription('');
+        setContactName('');
         setContactEmail('');
         notifications.show({
           title: 'Thanks for the report',
@@ -105,6 +114,13 @@ export default function FeedbackPage() {
             label) so the team can triage and improve the app.
           </Alert>
 
+          {isLoggedIn ? (
+            <Alert variant='light' color='gray' icon={<IconInfoCircle size={18} />}>
+              You are signed in. Your PicTur account name and email address are attached to this
+              report automatically so maintainers can reach you if needed.
+            </Alert>
+          ) : null}
+
           <form onSubmit={handleSubmit}>
             <Stack gap='md'>
               <Select
@@ -148,15 +164,31 @@ export default function FeedbackPage() {
                 maxLength={8000}
                 disabled={sending}
               />
-              <TextInput
-                label='Contact email (optional)'
-                description='Only if you are okay being reached for follow-up questions'
-                placeholder='you@example.com'
-                type='email'
-                value={contactEmail}
-                onChange={(e) => setContactEmail(e.target.value)}
-                disabled={sending}
-              />
+              {!isLoggedIn ? (
+                <>
+                  <TextInput
+                    label='Your name (optional)'
+                    description={
+                      'Helps if we might already know you (for example from the community or field ' +
+                      'work). You can also leave this empty.'
+                    }
+                    placeholder='e.g. Jamie Chen'
+                    value={contactName}
+                    onChange={(e) => setContactName(e.target.value)}
+                    disabled={sending}
+                    maxLength={200}
+                  />
+                  <TextInput
+                    label='Contact email (optional)'
+                    description='Only if you are okay being reached for follow-up questions'
+                    placeholder='you@example.com'
+                    type='email'
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    disabled={sending}
+                  />
+                </>
+              ) : null}
               <Group wrap='wrap' gap='sm' align='center'>
                 <Button type='submit' leftSection={<IconSend size={18} />} loading={sending}>
                   Submit feedback
