@@ -4,7 +4,7 @@ import json
 from typing import Any, List, Optional
 
 VALID_ADDITIONAL_TYPES = frozenset(
-    {'microhabitat', 'condition', 'carapace', 'plastron', 'other'}
+    {'microhabitat', 'condition', 'carapace', 'plastron', 'additional', 'other'}
 )
 
 

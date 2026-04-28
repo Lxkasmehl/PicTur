@@ -83,11 +83,11 @@ export function useTurtleSheetsDataForm(
     sheetSource === 'admin' || useBackendLocations || requireNewSheetForCommunityMatch;
 
   /**
-   * Match layout: same read-only / unlock rules in create and edit (subset columns on Turtle Match).
-   * Legacy add-only (no match layout): only when editing.
+   * Lock-and-unlock applies only when editing an existing turtle. Create mode starts
+   * fully editable so admins can fill a brand-new row without clicking each field unlocked.
    */
   const isFieldModeRestricted =
-    Boolean(matchPageColumnLayout) || (addOnlyMode && mode === 'edit');
+    mode === 'edit' && (Boolean(matchPageColumnLayout) || addOnlyMode);
   const isFieldUnlocked = (field: keyof TurtleSheetsData) => unlockedFields.has(field);
   const requestUnlock = (field: keyof TurtleSheetsData) => setUnlockConfirmField(field);
   const confirmUnlock = () => {

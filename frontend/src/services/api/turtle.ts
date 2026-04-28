@@ -120,7 +120,7 @@ export interface UploadFlagOptions {
 }
 
 export interface UploadExtraFile {
-  type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'other';
+  type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional' | 'other';
   file: File;
   /** Stored as searchable tags on the additional image (same request as upload). */
   labels?: string[];

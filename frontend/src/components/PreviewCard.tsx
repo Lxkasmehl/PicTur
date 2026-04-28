@@ -285,7 +285,7 @@ export function PreviewCard({
                     />
                   </Button>
                   <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
-                    Other
+                    Additional
                     <input
                       type='file'
                       accept='image/*'
@@ -300,7 +300,7 @@ export function PreviewCard({
                           const validation = validateFile(file);
                           if (validation.isValid) {
                             valid.push({
-                              type: 'other',
+                              type: 'additional',
                               file,
                               labels: [],
                               localId: crypto.randomUUID(),
@@ -318,24 +318,6 @@ export function PreviewCard({
                       }}
                     />
                   </Button>
-                  {(role === 'admin' || role === 'staff') && (
-                    <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
-                      Carapace
-                      <input
-                        type='file'
-                        accept='image/*'
-                        hidden
-                        onChange={(e) => {
-                          const list = e.target.files;
-                          if (!list?.length) return;
-                          const file = list[0];
-                          const validation = validateFile(file);
-                          if (validation.isValid) setExtraFiles((prev) => [...prev, { type: 'carapace', file }]);
-                          e.target.value = '';
-                        }}
-                      />
-                    </Button>
-                  )}
                   {role !== 'admin' && role !== 'staff' && (
                     <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
                       Plastron
