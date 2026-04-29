@@ -316,3 +316,42 @@ def test_patch_additional_labels(client, turtle_with_images):
     row = next((a for a in rows if os.path.basename(a.get("path", "")) == fn), None)
     assert row is not None
     assert "patch_test_tag" in (row.get("labels") or [])
+
+
+def test_search_labels_with_type_filter_and_combo(client, turtle_with_images):
+    """Search endpoint supports category-only and combined category+label filtering."""
+    tid = turtle_with_images["turtle_id"]
+    loc = turtle_with_images["location"]
+    img_bytes = _dummy_image_bytes()
+
+    r_add = client.post(
+        "/api/turtles/images/additional",
+        data={
+            "turtle_id": tid,
+            "sheet_name": loc,
+            "file_0": ("combo_right.jpg", BytesIO(img_bytes)),
+            "type_0": "right-side",
+            "labels_0": "burned, combo_filter_smoke",
+            "file_1": ("combo_left.jpg", BytesIO(img_bytes)),
+            "type_1": "left-side",
+            "labels_1": "burned, combo_filter_smoke",
+        },
+    )
+    assert r_add.status_code == 200
+
+    r_type = client.get("/api/turtles/images/search-labels?type=right-side")
+    assert r_type.status_code == 200
+    type_matches = r_type.json().get("matches") or []
+    assert any(m.get("type") == "right-side" for m in type_matches)
+    assert not any(
+        m.get("filename", "").find("combo_left") >= 0 and m.get("type") == "left-side"
+        for m in type_matches
+    )
+
+    r_combo = client.get("/api/turtles/images/search-labels?q=burned&type=right-side")
+    assert r_combo.status_code == 200
+    combo_matches = r_combo.json().get("matches") or []
+    combo_hit = next((m for m in combo_matches if "combo_right" in (m.get("filename") or "")), None)
+    assert combo_hit is not None
+    assert combo_hit.get("type") == "right-side"
+    assert any("burn" in str(x).lower() for x in (combo_hit.get("labels") or []))

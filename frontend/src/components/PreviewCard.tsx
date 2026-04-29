@@ -34,12 +34,17 @@ import {
   IconPhotoPlus,
   IconZoomIn,
 } from '@tabler/icons-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type DragEvent } from 'react';
 import type { FileWithPath } from '@mantine/dropzone';
 import type { LocationHint, UploadExtraFile } from '../services/api';
 import { MapPicker } from './MapPicker';
 import { validateFile } from '../utils/fileValidation';
 import { notifications } from '@mantine/notifications';
+import {
+  ADDITIONAL_PHOTO_KIND_OPTIONS,
+  additionalPhotoKindLabel,
+  type AdditionalPhotoKind,
+} from '../constants/additionalPhotoKinds';
 
 interface PreviewCardProps {
   preview: string | null;
@@ -64,7 +69,7 @@ interface PreviewCardProps {
   /** Admin: physical flag at position (when taken to lab) */
   physicalFlag?: 'yes' | 'no' | 'no_flag' | null;
   setPhysicalFlag?: (v: 'yes' | 'no' | 'no_flag' | null) => void;
-  /** Optional extra images (microhabitat, condition) */
+  /** Optional extra images (all additional-photo categories) */
   extraFiles?: UploadExtraFile[];
   setExtraFiles?: (files: UploadExtraFile[] | ((prev: UploadExtraFile[]) => UploadExtraFile[])) => void;
   onUpload: () => void;
@@ -100,7 +105,39 @@ export function PreviewCard({
   const [manualLon, setManualLon] = useState('');
   const [extraPreviewUrls, setExtraPreviewUrls] = useState<string[]>([]);
   const [lightboxObjectUrl, setLightboxObjectUrl] = useState<string | null>(null);
+  const [activeDropKind, setActiveDropKind] = useState<AdditionalPhotoKind | null>(null);
   const isMobile = useMediaQuery('(max-width: 576px)');
+
+  const addExtraFilesByType = (type: AdditionalPhotoKind, list: FileList | null) => {
+    if (!setExtraFiles || !list?.length) return;
+    const valid: UploadExtraFile[] = [];
+    for (let i = 0; i < list.length; i++) {
+      const file = list[i];
+      const validation = validateFile(file);
+      if (validation.isValid) {
+        valid.push({
+          type,
+          file,
+          labels: [],
+          localId: crypto.randomUUID(),
+        });
+      } else if (validation.error) {
+        notifications.show({
+          title: 'Invalid file',
+          message: validation.error,
+          color: 'red',
+        });
+      }
+    }
+    if (valid.length) setExtraFiles((prev) => [...prev, ...valid]);
+  };
+
+  const handleDropOnKind = (event: DragEvent<HTMLLabelElement>, type: AdditionalPhotoKind) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setActiveDropKind(null);
+    addExtraFilesByType(type, event.dataTransfer.files);
+  };
 
   const prevStillAtLocation = useRef<'yes' | 'no' | null>(null);
   // When user selects "I'm still at the turtle's location", request GPS immediately (once per switch to 'yes')
@@ -182,142 +219,48 @@ export function PreviewCard({
                   upload with your main photo.
                 </Text>
                 <Group gap='xs' mb='sm'>
-                  <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
-                    Carapace
-                    <input
-                      type='file'
-                      accept='image/*'
-                      multiple
-                      hidden
-                      onChange={(e) => {
-                        const list = e.target.files;
-                        if (!list?.length) return;
-                        const valid: UploadExtraFile[] = [];
-                        for (let i = 0; i < list.length; i++) {
-                          const file = list[i];
-                          const validation = validateFile(file);
-                          if (validation.isValid) {
-                            valid.push({
-                              type: 'carapace',
-                              file,
-                              labels: [],
-                              localId: crypto.randomUUID(),
-                            });
-                          } else if (validation.error) {
-                            notifications.show({
-                              title: 'Invalid file',
-                              message: validation.error,
-                              color: 'red',
-                            });
-                          }
-                        }
-                        if (valid.length) setExtraFiles((prev) => [...prev, ...valid]);
-                        e.target.value = '';
+                  {ADDITIONAL_PHOTO_KIND_OPTIONS.map((kindOpt) => (
+                    <Button
+                      key={kindOpt.value}
+                      size='sm'
+                      variant={activeDropKind === kindOpt.value ? 'filled' : 'light'}
+                      leftSection={<IconPhotoPlus size={14} />}
+                      component='label'
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setActiveDropKind(kindOpt.value as AdditionalPhotoKind);
                       }}
-                    />
-                  </Button>
-                  <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
-                    Microhabitat
-                    <input
-                      type='file'
-                      accept='image/*'
-                      multiple
-                      hidden
-                      onChange={(e) => {
-                        const list = e.target.files;
-                        if (!list?.length) return;
-                        const valid: UploadExtraFile[] = [];
-                        for (let i = 0; i < list.length; i++) {
-                          const file = list[i];
-                          const validation = validateFile(file);
-                          if (validation.isValid) {
-                            valid.push({
-                              type: 'microhabitat',
-                              file,
-                              labels: [],
-                              localId: crypto.randomUUID(),
-                            });
-                          } else if (validation.error) {
-                            notifications.show({
-                              title: 'Invalid file',
-                              message: validation.error,
-                              color: 'red',
-                            });
-                          }
-                        }
-                        if (valid.length) setExtraFiles((prev) => [...prev, ...valid]);
-                        e.target.value = '';
+                      onDragEnter={(event) => {
+                        event.preventDefault();
+                        setActiveDropKind(kindOpt.value as AdditionalPhotoKind);
                       }}
-                    />
-                  </Button>
-                  <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
-                    Condition
-                    <input
-                      type='file'
-                      accept='image/*'
-                      multiple
-                      hidden
-                      onChange={(e) => {
-                        const list = e.target.files;
-                        if (!list?.length) return;
-                        const valid: UploadExtraFile[] = [];
-                        for (let i = 0; i < list.length; i++) {
-                          const file = list[i];
-                          const validation = validateFile(file);
-                          if (validation.isValid) {
-                            valid.push({
-                              type: 'condition',
-                              file,
-                              labels: [],
-                              localId: crypto.randomUUID(),
-                            });
-                          } else if (validation.error) {
-                            notifications.show({
-                              title: 'Invalid file',
-                              message: validation.error,
-                              color: 'red',
-                            });
-                          }
-                        }
-                        if (valid.length) setExtraFiles((prev) => [...prev, ...valid]);
-                        e.target.value = '';
+                      onDragLeave={() => {
+                        setActiveDropKind((prev) =>
+                          prev === kindOpt.value ? null : prev,
+                        );
                       }}
-                    />
-                  </Button>
-                  <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
-                    Other
-                    <input
-                      type='file'
-                      accept='image/*'
-                      multiple
-                      hidden
-                      onChange={(e) => {
-                        const list = e.target.files;
-                        if (!list?.length) return;
-                        const valid: UploadExtraFile[] = [];
-                        for (let i = 0; i < list.length; i++) {
-                          const file = list[i];
-                          const validation = validateFile(file);
-                          if (validation.isValid) {
-                            valid.push({
-                              type: 'other',
-                              file,
-                              labels: [],
-                              localId: crypto.randomUUID(),
-                            });
-                          } else if (validation.error) {
-                            notifications.show({
-                              title: 'Invalid file',
-                              message: validation.error,
-                              color: 'red',
-                            });
-                          }
-                        }
-                        if (valid.length) setExtraFiles((prev) => [...prev, ...valid]);
-                        e.target.value = '';
-                      }}
-                    />
-                  </Button>
+                      onDrop={(event) =>
+                        handleDropOnKind(event, kindOpt.value as AdditionalPhotoKind)
+                      }
+                      style={
+                        activeDropKind === kindOpt.value
+                          ? { border: '1px dashed var(--mantine-color-blue-filled)' }
+                          : undefined
+                      }
+                    >
+                      {kindOpt.label}
+                      <input
+                        type='file'
+                        accept='image/*'
+                        multiple
+                        hidden
+                        onChange={(e) => {
+                          addExtraFilesByType(kindOpt.value as AdditionalPhotoKind, e.target.files);
+                          e.target.value = '';
+                        }}
+                      />
+                    </Button>
+                  ))}
                 </Group>
                 {extraFiles.length > 0 && (
                   <Stack gap='md'>
@@ -348,12 +291,7 @@ export function PreviewCard({
                               <Select
                                 size='xs'
                                 label='Type'
-                                data={[
-                                  { value: 'carapace', label: 'Carapace' },
-                                  { value: 'microhabitat', label: 'Microhabitat' },
-                                  { value: 'condition', label: 'Condition' },
-                                  { value: 'other', label: 'Other' },
-                                ]}
+                                data={ADDITIONAL_PHOTO_KIND_OPTIONS}
                                 value={ef.type}
                                 onChange={(v) => {
                                   if (!v) return;
@@ -378,6 +316,9 @@ export function PreviewCard({
                               <Text size='xs' c='dimmed' lineClamp={1}>
                                 {ef.file.name}
                               </Text>
+                              <Badge size='xs' variant='light' color='gray' style={{ width: 'fit-content' }}>
+                                {additionalPhotoKindLabel(ef.type)}
+                              </Badge>
                             </Stack>
                             <Stack gap={4}>
                               <Button

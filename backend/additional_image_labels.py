@@ -1,16 +1,48 @@
 """Shared parsing/normalization for additional image types and labels (manifest.json)."""
 
 import json
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-VALID_ADDITIONAL_TYPES = frozenset(
-    {'microhabitat', 'condition', 'carapace', 'plastron', 'other'}
-)
+ADDITIONAL_TYPE_ALIASES: Dict[str, str] = {
+    'microhabitat': 'microhabitat',
+    'condition': 'condition',
+    'carapace': 'carapace',
+    'plastron': 'plastron',
+    'anterior': 'anterior',
+    'posterior': 'posterior',
+    'leftside': 'left-side',
+    'rightside': 'right-side',
+    # Legacy aliases kept for backwards compatibility with older clients/buttons.
+    'head': 'anterior',
+    'tail': 'posterior',
+    'people': 'people',
+    'injury': 'injury',
+    'other': 'other',
+}
+
+VALID_ADDITIONAL_TYPES = frozenset(ADDITIONAL_TYPE_ALIASES.values())
+
+
+def _type_key(raw: Optional[str]) -> str:
+    return ''.join(ch for ch in (raw or '').strip().lower() if ch.isalnum())
 
 
 def normalize_additional_type(raw: Optional[str]) -> str:
-    t = (raw or 'other').strip().lower()
-    return t if t in VALID_ADDITIONAL_TYPES else 'other'
+    return ADDITIONAL_TYPE_ALIASES.get(_type_key(raw), 'other')
+
+
+def parse_additional_type_filter(raw: Optional[str]) -> Optional[str]:
+    """Return canonical type or None (for empty). Raise ValueError for invalid non-empty input."""
+    if raw is None:
+        return None
+    stripped = str(raw).strip()
+    if not stripped:
+        return None
+    key = _type_key(stripped)
+    parsed = ADDITIONAL_TYPE_ALIASES.get(key)
+    if not parsed:
+        raise ValueError('Invalid additional image type filter')
+    return parsed
 
 
 def normalize_label_list(labels: Any) -> List[str]:

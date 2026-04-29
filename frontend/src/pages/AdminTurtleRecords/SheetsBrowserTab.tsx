@@ -54,6 +54,10 @@ import { AdditionalImagesSection } from '../../components/AdditionalImagesSectio
 import { formatSingleDateTokenToUs } from '../../utils/usDateFormat';
 import { validateFile } from '../../utils/fileValidation';
 import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
+import {
+  ADDITIONAL_PHOTO_KIND_OPTIONS,
+  additionalPhotoKindLabel,
+} from '../../constants/additionalPhotoKinds';
 
 function turtleKey(turtle: TurtleSheetsData) {
   const id = turtleDiskFolderId(turtle);
@@ -125,6 +129,7 @@ export function SheetsBrowserTab() {
   const [primaryImages, setPrimaryImages] = useState<Record<string, string | null>>({});
   const [listMode, setListMode] = useState<'records' | 'tags'>('records');
   const [tagQuery, setTagQuery] = useState('');
+  const [photoTypeFilter, setPhotoTypeFilter] = useState<string | null>('');
   const [photoMatches, setPhotoMatches] = useState<TurtleAdditionalLabelSearchMatch[]>([]);
   const [photoSearchLoading, setPhotoSearchLoading] = useState(false);
   const [selectedMatchPath, setSelectedMatchPath] = useState<string | null>(null);
@@ -234,11 +239,12 @@ export function SheetsBrowserTab() {
 
   const runPhotoSearch = async () => {
     const q = tagQuery.trim();
-    if (!q) return;
+    const typeFilter = (photoTypeFilter || '').trim();
+    if (!q && !typeFilter) return;
     setPhotoSearchLoading(true);
     setSelectedMatchPath(null);
     try {
-      const res = await searchTurtleImagesByLabel(q);
+      const res = await searchTurtleImagesByLabel(q, typeFilter || undefined);
       setPhotoMatches(res.matches ?? []);
     } catch {
       setPhotoMatches([]);
@@ -503,8 +509,8 @@ export function SheetsBrowserTab() {
             ) : (
               <>
                 <Text size='xs' c='dimmed'>
-                  Find additional photos by tag (substring match, case-insensitive). Results respect the
-                  location filter above.
+                  Find additional photos by tag, category, or both. Results respect the location
+                  filter above.
                 </Text>
                 <TextInput
                   placeholder='e.g. burned, shell crack'
@@ -514,6 +520,15 @@ export function SheetsBrowserTab() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void runPhotoSearch();
                   }}
+                />
+                <Select
+                  label='Photo category'
+                  placeholder='Any category'
+                  value={photoTypeFilter}
+                  onChange={(value) => setPhotoTypeFilter(value ?? '')}
+                  data={[{ value: '', label: 'Any category' }, ...ADDITIONAL_PHOTO_KIND_OPTIONS]}
+                  searchable
+                  clearable={false}
                 />
                 <Button
                   onClick={() => void runPhotoSearch()}
@@ -660,7 +675,7 @@ export function SheetsBrowserTab() {
                                           tt={m.type === 'other' ? undefined : 'capitalize'}
                                           style={{ alignSelf: 'center' }}
                                         >
-                                          {m.type === 'other' ? 'Other' : m.type}
+                                          {additionalPhotoKindLabel(m.type)}
                                         </Badge>
                                       </Stack>
                                     </Box>

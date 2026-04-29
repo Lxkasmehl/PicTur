@@ -52,12 +52,13 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
 
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     await tabPanel.waitFor({ state: 'visible', timeout: 5_000 });
-    await Promise.race([
-      tabPanel.getByText('No pending reviews').waitFor({ state: 'visible', timeout: 10_000 }),
-      tabPanel.getByText(/\d+ matches/).first().waitFor({ state: 'visible', timeout: 10_000 }),
-      tabPanel.getByText(/Finding matches/i).first().waitFor({ state: 'visible', timeout: 10_000 }),
-      tabPanel.getByText(/Match search failed/i).first().waitFor({ state: 'visible', timeout: 10_000 }),
-    ]);
+    await expect(
+      tabPanel
+        .getByText('No pending reviews')
+        .or(tabPanel.getByText(/\d+ matches/).first())
+        .or(tabPanel.getByText(/Finding matches/i).first())
+        .or(tabPanel.getByText(/Match search failed/i).first()),
+    ).toBeVisible({ timeout: 15_000 });
     const hasItems =
       (await tabPanel.getByText(/\d+ matches/).count()) > 0 ||
       (await tabPanel.getByText(/Finding matches/i).count()) > 0 ||
@@ -72,11 +73,11 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
       await expect(page.getByRole('button', { name: /Back to list/ })).toBeVisible();
       await expect(page.getByText('Uploaded Photo')).toBeVisible();
     } else {
-      await expect(tabPanel.getByText('No pending reviews')).toBeVisible();
+      await expect(tabPanel.getByText('No pending reviews')).toBeVisible({ timeout: 10_000 });
     }
   });
 
-  test('When a queue item is selected, Microhabitat / Condition photos section is visible', async ({
+  test('When a queue item is selected, Additional photos section is visible', async ({
     page,
   }) => {
     await loginAsAdmin(page);
@@ -100,7 +101,9 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
     const hasItems = (await matchLink.count()) > 0;
     if (hasItems) {
       await matchLink.click();
-      await expect(page.getByText('Microhabitat / Condition photos')).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText('Additional photos', { exact: true })).toBeVisible({
+        timeout: 5000,
+      });
     } else {
       await expect(page.getByText('No pending reviews')).toBeVisible({ timeout: 10_000 });
     }

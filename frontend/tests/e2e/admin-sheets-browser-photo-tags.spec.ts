@@ -73,7 +73,8 @@ test.describe('Admin Turtle Records — Sheets browser photo tags', () => {
     await page.route('**/api/turtles/images/search-labels**', async (route) => {
       const url = new URL(route.request().url());
       const q = (url.searchParams.get('q') || '').toLowerCase();
-      if (q.includes('burn')) {
+      const type = (url.searchParams.get('type') || '').toLowerCase();
+      if (q.includes('burn') && type === 'right-side') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -84,7 +85,7 @@ test.describe('Admin Turtle Records — Sheets browser photo tags', () => {
                 sheet_name: 'Kansas',
                 path: 'Kansas/2024-06-01/e2e_tagged.jpg',
                 filename: 'e2e_tagged.jpg',
-                type: 'carapace',
+                type: 'right-side',
                 labels: ['burned', 'e2e-smoke'],
               },
             ],
@@ -113,13 +114,123 @@ test.describe('Admin Turtle Records — Sheets browser photo tags', () => {
     await page.getByText('Photo tags', { exact: true }).click();
 
     await page.getByPlaceholder('e.g. burned, shell crack').fill('burned');
+    await page.getByRole('textbox', { name: /Photo category/i }).click();
+    await page.getByRole('option', { name: 'Right side' }).click();
     await page.getByRole('button', { name: 'Search photos' }).click();
 
     await expect(page.getByText(/1 photo match · 1 turtle/i)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Tag Search Turtle')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Open turtle' })).toBeVisible();
     await expect(page.getByText('burned', { exact: true })).toBeVisible();
-    // Type badge: capitalize transform may surface as "carapace" or "Carapace" in a11y tree.
-    await expect(page.getByText(/^carapace$/i)).toBeVisible();
+    // Category Select also shows "Right side"; scope to the results ScrollArea below the summary line.
+    await expect(
+      page.getByText(/1 photo match · 1 turtle/i).locator('xpath=following-sibling::*[1]').getByText('Right side', { exact: true }),
+    ).toBeVisible();
+  });
+
+  test('Photo tags: type-only search works without text query', async ({ page }) => {
+    test.setTimeout(60_000);
+
+    const mockTurtle = {
+      id: 'M2',
+      primary_id: 'M2',
+      sheet_name: 'Kansas',
+      name: 'Type Only Turtle',
+      species: 'Painted',
+      sex: 'M',
+    };
+
+    await page.route('**/api/review-queue', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, items: [] }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await page.route('**/api/sheets/sheets', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, sheets: ['Kansas'] }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await page.route('**/api/sheets/turtles**', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, turtles: [mockTurtle] }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await page.route('**/api/turtles/images/primaries', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            images: [{ turtle_id: 'M2', sheet_name: 'Kansas', primary: null }],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await page.route('**/api/turtles/images/search-labels**', async (route) => {
+      const url = new URL(route.request().url());
+      const q = (url.searchParams.get('q') || '').toLowerCase();
+      const type = (url.searchParams.get('type') || '').toLowerCase();
+      if (!q && type === 'left-side') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            matches: [
+              {
+                turtle_id: 'M2',
+                sheet_name: 'Kansas',
+                path: 'Kansas/2024-06-02/e2e_left_side.jpg',
+                filename: 'e2e_left_side.jpg',
+                type: 'left-side',
+                labels: ['type-only'],
+              },
+            ],
+          }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ matches: [] }),
+        });
+      }
+    });
+
+    await loginAsAdmin(page);
+    await navClick(page, 'Turtle Records');
+    await page.getByRole('tab', { name: /Google Sheets Browser/ }).click();
+
+    await page.getByText('Photo tags', { exact: true }).click();
+    await page.getByRole('textbox', { name: /Photo category/i }).click();
+    await page.getByRole('option', { name: 'Left side' }).click();
+    await page.getByRole('button', { name: 'Search photos' }).click();
+
+    await expect(page.getByText(/1 photo match · 1 turtle/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Type Only Turtle')).toBeVisible();
+    await expect(page.getByText(/^left side$/i).first()).toBeVisible();
   });
 });
