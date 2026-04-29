@@ -1266,13 +1266,15 @@ class TurtleManager:
                 return True, None
         return False, "Image not found in manifest"
 
-    def search_additional_images_by_label(self, query):
+    def search_additional_images(self, query=None, photo_type=None):
         """
-        Scan all turtle additional_images manifests for entries whose labels match query (substring, case-insensitive).
-        Excludes Review_Queue. Returns list of dicts with turtle_id, sheet_name (folder path), path, filename, type, labels, timestamp.
+        Scan all turtle additional_images manifests for entries that match label query and/or image type.
+        Excludes Review_Queue. Returns list of dicts with turtle_id, sheet_name (folder path), path,
+        filename, type, labels, timestamp.
         """
         q = (query or '').strip()
-        if not q:
+        kind_filter = normalize_additional_type(photo_type) if photo_type else None
+        if not q and not kind_filter:
             return []
         matches = []
         skip_top = {'Review_Queue', 'benchmarks'}
@@ -1302,13 +1304,15 @@ class TurtleManager:
                     fn = entry.get('filename')
                     if not fn:
                         continue
+                    kind = normalize_additional_type(entry.get('type'))
+                    if kind_filter and kind != kind_filter:
+                        continue
                     labels = entry.get('labels')
-                    if not label_query_matches(labels, q):
+                    if q and not label_query_matches(labels, q):
                         continue
                     p = os.path.join(dir_path, fn)
                     if not os.path.isfile(p):
                         continue
-                    kind = normalize_additional_type(entry.get('type'))
                     matches.append({
                         'turtle_id': turtle_id,
                         'sheet_name': sheet_name.replace(os.sep, '/'),
@@ -1327,6 +1331,10 @@ class TurtleManager:
 
         matches.sort(key=lambda m: (m.get('sheet_name') or '', m.get('turtle_id') or '', m.get('filename') or ''))
         return matches
+
+    def search_additional_images_by_label(self, query):
+        """Backward-compatible wrapper for label-only search."""
+        return self.search_additional_images(query=query, photo_type=None)
 
     def remove_additional_image_from_turtle(self, turtle_id, filename, sheet_name=None):
         turtle_dir = self._get_turtle_folder(turtle_id, sheet_name)

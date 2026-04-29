@@ -540,7 +540,7 @@ test.describe('Admin Turtle Match', () => {
     await expect(page).toHaveURL('/');
   });
 
-  test('Match page shows Microhabitat / Condition photos section', async ({ page }) => {
+  test('Match page shows Additional photos section', async ({ page }) => {
     test.setTimeout(60_000);
     await loginAsAdmin(page);
 
@@ -559,10 +559,10 @@ test.describe('Admin Turtle Match', () => {
 
     // Wait for either outcome — avoids racing upload/match load on slow mobile WebKit.
     const noMatches = page.getByText('No matches found');
-    const microSection = page.getByText('Microhabitat / Condition photos');
-    await expect(noMatches.or(microSection)).toBeVisible({ timeout: 25_000 });
+    const additionalSection = page.getByText('Additional photos');
+    await expect(noMatches.or(additionalSection)).toBeVisible({ timeout: 25_000 });
     if (await noMatches.isVisible()) return;
-    await expect(microSection).toBeVisible({ timeout: 10_000 });
+    await expect(additionalSection).toBeVisible({ timeout: 10_000 });
   });
 
   test('Upload with extra microhabitat: image appears under From this upload, then can be removed', async ({
