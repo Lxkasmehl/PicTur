@@ -122,7 +122,10 @@ test.describe('Admin Turtle Records — Sheets browser photo tags', () => {
     await expect(page.getByText('Tag Search Turtle')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Open turtle' })).toBeVisible();
     await expect(page.getByText('burned', { exact: true })).toBeVisible();
-    await expect(page.getByText(/^right side$/i)).toBeVisible();
+    // Category Select also shows "Right side"; scope to the results ScrollArea below the summary line.
+    await expect(
+      page.getByText(/1 photo match · 1 turtle/i).locator('xpath=following-sibling::*[1]').getByText('Right side', { exact: true }),
+    ).toBeVisible();
   });
 
   test('Photo tags: type-only search works without text query', async ({ page }) => {
