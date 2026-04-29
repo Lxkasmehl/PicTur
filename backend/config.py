@@ -5,39 +5,43 @@ Configuration and environment setup for PicTur Flask API
 import os
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 import tempfile
 
 # Fix Unicode encoding issues on Windows
 if sys.platform == 'win32':
-    # Set stdout/stderr encoding to UTF-8 on Windows
     try:
         if hasattr(sys.stdout, 'reconfigure'):
             sys.stdout.reconfigure(encoding='utf-8')
         if hasattr(sys.stderr, 'reconfigure'):
             sys.stderr.reconfigure(encoding='utf-8')
     except (AttributeError, ValueError, OSError):
-        # If reconfigure fails, try to set encoding via environment
-        # This won't affect current process but helps with subprocesses
         pass
 
-# Load environment variables from .env file
-# Only load backend/.env and root .env - keep auth-backend completely separate
-env_paths = [
-    Path(__file__).parent / '.env',  # backend/.env (highest priority)
-    Path(__file__).parent.parent / '.env',  # root .env (for shared config like JWT_SECRET)
-]
+# Load project .env files. auth-backend is separate.
+#
+# With override=False, values already in the OS environment win over the file. Load root .env
+# first, then backend/.env with override=True so backend/.env overrides inherited/user JWT_SECRET
+# on Windows (common source of JWT mismatches with auth-backend).
+_root_env = Path(__file__).parent.parent / '.env'
+_backend_env = Path(__file__).parent / '.env'
 
-# Load .env files in priority order
 env_loaded = False
-for env_path in env_paths:
-    if env_path.exists():
-        load_dotenv(env_path, override=False)  # Don't override if already set
-        try:
-            print(f"✅ Loaded .env from: {env_path}")
-        except UnicodeEncodeError:
-            print(f"[OK] Loaded .env from: {env_path}")
-        env_loaded = True
+if _root_env.exists():
+    load_dotenv(_root_env, override=False)
+    try:
+        print(f"✅ Loaded .env from: {_root_env}")
+    except UnicodeEncodeError:
+        print(f"[OK] Loaded .env from: {_root_env}")
+    env_loaded = True
+if _backend_env.exists():
+    load_dotenv(_backend_env, override=True)
+    try:
+        print(f"✅ Loaded .env from: {_backend_env}")
+    except UnicodeEncodeError:
+        print(f"[OK] Loaded .env from: {_backend_env}")
+    env_loaded = True
 
 if not env_loaded:
     try:
@@ -55,17 +59,13 @@ if 'PORT' not in os.environ:
 
 # Configuration constants
 UPLOAD_FOLDER = tempfile.gettempdir()
-# heic/heif accepted here but normalized to JPEG by image_utils.normalize_to_jpeg
-# before any downstream code sees the file.
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif'}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 # JWT Configuration - must match auth-backend JWT_SECRET
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
 
-# Auth service URL (required for staff/admin routes). Staff/admin role checks call the auth
-# service to enforce demotion revocation (tokens_valid_after). If unset, privileged access
-# is denied (fail closed). E.g. http://localhost:3001/api
+# Auth service URL (required for staff/admin routes). E.g. http://localhost:3001/api
 AUTH_URL = os.environ.get('AUTH_URL', '').rstrip('/')
 
 if JWT_SECRET == 'your-secret-key-change-in-production':
@@ -73,6 +73,7 @@ if JWT_SECRET == 'your-secret-key-change-in-production':
         print("⚠️  WARNING: Using default JWT_SECRET. This should match auth-backend JWT_SECRET!")
     except UnicodeEncodeError:
         print("[WARN] WARNING: Using default JWT_SECRET. This should match auth-backend JWT_SECRET!")
+
 
 def allowed_file(filename):
     """Check if file extension is allowed"""

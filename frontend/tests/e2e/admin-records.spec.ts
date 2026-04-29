@@ -51,6 +51,7 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
     await expect(page.getByRole('tab', { name: /Review Queue/ })).toBeVisible();
 
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
+    await tabPanel.waitFor({ state: 'visible', timeout: 5_000 });
     await expect(
       tabPanel
         .getByText('No pending reviews')
@@ -58,7 +59,6 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
         .or(tabPanel.getByText(/Finding matches/i).first())
         .or(tabPanel.getByText(/Match search failed/i).first()),
     ).toBeVisible({ timeout: 15_000 });
-
     const hasItems =
       (await tabPanel.getByText(/\d+ matches/).count()) > 0 ||
       (await tabPanel.getByText(/Finding matches/i).count()) > 0 ||
@@ -73,7 +73,7 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
       await expect(page.getByRole('button', { name: /Back to list/ })).toBeVisible();
       await expect(page.getByText('Uploaded Photo')).toBeVisible();
     } else {
-      await expect(page.getByText('No pending reviews')).toBeVisible({ timeout: 10_000 });
+      await expect(tabPanel.getByText('No pending reviews')).toBeVisible({ timeout: 10_000 });
     }
   });
 

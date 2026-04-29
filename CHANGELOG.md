@@ -9,18 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **About & Contact in the footer**: Public **About** and **Contact** moved from the header to the footer; drawer breakpoint adjusted for staff/admin. **About** content refocused on Washburn turtle research. **Contact** removes placeholder phone/address; optional **`VITE_CONTACT_EMAIL`** mailto or external form; Mantine styling and Playwright footer test ids (`0966b41`).
+- **Contact form → lab inboxes**: **`POST /api/contact`** on the auth-backend sends one email to **`CONTACT_FORM_RECIPIENTS`** (comma/semicolon) via SMTP, **Reply-To** the visitor. **`VITE_CONTACT_EMAIL`** removed from the flow; Contact page calls the auth API only, with Washburn links as fallback. Docker / env docs updated (`556f553`).
+- **In-app feedback → GitHub**: **Feedback** page at **`/feedback`**, footer link, and **`POST /api/feedback`**. Creates **GitHub issues** via the REST API (no redirect). Optional **Projects (v2)** link and **Status** update via GraphQL. Labels from **`GITHUB_FEEDBACK_LABELS`** plus **`bug`** / **`enhancement`** / **`question`**. Documented in **`.env.docker.example`**.
 - **Additional turtle photo categories** shared across homepage upload (PreviewCard), Admin Sheets browser, Review Queue, and Admin Match: anterior, posterior, left/right side, people, injury, and existing types (carapace, plastron, microhabitat, condition, other). Filenames continue to encode the category (e.g. `right-side_…`).
 - **Drag-and-drop** onto each category button to stage additional photos (same UX pattern on homepage and admin additional-photo sections).
 - **Sheets browser — Photo tags**: optional **Photo category** filter; search supports **category only**, **tags only**, or **combined** tag + category. **`GET /api/turtles/images/search-labels`** accepts `q` and/or `type` (at least one required).
 
 ### Changed
 
+- **`EmailVerificationGuard`**: **`/feedback`** allowed before email verification, like About and Contact.
+- **`.gitignore`**: Ignore **`project-query.graphql`** for local GraphQL helpers.
 - **Legacy labels**: `head` / `tail` are no longer offered as buttons; stored values still normalize to **anterior** / **posterior** for backward compatibility.
 - **Review queue** additional-image uploads use the same normalized category set as turtle records.
 - **Admin token validation** (`backend/auth.py`): if **`AUTH_URL`** uses `localhost` and validation fails, retry once against **`127.0.0.1`** to avoid Windows/dev hostname resolution mismatches.
 
 ### Testing
 
+- **Playwright**: Public nav includes **Feedback** via the footer (`navigation.spec.ts`, `fixtures.ts`).
 - Backend integration tests for **`search-labels`** type-only and combined filters and for **`right-side`** on review packet additional-images.
 - Playwright: Sheets browser type-only search; homepage extended category buttons and drag-and-drop staging (mobile/WebKit skipped where event simulation is unreliable).
 
@@ -28,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI polish**: Inline **external-link** icons, clearer **Contact** CTA, automatic footer height (`311444d`).
 - **First-visit mobile tutorial viewport**: Fixed a mobile rendering issue where opening the instructions tutorial on a fresh device could initially render the app in desktop-like scale. Mobile media queries now resolve on initial render for home/tutorial flow, and tutorial scroll height uses dynamic viewport sizing for more stable phone layout.
 
 ### Changed

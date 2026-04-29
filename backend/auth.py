@@ -21,12 +21,12 @@ def verify_jwt_token(token):
     """
     if not token:
         return False, None, 'No token provided'
-    
+
     try:
-        # Remove 'Bearer ' prefix if present
         if token.startswith('Bearer '):
             token = token[7:]
-        
+        token = token.strip()
+
         decoded = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
         return True, decoded, None
     except jwt.ExpiredSignatureError:
@@ -43,11 +43,11 @@ def get_user_from_request():
     auth_header = request.headers.get('Authorization')
     if not auth_header:
         return False, None, 'Authorization header required'
-    
+
     success, payload, error = verify_jwt_token(auth_header)
     if not success:
         return False, None, error
-    
+
     return True, payload, None
 
 
@@ -118,8 +118,7 @@ def require_auth(f):
         success, user_data, error = get_user_from_request()
         if not success:
             return jsonify({'error': error or 'Authentication required'}), 401
-        
-        # Attach user data to request for use in route
+
         request.user = user_data
         return f(*args, **kwargs)
     return decorated_function
@@ -137,7 +136,6 @@ def optional_auth(f):
                 if success and user_data is not None:
                     request.user = user_data
             except Exception:
-                # Any token error: treat as anonymous
                 request.user = None
         return f(*args, **kwargs)
     return decorated_function
@@ -147,7 +145,6 @@ def require_admin(f):
     """Decorator to require staff or admin role (turtle records, release, sheets, review)."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Allow OPTIONS requests for CORS preflight
         if request.method == 'OPTIONS':
             return jsonify({}), 200
 
@@ -158,14 +155,12 @@ def require_admin(f):
         if user_data.get('role') not in ('staff', 'admin'):
             return jsonify({'error': 'Staff or admin access required'}), 403
 
-        # Enforce demotion revocation: auth service rejects tokens issued before tokens_valid_after
         auth_header = request.headers.get('Authorization')
         if auth_header:
             allowed, revoke_error = check_auth_revocation(auth_header)
             if not allowed:
                 return jsonify({'error': revoke_error or 'Token has been revoked'}), 403
 
-        # Attach user data to request for use in route
         request.user = user_data
         return f(*args, **kwargs)
     return decorated_function

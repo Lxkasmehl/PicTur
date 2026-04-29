@@ -144,8 +144,15 @@ test.describe('US date display (MM/DD/YYYY)', () => {
       timeout: 20_000,
     });
 
+    // Mobile Safari can report footer overlap while selecting list items near the viewport bottom.
+    // This test does not validate footer links, so disable footer hit-testing for stability.
+    await page.addStyleTag({
+      content: `.mantine-AppShell-footer { pointer-events: none !important; }`,
+    });
     await page.getByText('Community_Uploads/TestSheet').waitFor({ state: 'visible', timeout: 15_000 });
-    await page.getByText('T1').first().click();
+    const turtleMatch = page.getByText('T1').first();
+    await turtleMatch.scrollIntoViewIfNeeded();
+    await turtleMatch.click({ force: true });
 
     await expect(page.getByLabel('Date 1st found')).toHaveValue('03/15/2024', { timeout: 20_000 });
     await expect(page.getByLabel('Last Assay Date')).toHaveValue('12/25/2020');
