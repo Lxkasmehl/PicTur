@@ -53,7 +53,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Carapace additional images routed to `additional_images/` by mistake**: The approve-packet merge block was copying carapace entries into the turtle's `additional_images/` folder alongside microhabitat/condition photos. Now the merge block skips type `carapace` / `plastron` entries; the subsequent reference-processing block routes the first carapace to the reference (or replaces it with `replace_carapace_reference=True`) and any 2nd+ carapaces to `carapace/Other Carapaces/`. Same fix applied to `plastron`.
 - **Superseded replacement candidates were lost**: When multiple plastron (or carapace) replace-reference uploads were staged on the Sheets Browser and committed, only the last one became the new reference and the earlier ones used to silently disappear. They now route to `Other Plastrons` / `Other Carapaces` with a warning chip on the staged preview so nothing is lost.
 - **`add_additional_images_to_turtle` routed everything to `additional_images/`**: Now types `plastron` / `carapace` are redirected to `plastron/Other Plastrons/` or `carapace/Other Carapaces/`. Only microhabitat/condition/additional/other still land in the date-stamped `additional_images/` tree.
-- **First-visit mobile tutorial viewport**: Fixed a mobile rendering issue where opening the instructions tutorial on a fresh device could initially render the app in desktop-like scale. Mobile media queries now resolve on initial render for home/tutorial flow, and tutorial scroll height uses dynamic viewport sizing for more stable phone layout.
 - **Sheets Browser turtle showed empty Old Photos viewer + "No identifier image yet"**: When a turtle's biology id was assigned/changed in the sheet after the on-disk folder was created (rename chronodrop hook still pending), the lookup walked by the new id and missed the folder named after the original Primary ID. Backend lookups now retry with `primary_id` as a fallback (see Changed → image endpoints).
 - **Frontend `tsc` build broken by post-merge `SheetsBrowserTab` rename**: Several callsites still referenced the pre-merge `turtleId` / `sheetName` locals after `main` introduced `diskTurtleId` / `dataPathHint`; production build failed. All callsites updated and the dead `groupAdditionalByDateFolder` helper plus its now-orphaned imports (`TurtleImageAdditional`, `formatSingleDateTokenToUs`) removed.
 - **Misleading docstring/README claims that backend startup extracts missing `.pt` files**: `refresh_database_index()` (in `turtle_manager.py`) only INDEXES existing `.pt` files — collects them into `db_index` and pushes both VRAM caches. It does NOT generate them from images. Pre-fix, `ingest_rebuild_folder.py`'s top docstring and `backend/README.md`'s "Suggested order" both told operators that a backend restart would fill in missing tensors after ingest, leading to silently unmatched turtles. Documentation corrected; actual extraction now runs inline during ingest (see Added). The `turtle_manager.py:485` docstring still references the legacy `ref_data/` scan and will be cleaned up alongside the broader ref_data fallback removal once production has been migrated.
@@ -71,6 +70,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **E2E assertion alignment after the `main` merge**: `admin-records.spec.ts:96/185` and `admin-match.spec.ts:562` updated for the renamed section heading (`"Microhabitat / Condition photos"` → `"Additional Photos"`/`"Additional Turtle Photos"`); strict-mode fixed with `{ exact: true }` so the heading does not collide with the empty-state copy. `admin-records.spec.ts:52` (Webkit/Mobile Safari flake) hardened with the same `Promise.race` settle-wait used by test 75 so the count check no longer races the queue panel's fetch. `admin-match.spec.ts:636-639` switched from `getByRole('button', …)` to `getByText` to match Mantine `<Button component="label">` which renders as `<label>`, not `<button>`.
 
 ---
+
+## [1.2.19] - 2026-04-27 — Mobile tutorial viewport + Specific Property label and Location reminder
+
+### Fixed
+
+- **First-visit mobile tutorial viewport**: Fixed a mobile rendering issue where opening the instructions tutorial on a fresh device could initially render the app in desktop-like scale. Mobile media queries now resolve on initial render for home/tutorial flow, and tutorial scroll height uses dynamic viewport sizing for more stable phone layout.
+
+### Changed
+
+- Renamed the Google Sheets column label **Specific Location** to **Specific Property** across the WebApp form and backend sheet column mapping.
+- Added reminder text to the **Location** field (Column S) in the WebApp form: enter who first found the turtle.
+- Updated the related sheet-column mapping test to validate **Specific Property** ordering before **General Location**.
 
 ## [1.2.18] - 2026-04-24 — Review approve research/community sync guard + match-form General Location unlock
 
@@ -373,7 +384,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.18...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.19...HEAD
+[1.2.19]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.19
 [1.2.18]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.18
 [1.2.17]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.17
 [1.2.16]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.16
