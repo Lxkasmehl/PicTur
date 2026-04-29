@@ -96,9 +96,17 @@ def register_turtle_routes(app):
 
         manager = manager_service.manager
         location_hint = sheet_name
-        turtle_dir = manager._get_turtle_folder(turtle_id, location_hint)
-        if (not turtle_dir or not os.path.isdir(turtle_dir)) and primary_id_fallback and primary_id_fallback != turtle_id:
+        # Look up by primary_id FIRST when available — primary IDs are globally
+        # unique, while biology IDs (F003, M201, …) are reused across US state
+        # sheets. Trying the primary first avoids cross-state collisions where
+        # a bare-bio_id walk could land on the wrong turtle. Falls through to
+        # the bio_id (sent as turtle_id by the frontend) when no primary is
+        # known or when the primary lookup misses.
+        turtle_dir = None
+        if primary_id_fallback:
             turtle_dir = manager._get_turtle_folder(primary_id_fallback, location_hint)
+        if (not turtle_dir or not os.path.isdir(turtle_dir)) and turtle_id and turtle_id != primary_id_fallback:
+            turtle_dir = manager._get_turtle_folder(turtle_id, location_hint)
         if not turtle_dir or not os.path.isdir(turtle_dir):
             return jsonify({
                 'primary': None,
@@ -354,9 +362,13 @@ def register_turtle_routes(app):
             if not tid:
                 results.append({'turtle_id': tid, 'sheet_name': sheet, 'primary': None})
                 continue
-            turtle_dir = manager._get_turtle_folder(tid, sheet)
-            if (not turtle_dir or not os.path.isdir(turtle_dir)) and pid and pid != tid:
+            # Same primary-first lookup order as the single-image endpoint:
+            # globally-unique primary_id avoids cross-state bio_id collisions.
+            turtle_dir = None
+            if pid:
                 turtle_dir = manager._get_turtle_folder(pid, sheet)
+            if (not turtle_dir or not os.path.isdir(turtle_dir)) and tid and tid != pid:
+                turtle_dir = manager._get_turtle_folder(tid, sheet)
             primary_path = None
             if turtle_dir and os.path.isdir(turtle_dir):
                 for ref_folder in ('plastron', 'ref_data'):

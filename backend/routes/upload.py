@@ -260,9 +260,14 @@ def register_upload_routes(app):
                         else 'Photo processed successfully. No matches found. You can create a new turtle.'
                     )
 
-                    # Save metadata with photo_type so review queue can display it
+                    # Save metadata with photo_type so review queue can display it.
+                    # Persist match_sheet too so a later carapace cross-check on this
+                    # packet uses the same location scope the admin chose at upload.
+                    packet_metadata = {'photo_type': 'plastron'}
+                    if match_sheet:
+                        packet_metadata['match_sheet'] = match_sheet
                     with open(os.path.join(packet_dir, 'metadata.json'), 'w') as mf:
-                        json.dump({'photo_type': 'plastron'}, mf)
+                        json.dump(packet_metadata, mf)
 
                     return jsonify({
                         'success': True,

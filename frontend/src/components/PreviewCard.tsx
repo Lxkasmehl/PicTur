@@ -182,40 +182,42 @@ export function PreviewCard({
                   upload with your main photo.
                 </Text>
                 <Group gap='xs' mb='sm'>
-                  <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
-                    Carapace
-                    <input
-                      type='file'
-                      accept='image/*'
-                      multiple
-                      hidden
-                      onChange={(e) => {
-                        const list = e.target.files;
-                        if (!list?.length) return;
-                        const valid: UploadExtraFile[] = [];
-                        for (let i = 0; i < list.length; i++) {
-                          const file = list[i];
-                          const validation = validateFile(file);
-                          if (validation.isValid) {
-                            valid.push({
-                              type: 'carapace',
-                              file,
-                              labels: [],
-                              localId: crypto.randomUUID(),
-                            });
-                          } else if (validation.error) {
-                            notifications.show({
-                              title: 'Invalid file',
-                              message: validation.error,
-                              color: 'red',
-                            });
+                  {(role === 'admin' || role === 'staff') && (
+                    <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
+                      Carapace
+                      <input
+                        type='file'
+                        accept='image/*'
+                        multiple
+                        hidden
+                        onChange={(e) => {
+                          const list = e.target.files;
+                          if (!list?.length) return;
+                          const valid: UploadExtraFile[] = [];
+                          for (let i = 0; i < list.length; i++) {
+                            const file = list[i];
+                            const validation = validateFile(file);
+                            if (validation.isValid) {
+                              valid.push({
+                                type: 'carapace',
+                                file,
+                                labels: [],
+                                localId: crypto.randomUUID(),
+                              });
+                            } else if (validation.error) {
+                              notifications.show({
+                                title: 'Invalid file',
+                                message: validation.error,
+                                color: 'red',
+                              });
+                            }
                           }
-                        }
-                        if (valid.length) setExtraFiles((prev) => [...prev, ...valid]);
-                        e.target.value = '';
-                      }}
-                    />
-                  </Button>
+                          if (valid.length) setExtraFiles((prev) => [...prev, ...valid]);
+                          e.target.value = '';
+                        }}
+                      />
+                    </Button>
+                  )}
                   <Button size='sm' variant='light' leftSection={<IconPhotoPlus size={14} />} component='label'>
                     Microhabitat
                     <input

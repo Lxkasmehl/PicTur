@@ -307,8 +307,35 @@ def register_review_routes(app):
         if not query_image:
             return jsonify({'error': 'No image found for cross-check'}), 400
 
+        # Re-use the location scope the admin chose at upload time so the cross-check
+        # searches the same set of turtles as the original plastron match instead of
+        # the entire VRAM cache. Falls back to no filter for legacy packets that
+        # predate persisting match_sheet in metadata.json.
+        location_filter = None
+        metadata_path = os.path.join(packet_dir, 'metadata.json')
+        if os.path.isfile(metadata_path):
+            try:
+                with open(metadata_path, 'r') as mf:
+                    packet_metadata = json.load(mf)
+                location_filter = (packet_metadata.get('match_sheet') or '').strip() or None
+            except (json.JSONDecodeError, OSError):
+                pass
+
         try:
-            results, elapsed = manager_service.manager.search_for_matches(query_image, photo_type=photo_type)
+            # Cross-check disables the "expand to all locations when < 5 matches"
+            # fallback that the regular match flow uses. Cross-check is diagnostic
+            # — if the carapace finds nothing in the plastron's scope, that's the
+            # answer (plastron and carapace disagree on location). Padding the
+            # result list with distant turtles would mislead the admin, and
+            # running the full-cache fallback against ~700+ candidates was the
+            # source of the minute-long cross-check turnaround when a small
+            # location had few above-threshold carapaces.
+            results, elapsed = manager_service.manager.search_for_matches(
+                query_image,
+                location_filter=location_filter,
+                photo_type=photo_type,
+                expand_to_all_when_short=False,
+            )
         except Exception as e:
             return jsonify({'error': f'Cross-check failed: {str(e)}'}), 500
 

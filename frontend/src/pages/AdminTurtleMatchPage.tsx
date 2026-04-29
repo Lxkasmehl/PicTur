@@ -231,7 +231,9 @@ export default function AdminTurtleMatchPage() {
       return;
     }
     setSelectedMatch(turtleId);
-    setCrossCheckResults(null);
+    // Keep crossCheckResults intact: they describe the candidate set, not the
+    // currently-selected match, so they should still be visible when the user
+    // hits "Back to matches" and lands on the grid again.
     setReplaceReference(false);
     setReplaceCarapaceReference(false);
     setSheetsData(null);
@@ -510,7 +512,15 @@ export default function AdminTurtleMatchPage() {
         }
       }
 
-      const turtleIdForReview = finalPrimaryId || `T${Date.now()}`;
+      // Folder naming convention is `{bio_id}_{primary_id}` (e.g. F003_T1771234567)
+      // — keeps biology-id lookups working immediately without waiting for the
+      // nightly chronodrop rename. Falls back to primary_id-only when the admin
+      // hasn't filled in a biology id yet (chronodrop will rename later when
+      // the row finally has both).
+      const bioIdForFolder = (effectiveSheetsData?.id || '').trim();
+      const turtleIdForReview = bioIdForFolder && finalPrimaryId
+        ? `${bioIdForFolder}_${finalPrimaryId}`
+        : (finalPrimaryId || `T${Date.now()}`);
       const isAdminUpload = imageId.startsWith('admin_');
 
       // Admin upload + new turtle: create row in research (admin) spreadsheet first; backend does not sync to community.
@@ -1071,12 +1081,13 @@ export default function AdminTurtleMatchPage() {
                 </Paper>
               )}
 
-              {/* Matches — side-by-side when cross-check results exist */}
+              {/* Matches — side-by-side when cross-check results exist.
+                  Column-specific headers (title + description) live INSIDE each
+                  Grid.Col so the plastron and carapace card grids start at the
+                  same vertical offset. The Create-New-Turtle button stays at
+                  the top of the Paper as a section-wide affordance. */}
               <Paper shadow='sm' p='md' radius='md' withBorder>
-                <Group justify='space-between' mb='md'>
-                  <Text fw={500} size='lg'>
-                    {crossCheckResults && crossCheckResults.length > 0 ? 'Plastron Matches' : 'Top 5 Matches'}
-                  </Text>
+                <Group justify='flex-end' mb='md'>
                   <Button
                     variant='light'
                     leftSection={<IconPlus size={16} />}
@@ -1086,12 +1097,16 @@ export default function AdminTurtleMatchPage() {
                   </Button>
                 </Group>
 
-                <Text size='sm' c='dimmed' mb='md'>
-                  Select a match to view details
-                </Text>
-
                 <Grid gutter='lg'>
                   <Grid.Col span={crossCheckResults && crossCheckResults.length > 0 ? { base: 12, md: 6 } : 12}>
+                    <Group gap='xs' mb='md'>
+                      <Text fw={500} size='lg'>
+                        {crossCheckResults && crossCheckResults.length > 0 ? 'Plastron Matches' : 'Top 5 Matches'}
+                      </Text>
+                    </Group>
+                    <Text size='sm' c='dimmed' mb='md'>
+                      Select a match to view details
+                    </Text>
                     {/* Plastron match cards */}
                     <SimpleGrid
                       cols={crossCheckResults && crossCheckResults.length > 0 ? { base: 1, xs: 2 } : { base: 1, xs: 2, md: 3, lg: 5 }}

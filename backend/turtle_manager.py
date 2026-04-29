@@ -177,6 +177,34 @@ def _is_turtle_data_folder(path):
         return False
 
 
+def _basename_matches_turtle_id(basename, tid):
+    """Whether a folder basename refers to the turtle identified by ``tid``.
+
+    A turtle's on-disk folder may currently be named in three shapes:
+      - bio_id only          — e.g. ``F003`` (pre-rename, fresh sheet row)
+      - primary_id only      — e.g. ``T1771234567`` (legacy admin-created folder)
+      - combined             — e.g. ``F003_T1771234567`` (canonical, written by
+                                ``backfill_folder_names.py`` and the create-new-
+                                turtle flow once the admin has both IDs)
+
+    Lookups happen by either the bio_id or the primary_id. The combined form has
+    one ID as a prefix and the other as a suffix joined by ``_``, so a single
+    ``tid`` query can match the folder via exact, prefix-with-underscore, or
+    suffix-with-underscore equality. Bio_id (``F003``) and primary_id
+    (``T1234567890``) shapes don't include underscores, so this match is
+    unambiguous in practice.
+    """
+    if not basename or not tid:
+        return False
+    if basename == tid:
+        return True
+    if basename.startswith(tid + "_"):
+        return True
+    if basename.endswith("_" + tid):
+        return True
+    return False
+
+
 # Characters invalid in folder names (Windows + common Unix); replaced with _ when syncing sheet names to disk
 _FOLDER_NAME_INVALID = r'\/:*?"<>|'
 
@@ -1916,7 +1944,7 @@ class TurtleManager:
 
         try:
             for root, dirs, files in os.walk(self.base_dir):
-                if os.path.basename(root) == tid:
+                if _basename_matches_turtle_id(os.path.basename(root), tid):
                     add_candidate(root)
         except OSError:
             pass
@@ -1969,21 +1997,40 @@ class TurtleManager:
         return False
 
     def _find_turtle_under_single_state_segment(self, state_segment, tid):
-        """``data/<State>/<tid>`` (flat) or ``data/<State>/<Site>/<tid>`` (nested)."""
+        """``data/<State>/<tid>`` (flat) or ``data/<State>/<Site>/<tid>`` (nested).
+
+        Recognizes bio-id-only, primary-id-only, and combined ``{bio_id}_{primary_id}``
+        folder names via ``_basename_matches_turtle_id`` so a sheet lookup with
+        either ID resolves to the same folder.
+        """
         state_path = _resolved_path_under_base(self.base_dir, state_segment)
         if not state_path or not os.path.isdir(state_path):
             return None
-        direct = os.path.join(state_path, tid)
-        if _is_turtle_data_folder(direct):
-            return direct
+        # Flat layout: data/<State>/<turtle>
+        try:
+            for entry in sorted(os.listdir(state_path)):
+                cand = os.path.join(state_path, entry)
+                if (os.path.isdir(cand)
+                        and _basename_matches_turtle_id(entry, tid)
+                        and _is_turtle_data_folder(cand)):
+                    return cand
+        except OSError:
+            pass
+        # Nested layout: data/<State>/<Site>/<turtle>
         try:
             for child in sorted(os.listdir(state_path)):
                 site = os.path.join(state_path, child)
                 if not os.path.isdir(site):
                     continue
-                nested = os.path.join(site, tid)
-                if _is_turtle_data_folder(nested):
-                    return nested
+                try:
+                    for entry in sorted(os.listdir(site)):
+                        cand = os.path.join(site, entry)
+                        if (os.path.isdir(cand)
+                                and _basename_matches_turtle_id(entry, tid)
+                                and _is_turtle_data_folder(cand)):
+                            return cand
+                except OSError:
+                    continue
         except OSError:
             pass
         return None
@@ -2015,7 +2062,7 @@ class TurtleManager:
                 if nested:
                     return nested
             for root, dirs, files in os.walk(self.base_dir):
-                if os.path.basename(root) == tid:
+                if _basename_matches_turtle_id(os.path.basename(root), tid):
                     return root
             if len(rel_parts) == 1:
                 state_only = _resolved_path_under_base(self.base_dir, rel_parts[0])
@@ -2192,11 +2239,18 @@ class TurtleManager:
                 if try_delete(date_dir): return True, None
         return False, "Image not found"
 
-    def search_for_matches(self, query_image_path, location_filter=None, photo_type="plastron"):
+    def search_for_matches(self, query_image_path, location_filter=None, photo_type="plastron",
+                           expand_to_all_when_short=True):
         """VRAM cached SuperPoint/LightGlue search with multi-location scope.
 
         Args:
             photo_type: 'plastron' (default) or 'carapace' — selects which VRAM cache to search.
+            expand_to_all_when_short: if True (default) and the location-scoped search returns
+                fewer than 5 matches, re-runs against ALL locations to fill the top-5 with
+                out-of-scope candidates. The diagnostic cross-check route disables this so
+                a "no in-scope match" answer stays honest instead of leaking distant turtles
+                into the result list — which also avoids the expensive full-cache pass when
+                a small location has few above-threshold matches.
         """
         t_start = time.time()
         filename = os.path.basename(query_image_path)
@@ -2225,7 +2279,9 @@ class TurtleManager:
         # Fallback: if the location-scoped search found fewer than 5 results,
         # re-run against the entire dataset so the admin always gets candidates.
         # Reuses the already-extracted query features (no duplicate SuperPoint cost).
-        if loc_filter and len(results) < 5:
+        # Skipped when expand_to_all_when_short=False (cross-check route) so the
+        # diagnostic answer stays scoped to what the admin asked.
+        if expand_to_all_when_short and loc_filter and len(results) < 5:
             print(f"📢 Only {len(results)} match(es) in scope — expanding to all locations...")
             results = brain.match_against_cache(query_feats, None, photo_type=photo_type)
 
