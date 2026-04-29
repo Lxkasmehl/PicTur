@@ -31,6 +31,17 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+      # Default ubuntu-latest root FS is tight; CUDA base + PyTorch + export/load can exceed it.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
       - uses: docker/setup-buildx-action@v3
       - name: Build backend Dockerfile.cuda (same as GPU deploy)
         uses: docker/build-push-action@v6

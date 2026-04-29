@@ -40,6 +40,8 @@ function validateBody(body: unknown): {
   description: string;
   contactEmail: string | null;
   contactName: string | null;
+  /** When signed in, whether to put the account email on the GitHub issue body (public if repo is public). */
+  includeAccountEmailInIssue: boolean;
 } | null {
   if (!body || typeof body !== 'object') return null;
   const o = body as Record<string, unknown>;
@@ -50,6 +52,12 @@ function validateBody(body: unknown): {
   const description = typeof o.description === 'string' ? o.description.trim() : '';
   if (title.length < 3 || title.length > TITLE_MAX) return null;
   if (description.length < 10 || description.length > DESCRIPTION_MAX) return null;
+
+  let includeAccountEmailInIssue = false;
+  if (o.includeAccountEmailInIssue !== undefined) {
+    if (typeof o.includeAccountEmailInIssue !== 'boolean') return null;
+    includeAccountEmailInIssue = o.includeAccountEmailInIssue;
+  }
 
   let contactEmail: string | null = null;
   if (o.contactEmail !== undefined && o.contactEmail !== null && o.contactEmail !== '') {
@@ -66,7 +74,14 @@ function validateBody(body: unknown): {
     contactName = cn;
   }
 
-  return { category: category as Category, title, description, contactEmail, contactName };
+  return {
+    category: category as Category,
+    title,
+    description,
+    contactEmail,
+    contactName,
+    includeAccountEmailInIssue,
+  };
 }
 
 function categoryLabel(c: Category): string {
@@ -106,7 +121,9 @@ function buildIssueBody(params: {
     lines.push('### Submitter (signed-in PicTur account)', '');
     if (params.contactName) lines.push(`- **Name:** ${params.contactName}`);
     if (params.contactEmail) lines.push(`- **Email:** ${params.contactEmail}`);
-    if (!params.contactName && !params.contactEmail) lines.push('_(no name or email on file)_');
+    if (!params.contactName && !params.contactEmail) {
+      lines.push('_(no display name on account; account email not included in this ticket)_');
+    }
     lines.push('');
   } else if (params.contactName || params.contactEmail) {
     lines.push('### Contact (optional)', '');
@@ -157,7 +174,7 @@ router.post('/feedback', optionalAuthenticateToken, async (req: Request, res: Re
     if (!row) {
       return res.status(403).json({ error: 'Account not found.' });
     }
-    contactEmail = row.email;
+    contactEmail = parsed.includeAccountEmailInIssue ? row.email : null;
     const trimmedName = typeof row.name === 'string' ? row.name.trim() : '';
     contactName = trimmedName.length > 0 ? trimmedName : null;
     submitterSource = 'account';

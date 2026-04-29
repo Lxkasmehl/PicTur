@@ -8,6 +8,8 @@ export interface SubmitFeedbackInput {
   description: string;
   contactEmail?: string;
   contactName?: string;
+  /** Signed-in only: if true, server puts account email on the issue body (visible wherever the tracker is visible). */
+  includeAccountEmailInIssue?: boolean;
 }
 
 export type SubmitFeedbackResult =

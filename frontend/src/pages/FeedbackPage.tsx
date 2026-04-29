@@ -10,6 +10,7 @@ import {
   Group,
   Alert,
   Select,
+  Checkbox,
 } from '@mantine/core';
 import { IconBug, IconBulb, IconMessageCircle, IconSend, IconInfoCircle } from '@tabler/icons-react';
 import { useState } from 'react';
@@ -30,6 +31,7 @@ export default function FeedbackPage() {
   const [description, setDescription] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
+  const [includeAccountEmailInIssue, setIncludeAccountEmailInIssue] = useState(false);
   const [sending, setSending] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -46,13 +48,14 @@ export default function FeedbackPage() {
               ...(contactName.trim() ? { contactName: contactName.trim() } : {}),
               ...(contactEmail.trim() ? { contactEmail: contactEmail.trim() } : {}),
             }
-          : {}),
+          : { includeAccountEmailInIssue }),
       });
       if (result.ok) {
         setTitle('');
         setDescription('');
         setContactName('');
         setContactEmail('');
+        setIncludeAccountEmailInIssue(false);
         notifications.show({
           title: 'Thanks for the report',
           message: result.projectAdded
@@ -116,8 +119,9 @@ export default function FeedbackPage() {
 
           {isLoggedIn ? (
             <Alert variant='light' color='gray' icon={<IconInfoCircle size={18} />}>
-              You are signed in. Your PicTur account name and email address are attached to this
-              report automatically so maintainers can reach you if needed.
+              You are signed in. Your display name from PicTur can appear on the development ticket.
+              Your account email is only added if you opt in below (issue trackers may be visible to
+              teammates or the public).
             </Alert>
           ) : null}
 
@@ -188,6 +192,15 @@ export default function FeedbackPage() {
                     disabled={sending}
                   />
                 </>
+              ) : null}
+              {isLoggedIn ? (
+                <Checkbox
+                  label='Include my account email on the development ticket'
+                  description='Optional. Only check this if you are OK with maintainers seeing your sign-in email wherever the ticket is stored (for example a GitHub issue).'
+                  checked={includeAccountEmailInIssue}
+                  onChange={(e) => setIncludeAccountEmailInIssue(e.currentTarget.checked)}
+                  disabled={sending}
+                />
               ) : null}
               <Group wrap='wrap' gap='sm' align='center'>
                 <Button type='submit' leftSection={<IconSend size={18} />} loading={sending}>
