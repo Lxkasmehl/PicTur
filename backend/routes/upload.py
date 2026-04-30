@@ -266,6 +266,27 @@ def register_upload_routes(app):
                     packet_metadata = {'photo_type': 'plastron'}
                     if match_sheet:
                         packet_metadata['match_sheet'] = match_sheet
+                    # Persist the same flag / find-metadata fields the community
+                    # path saves so admin uploads can carry them through approval
+                    # the same way. The form extracts these above into local
+                    # variables but pre-fix nothing wrote them — so any digital
+                    # flag / physical_flag / collected_to_lab an admin set at
+                    # upload time silently disappeared and the Release page
+                    # showed nothing after approval.
+                    if location_hint_lat is not None and location_hint_lon is not None:
+                        packet_metadata['location_hint_lat'] = location_hint_lat
+                        packet_metadata['location_hint_lon'] = location_hint_lon
+                        if location_hint_source in ('gps', 'manual'):
+                            packet_metadata['location_hint_source'] = location_hint_source
+                    if collected_to_lab in ('yes', 'no'):
+                        packet_metadata['collected_to_lab'] = collected_to_lab
+                    if physical_flag in ('yes', 'no', 'no_flag'):
+                        packet_metadata['physical_flag'] = physical_flag
+                    if digital_flag_lat is not None and digital_flag_lon is not None:
+                        packet_metadata['digital_flag_lat'] = digital_flag_lat
+                        packet_metadata['digital_flag_lon'] = digital_flag_lon
+                        if digital_flag_source in ('gps', 'manual'):
+                            packet_metadata['digital_flag_source'] = digital_flag_source
                     with open(os.path.join(packet_dir, 'metadata.json'), 'w') as mf:
                         json.dump(packet_metadata, mf)
 

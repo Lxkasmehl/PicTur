@@ -1841,7 +1841,15 @@ class TurtleManager:
             # folder is in canonical combined form (F004_T1771234567) but the
             # caller passed bare bio_id (F004) — produces parallel pairs.
             target_ref_stem = os.path.basename(target_dir)
-            if find_metadata is not None and isinstance(find_metadata, dict):
+            # Carry flag / find data forward from the packet's metadata.json
+            # whenever the caller didn't supply find_metadata explicitly.
+            # Without this fallback the frontend's standard approve calls
+            # (which don't include find_metadata in the body) silently drop
+            # the digital_flag / physical_flag / collected_to_lab values the
+            # user entered at upload time, and the Release page stays empty.
+            if not (isinstance(find_metadata, dict) and find_metadata):
+                find_metadata = self._extract_find_metadata_from_packet(packet_dir)
+            if isinstance(find_metadata, dict) and find_metadata:
                 meta_path = os.path.join(target_dir, 'find_metadata.json')
                 with open(meta_path, 'w') as f:
                     json.dump(find_metadata, f)
@@ -2873,6 +2881,51 @@ class TurtleManager:
                 if try_delete(date_dir): return True, None
         return False, "Image not found"
 
+    def _extract_find_metadata_from_packet(self, packet_dir):
+        """Pull flag / find fields out of a review packet's ``metadata.json``.
+
+        Used as a fallback in approval when the caller didn't supply
+        ``find_metadata`` explicitly: the community/admin upload form already
+        wrote the flag, physical_flag, and collected_to_lab values into the
+        packet metadata at upload time, and historically the approval flow
+        only forwarded those into ``find_metadata.json`` when the frontend
+        sent them back in the approve request body. The two production
+        approval call sites (``handleSaveAndApprove`` and
+        ``handleConfirmNewTurtle`` in ``useAdminTurtleRecords.tsx``) don't
+        pass them, so the data was silently dropped on every approval and
+        the Release page never had anything to show.
+
+        Returns a dict suitable for writing to ``find_metadata.json``, or
+        ``None`` when no relevant fields are set on the packet.
+        """
+        if not packet_dir or not os.path.isdir(packet_dir):
+            return None
+        meta_path = os.path.join(packet_dir, 'metadata.json')
+        if not os.path.isfile(meta_path):
+            return None
+        try:
+            with open(meta_path, 'r') as f:
+                packet_meta = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return None
+        if not isinstance(packet_meta, dict):
+            return None
+        fields = (
+            'collected_to_lab',
+            'physical_flag',
+            'digital_flag_lat',
+            'digital_flag_lon',
+            'digital_flag_source',
+            'microhabitat_uploaded',
+            'other_angles_uploaded',
+        )
+        out = {}
+        for k in fields:
+            v = packet_meta.get(k)
+            if v not in (None, ''):
+                out[k] = v
+        return out if out else None
+
     def _add_turtle_flag_if_present(self, results, turtle_path, turtle_id, location_label):
         """If turtle_path has find_metadata.json, append to results (skip if already released)."""
         meta_path = os.path.join(turtle_path, 'find_metadata.json')
@@ -2912,13 +2965,22 @@ class TurtleManager:
         return True, None
 
     def get_turtles_with_flags(self):
-        """Scan data dir for turtles that have find_metadata.json."""
+        """Scan data dir for turtles that have find_metadata.json.
+
+        Excludes only the Review_Queue staging area (those packets are
+        pre-approval and shouldn't surface on the Release page).
+        Community_Uploads IS scanned: when an admin approves a community
+        upload as a brand-new turtle and the approve flow keeps it under
+        ``Community_Uploads/<sheet>/<turtle_id>/``, that turtle's
+        find_metadata.json must still be discoverable so the field team
+        can act on the digital flag.
+        """
         results = []
         for state in sorted(os.listdir(self.base_dir)):
             state_path = os.path.join(self.base_dir, state)
             if not os.path.isdir(state_path) or state.startswith('.'):
                 continue
-            if state in ["Review_Queue", "Community_Uploads"]:
+            if state == "Review_Queue":
                 continue
             for name in sorted(os.listdir(state_path)):
                 sub_path = os.path.join(state_path, name)

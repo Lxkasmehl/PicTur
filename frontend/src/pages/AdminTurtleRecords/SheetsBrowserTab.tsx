@@ -1118,6 +1118,7 @@ export function SheetsBrowserTab() {
                 }))}
                 turtleId={diskTurtleId}
                 sheetName={dataPathHint}
+                primaryId={selectedPrimaryId}
                 onStagePhoto={handleStagePhoto}
                 disabled={committing}
                 onDelete={handleScratchpadDelete}

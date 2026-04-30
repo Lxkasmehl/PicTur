@@ -78,6 +78,12 @@ interface AdditionalImagesSectionProps {
   requestId?: string;
   turtleId?: string;
   sheetName?: string | null;
+  /** Globally-unique primary id used as the FIRST folder-lookup key on the
+   *  backend. Required for cross-state biology-id collisions and for cases
+   *  where the on-disk folder name doesn't match the sheet's current bio_id
+   *  (stray folders / not-yet-renamed combined names). When omitted, only
+   *  the bio-id walk is attempted, which can mis-resolve or fail. */
+  primaryId?: string | null;
   disabled?: boolean;
   embedded?: boolean;
   hideAddButtons?: boolean;
@@ -173,6 +179,7 @@ export function AdditionalImagesSection({
   requestId,
   turtleId,
   sheetName = null,
+  primaryId = null,
   disabled = false,
   embedded = false,
   hideAddButtons = false,
@@ -343,7 +350,7 @@ export function AdditionalImagesSection({
       if (requestId) {
         await uploadReviewPacketAdditionalImages(requestId, payload);
       } else if (turtleId) {
-        await uploadTurtleAdditionalImages(turtleId, payload, sheetName);
+        await uploadTurtleAdditionalImages(turtleId, payload, sheetName, primaryId);
       } else {
         return;
       }
@@ -376,7 +383,7 @@ export function AdditionalImagesSection({
       // legacy loose_images, AND additional_images). Replaces an earlier
       // additional-only call that 400'd for plastron/carapace photos in the
       // scratchpad.
-      await setTurtleImageLabels(turtleId, img.imagePath, tags, sheetName);
+      await setTurtleImageLabels(turtleId, img.imagePath, tags, sheetName, primaryId);
       await onRefresh();
       notifications.show({ title: 'Saved', message: 'Tags updated', color: 'green' });
     } catch (e) {
