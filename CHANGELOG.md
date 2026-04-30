@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.21] - 2026-04-29 — Image previews, Flask HTTP errors, proxy routing docs
+
 ### Added
 
 - **`GET /api/images`**: Optional **`max_dim`** query parameter (32–2048, longest edge in pixels) returns a server-generated JPEG preview when the original is larger; transparent/palette images flattened to RGB; HEIF/HEIC supported via existing Pillow registration.
@@ -357,7 +359,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.20...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.21...HEAD
+[1.2.21]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.21
 [1.2.20]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.20
 [1.2.19]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.19
 [1.2.18]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.18
