@@ -18,7 +18,7 @@ import {
   IconZoomIn,
   IconUpload,
 } from '@tabler/icons-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { getImageUrl } from '../services/api';
 import { validateFile } from '../utils/fileValidation';
 import {
@@ -29,29 +29,22 @@ import {
   setTurtleImageLabels,
 } from '../services/api';
 import { notifications } from '@mantine/notifications';
+import {
+  ADDITIONAL_PHOTO_KIND_OPTIONS,
+  additionalPhotoKindLabel,
+  normalizeAdditionalPhotoKind,
+  type AdditionalPhotoKind,
+} from '../constants/additionalPhotoKinds';
 
 /**
- * Photo categories the section knows how to render.
- *
- * The bare ``plastron`` / ``carapace`` values are what staged uploads use
- * (the user picks "Plastron" or "Carapace" from the upload buttons). The
- * suffixed variants (``plastron_active``, ``plastron_old_ref``,
- * ``plastron_other``, and the carapace mirrors) come from the historical-
- * scratchpad use case where we want to distinguish:
- *  - the active SuperPoint reference (``plastron_active``),
- *  - a previously-active reference now archived (``plastron_old_ref``), and
- *  - any extra plastron not used as a reference (``plastron_other``).
- * Each gets its own section header so multiple plastron uploads in one day
- * stay grouped by role instead of collapsing into a single "Plastron
- * (additional)" pile.
+ * Display-only kinds that are *derived* from on-disk location, never
+ * user-pickable. The scratchpad / Old Photos viewer uses these to group
+ * plastron / carapace photos by role (active reference vs. archived old
+ * reference vs. an extra) so multiple uploads on the same day stay grouped
+ * instead of collapsing into a single pile. ``loose_legacy`` covers files
+ * still living in the pre-migration ``loose_images/`` folder.
  */
-export type AdditionalPhotoKind =
-  | 'microhabitat'
-  | 'condition'
-  | 'carapace'
-  | 'plastron'
-  | 'additional'
-  | 'other'
+export type ScratchpadOnlyKind =
   | 'plastron_active'
   | 'plastron_old_ref'
   | 'plastron_other'
@@ -59,6 +52,14 @@ export type AdditionalPhotoKind =
   | 'carapace_old_ref'
   | 'carapace_other'
   | 'loose_legacy';
+
+/**
+ * Every kind the rendered staged-photo grid knows how to display:
+ * canonical kinds the user can stage (carapace / plastron / anterior /
+ * posterior / left-side / right-side / people / microhabitat / condition /
+ * injury / other) plus the scratchpad-only role-suffixed variants.
+ */
+export type DisplayKind = AdditionalPhotoKind | ScratchpadOnlyKind;
 
 /** Single additional image for display (packet or turtle). */
 export interface AdditionalImageDisplay {
@@ -91,7 +92,7 @@ interface AdditionalImagesSectionProps {
    *  Parent owns the staged files and commits them on save. Plastron button becomes visible,
    *  and plastron/carapace are rendered in red to signal they may replace the current reference.
    *  Leave undefined for packet-mode / immediate-upload behavior. */
-  onStagePhoto?: (type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional', file: File) => void;
+  onStagePhoto?: (type: AdditionalPhotoKind, file: File) => void;
   /** Override for the delete button. When provided, clicking trash calls this instead
    *  of the built-in handler, and it is the parent's responsibility to refetch. Used
    *  by scratchpad callers so the confirm-modal and soft-delete routing lives in one
@@ -99,9 +100,12 @@ interface AdditionalImagesSectionProps {
   onDelete?: (photo: AdditionalImageDisplay) => Promise<void> | void;
 }
 
-// Active references first, then old refs, then "other" (extras), then the
-// generic plastron/carapace staging kinds, then the additional-image kinds.
-const TYPE_ORDER: AdditionalPhotoKind[] = [
+// Display ordering for the rendered staged-photos grid: scratchpad-only
+// role variants first (active ref → old ref → other), then the canonical
+// generic kinds (the eleven main introduced), then the legacy loose bucket.
+// Keep separate from BUTTON_KINDS — only canonical kinds get an upload
+// button (scratchpad-only kinds are derived from on-disk location).
+const TYPE_ORDER: DisplayKind[] = [
   'plastron_active',
   'plastron_old_ref',
   'plastron_other',
@@ -110,34 +114,21 @@ const TYPE_ORDER: AdditionalPhotoKind[] = [
   'carapace_other',
   'carapace',
   'plastron',
+  'anterior',
+  'posterior',
+  'left-side',
+  'right-side',
+  'people',
   'microhabitat',
   'condition',
-  'additional',
+  'injury',
   'loose_legacy',
   'other',
 ];
 
-const KIND_OPTIONS = [
-  { value: 'carapace', label: 'Carapace' },
-  { value: 'plastron', label: 'Plastron (additional)' },
-  { value: 'microhabitat', label: 'Microhabitat' },
-  { value: 'condition', label: 'Condition' },
-  { value: 'additional', label: 'Additional' },
-  { value: 'other', label: 'Other' },
-] as const;
-
-/** Turtle-record additional photos support plastron-extra in manifest; review packets use a narrower type set. */
-const KIND_OPTIONS_REVIEW_PACKET = KIND_OPTIONS.filter((o) => o.value !== 'plastron');
-
-function normalizeKind(t: string): AdditionalPhotoKind {
-  const s = (t || 'other').toLowerCase();
+function normalizeKind(t: string): DisplayKind {
+  const s = (t || '').toLowerCase();
   if (
-    s === 'microhabitat' ||
-    s === 'condition' ||
-    s === 'carapace' ||
-    s === 'plastron' ||
-    s === 'additional' ||
-    s === 'other' ||
     s === 'plastron_active' ||
     s === 'plastron_old_ref' ||
     s === 'plastron_other' ||
@@ -145,32 +136,102 @@ function normalizeKind(t: string): AdditionalPhotoKind {
     s === 'carapace_old_ref' ||
     s === 'carapace_other' ||
     s === 'loose_legacy'
-  )
+  ) {
     return s;
-  return 'other';
+  }
+  // Falls through to main's canonical normalizer (head/tail aliases, anything
+  // unknown collapses to 'other'). Legacy 'additional' is aliased to 'other'.
+  if (s === 'additional') return 'other';
+  return normalizeAdditionalPhotoKind(s || 'other');
 }
 
-function kindSectionLabel(k: AdditionalPhotoKind): string {
-  if (k === 'other') return 'Other';
-  if (k === 'plastron') return 'Plastron (additional)';
-  if (k === 'additional') return 'Additional';
-  if (k === 'plastron_active') return 'Plastron (active reference)';
-  if (k === 'plastron_old_ref') return 'Plastron (old reference)';
-  if (k === 'plastron_other') return 'Plastron (additional)';
-  if (k === 'carapace_active') return 'Carapace (active reference)';
-  if (k === 'carapace_old_ref') return 'Carapace (old reference)';
-  if (k === 'carapace_other') return 'Carapace (additional)';
-  if (k === 'loose_legacy') return 'Loose (legacy)';
-  return k;
+function kindSectionLabel(k: DisplayKind): string {
+  switch (k) {
+    case 'plastron_active':
+      return 'Plastron (active reference)';
+    case 'plastron_old_ref':
+      return 'Plastron (old reference)';
+    case 'plastron_other':
+      return 'Plastron (additional)';
+    case 'carapace_active':
+      return 'Carapace (active reference)';
+    case 'carapace_old_ref':
+      return 'Carapace (old reference)';
+    case 'carapace_other':
+      return 'Carapace (additional)';
+    case 'loose_legacy':
+      return 'Loose (legacy)';
+    default:
+      return additionalPhotoKindLabel(k);
+  }
 }
 
 type StagedRow = {
   id: string;
   file: File;
   previewUrl: string;
-  type: 'carapace' | 'plastron' | 'microhabitat' | 'condition' | 'additional' | 'other';
+  /** Canonical kind only — staged uploads route through one of the eleven
+   *  canonical buttons. Scratchpad-only kinds never appear here. */
+  type: AdditionalPhotoKind;
   labels: string[];
 };
+
+interface UploadTypeButtonProps {
+  kind: AdditionalPhotoKind;
+  disabled: boolean;
+  onFiles: (kind: AdditionalPhotoKind, files: FileList | null) => void;
+}
+
+function UploadTypeButton({ kind, disabled, onFiles }: UploadTypeButtonProps) {
+  const [dragOver, setDragOver] = useState(false);
+
+  const onDropFiles = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOver(false);
+    if (disabled) return;
+    onFiles(kind, event.dataTransfer.files);
+  };
+
+  return (
+    <Button
+      size="sm"
+      variant={dragOver ? 'filled' : 'light'}
+      leftSection={<IconPhotoPlus size={14} />}
+      component="label"
+      disabled={disabled}
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (!disabled) setDragOver(true);
+      }}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        if (!disabled) setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDropFiles}
+      style={
+        dragOver
+          ? {
+              border: '1px dashed var(--mantine-color-blue-filled)',
+            }
+          : undefined
+      }
+    >
+      {additionalPhotoKindLabel(kind)}
+      <input
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          onFiles(kind, e.target.files);
+          e.target.value = '';
+        }}
+      />
+    </Button>
+  );
+}
 
 export function AdditionalImagesSection({
   title = 'Additional photos',
@@ -195,10 +256,9 @@ export function AdditionalImagesSection({
 
   const isPacket = !!requestId;
   const isTurtle = !!turtleId;
-  const supportsPlastronExtra = !isPacket;
   const canEdit = (isPacket || isTurtle) && !disabled;
   const canEditLabels = isTurtle && !disabled;
-  const stagingKindOptions = supportsPlastronExtra ? KIND_OPTIONS : KIND_OPTIONS_REVIEW_PACKET;
+  const stagingKindOptions = ADDITIONAL_PHOTO_KIND_OPTIONS;
 
   useEffect(() => {
     return () => {
@@ -279,10 +339,7 @@ export function AdditionalImagesSection({
   // Unified entry point. If parent provides onStagePhoto (e.g. SheetsBrowser commit-on-Update),
   // route there; otherwise push into the internal staged list so the user can edit type/labels
   // per row before the explicit Upload click.
-  const handleAdd = (
-    type: 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional',
-    files: FileList | null,
-  ) => {
+  const handleAdd = (type: AdditionalPhotoKind, files: FileList | null) => {
     if (!files?.length) return;
     if (onStagePhoto) {
       for (let i = 0; i < files.length; i++) {
@@ -299,10 +356,7 @@ export function AdditionalImagesSection({
     addFilesToStaging(type, files);
   };
 
-  const addFilesToStaging = (
-    type: StagedRow['type'],
-    files: FileList | null,
-  ) => {
+  const addFilesToStaging = (type: AdditionalPhotoKind, files: FileList | null) => {
     if (!files?.length) return;
     const next: StagedRow[] = [];
     for (let i = 0; i < files.length; i++) {
@@ -397,7 +451,8 @@ export function AdditionalImagesSection({
     }
   };
 
-  const byKind = (k: AdditionalPhotoKind) => images.filter((img) => normalizeKind(img.type) === k);
+  const byKind = (k: AdditionalPhotoKind) =>
+    images.filter((img) => normalizeAdditionalPhotoKind(img.type) === k);
 
   const content = (
     <>
@@ -408,122 +463,30 @@ export function AdditionalImagesSection({
         {!embedded && (
           <Text size="xs" c="dimmed">
             Add photos first, set type and tags per image, then upload.
-            {supportsPlastronExtra ? (
-              <>
-                {' '}
-                Plastron (additional) keeps an extra underside shot in the manifest only (it does not replace
-                the SuperPoint .pt reference).
-              </>
-            ) : null}{' '}
+            {' '}
+            Plastron (additional) keeps an extra underside shot in the manifest only (it does not replace
+            the SuperPoint .pt reference).{' '}
             Tags are searchable under Admin → Turtle records → Sheets → Photo tags.
           </Text>
         )}
 
         {canEdit && !hideAddButtons && (
           <>
+            <Text size="xs" fw={500}>
+              1. Choose or drag photos onto a category (you can change type per row below)
+            </Text>
             <Group gap="xs">
-              <Button
-                size="sm"
-                variant="light"
-                leftSection={<IconPhotoPlus size={14} />}
-                component="label"
-                loading={uploading}
-                disabled={disabled}
-              >
-                Microhabitat
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    handleAdd('microhabitat', e.target.files);
-                    e.target.value = '';
-                  }}
+              {(isPacket && !onStagePhoto
+                ? ADDITIONAL_PHOTO_KIND_OPTIONS.filter((opt) => opt.value !== 'plastron')
+                : ADDITIONAL_PHOTO_KIND_OPTIONS
+              ).map(({ value }) => (
+                <UploadTypeButton
+                  key={value}
+                  kind={value}
+                  disabled={disabled || uploading}
+                  onFiles={handleAdd}
                 />
-              </Button>
-              <Button
-                size="sm"
-                variant="light"
-                leftSection={<IconPhotoPlus size={14} />}
-                component="label"
-                loading={uploading}
-                disabled={disabled}
-              >
-                Condition
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    handleAdd('condition', e.target.files);
-                    e.target.value = '';
-                  }}
-                />
-              </Button>
-              <Button
-                size="sm"
-                variant="light"
-                color={onStagePhoto ? 'red' : undefined}
-                leftSection={<IconPhotoPlus size={14} />}
-                component="label"
-                loading={uploading}
-                disabled={disabled}
-              >
-                Carapace
-                <input
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  onChange={(e) => {
-                    handleAdd('carapace', e.target.files);
-                    e.target.value = '';
-                  }}
-                />
-              </Button>
-              {(onStagePhoto || supportsPlastronExtra) && (
-                <Button
-                  size="sm"
-                  variant="light"
-                  color="red"
-                  leftSection={<IconPhotoPlus size={14} />}
-                  component="label"
-                  loading={uploading}
-                  disabled={disabled}
-                >
-                  Plastron
-                  <input
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    onChange={(e) => {
-                      handleAdd('plastron', e.target.files);
-                      e.target.value = '';
-                    }}
-                  />
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant="light"
-                leftSection={<IconPhotoPlus size={14} />}
-                component="label"
-                loading={uploading}
-                disabled={disabled}
-              >
-                Additional
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    handleAdd('additional', e.target.files);
-                    e.target.value = '';
-                  }}
-                />
-              </Button>
+              ))}
             </Group>
 
             {staged.length > 0 && (
@@ -626,9 +589,8 @@ export function AdditionalImagesSection({
                         size="xs"
                         fw={500}
                         c="dimmed"
-                        tt={k === 'other' ? undefined : 'capitalize'}
                       >
-                        {kindSectionLabel(k)}
+                        {additionalPhotoKindLabel(k)}
                       </Text>
                       <Group gap="md" wrap="wrap" align="flex-start">
                         {list.map((img) => (
@@ -647,11 +609,13 @@ export function AdditionalImagesSection({
                                 onClick={() => openLightboxServer(img.imagePath, img.uploadTs)}
                               >
                                 <Image
-                                  src={getImageUrl(img.imagePath, img.uploadTs)}
+                                  src={getImageUrl(img.imagePath, { version: img.uploadTs, maxDim: 160 })}
                                   alt={img.filename}
                                   w={80}
                                   h={80}
                                   fit="cover"
+                                  loading="lazy"
+                                  decoding="async"
                                 />
                               </Box>
                               <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>

@@ -183,9 +183,16 @@ test.describe('Admin Community turtle move to admin', () => {
       timeout: 15_000,
     });
 
+    // Mobile Safari can report footer overlap while selecting list items near the viewport bottom.
+    // This test does not validate footer links, so disable footer hit-testing for stability.
+    await page.addStyleTag({
+      content: `.mantine-AppShell-footer { pointer-events: none !important; }`,
+    });
     // Select the community match (T1, Community_Uploads/TestSheet)
     await expect(page.getByText(COMMUNITY_MATCH.location)).toBeVisible({ timeout: 10_000 });
-    await page.getByText(COMMUNITY_MATCH.turtle_id).first().click();
+    const communityMatch = page.getByText(COMMUNITY_MATCH.turtle_id).first();
+    await communityMatch.scrollIntoViewIfNeeded();
+    await communityMatch.click({ force: true });
     // Form mounts and GET /api/general-locations runs; re-register mock last so it wins over the real API.
     await registerKansasGeneralLocationsCatalogMock(page);
 

@@ -96,6 +96,7 @@ export type {
   DeleteTurtleImageResponse,
   RestoreTurtleImageResponse,
   TurtleAdditionalLabelSearchMatch,
+  GetImageUrlOptions,
 } from './api/turtle';
 
 export {

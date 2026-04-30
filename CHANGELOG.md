@@ -78,12 +78,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`tests/e2e/admin-match.spec.ts`**: Two new specs — (1) Create New Turtle modal exposes `AdditionalImagesSection` with Microhabitat / Condition / Carapace / Additional upload buttons; (2) `Replace plastron reference` checkbox renders *above* the `Save to Sheets & Confirm Match` button (placement check via `compareDocumentPosition`), guarding against a regression where it gets pushed back into the bottom action panel.
 - **E2E assertion alignment after the `main` merge**: `admin-records.spec.ts:96/185` and `admin-match.spec.ts:562` updated for the renamed section heading (`"Microhabitat / Condition photos"` → `"Additional Photos"`/`"Additional Turtle Photos"`); strict-mode fixed with `{ exact: true }` so the heading does not collide with the empty-state copy. `admin-records.spec.ts:52` (Webkit/Mobile Safari flake) hardened with the same `Promise.race` settle-wait used by test 75 so the count check no longer races the queue panel's fetch. `admin-match.spec.ts:636-639` switched from `getByRole('button', …)` to `getByText` to match Mantine `<Button component="label">` which renders as `<label>`, not `<button>`.
 
+### Merged from main (1.2.20–1.2.22)
+
+- **Photo-category expansion** (PR #180): adopted main's six new
+  canonical categories — `anterior`, `posterior`, `left-side`,
+  `right-side`, `people`, `injury` — alongside `carapace`, `plastron`,
+  `microhabitat`, `condition`, and `other`. The Sheets Browser
+  scratchpad shows all eleven as upload buttons, the per-row Type
+  Select on staged photos uses the same canonical list, and the Photo-
+  tags search panel's category Select filters by them too. Backend
+  routes accept any of these via `parse_additional_type_filter` /
+  `normalize_additional_type` (legacy `head`/`tail`/`additional` map
+  to `anterior`/`posterior`/`other`). Replaces the home-page
+  "Additional" button with per-category buttons; existing manifests
+  with `type: 'additional'` display under "Other".
+- **Drag-and-drop on category buttons**: `UploadTypeButton` lets users
+  drop image files directly onto a category instead of clicking. Wired
+  into the Sheets Browser scratchpad and the home upload page.
+- **`getImageUrl` options object**: `getImageUrl(path, { version,
+  maxDim })` now combines our cache-bust suffix with main's server-
+  side downscaled JPEG previews (`?max_dim=N`, 32–2048 longest edge).
+  Backward-compatible — existing positional `getImageUrl(path,
+  version)` callers unchanged.
+- **`max_dim` JPEG previews**: `GET /api/images?path=…&max_dim=N`
+  returns a Pillow-resized JPEG (EXIF-transposed, mode-normalized,
+  Lanczos resample). Passed through admin thumbnails (sidebar 240px,
+  match cards 560px, primary preview 320px, scratchpad 160px) so
+  large images don't blow up the page weight.
+- **Primary-thumbnail loader**: Sheets Browser sidebar shows a
+  spinner while `getTurtlePrimariesBatch` is in flight; clears stale
+  thumbnails when the filter changes.
+- **Footer About / Contact / Feedback** (PR #172): new `/feedback`
+  route, `POST /api/contact` (SMTP via `CONTACT_FORM_RECIPIENTS`), and
+  `POST /api/feedback` (GitHub Issues via `GITHUB_FEEDBACK_*` env vars).
+  Auth-backend hardened with shared in-memory IP-window rate limiter;
+  optional JWT lets logged-in feedback submissions include account
+  identity on the issue.
+- **Auth `localhost` retry**: when `AUTH_URL` uses `localhost` and the
+  validation request fails on a connectivity error, the backend
+  retries once against `127.0.0.1` (Windows / dev-host quirks).
+- **Flask error handler returns JSON**: `HTTPException` (404, 405,
+  etc.) is handled before the generic `Exception` handler so client
+  errors keep their proper status code and `error` body instead of
+  being remapped to 500.
+- **Behavior change** (home upload): every user — including community
+  — now sees buttons for all eleven canonical categories. Previously
+  Carapace was admin-only and Plastron was community-only on the home
+  page; consolidated for consistency with the unified-kinds intent.
+
 ---
+
+## [1.2.22] - 2026-04-29 — Sheets browser plastron thumbnail loading state
+
+### Changed
+
+- **Sheets browser** (records list): While primary plastron paths are loading from **`getTurtlePrimariesBatch`**, each row shows a **spinner** in the thumbnail slot instead of the empty photo placeholder. When loading finishes, the slot shows either the **preview image** or the **placeholder** (no identifier plastron on disk), so loading vs. missing image is unambiguous. Stale thumbnails from a previous filter are cleared when a new batch starts.
+
+## [1.2.21] - 2026-04-29 — Image previews, Flask HTTP errors, proxy routing docs
+
+### Added
+
+- **`GET /api/images`**: Optional **`max_dim`** query parameter (32–2048, longest edge in pixels) returns a server-generated JPEG preview when the original is larger; transparent/palette images flattened to RGB; HEIF/HEIC supported via existing Pillow registration.
+- **`getImageUrl`** (`frontend/src/services/api/turtle.ts`): Optional **`GetImageUrlOptions.maxDim`** appends **`max_dim`** for downscaled URLs (clamped to the same range as the API).
+
+### Fixed
+
+- **Flask** (`backend/app.py`): Handle **`HTTPException`** (404, 405, etc.) before the generic **`Exception`** handler so client errors keep the correct status and JSON **`error`** body instead of being treated as **500**.
+
+### Changed
+
+- **`.env.docker.example`**: Clarify reverse-proxy routing — send **`/api/auth`**, **`/api/admin`**, **`/api/contact`**, **`/api/feedback`** (and auth-backend **`/api/health`**) to the Node auth service; route remaining **`/api/*`** to Flask — with longest/specific paths first so contact and feedback are not handled by Flask by mistake.
+- **Admin UI** (additional images, Review Queue, Sheets browser): Image **`src`** uses scaled previews where sizes are bounded (e.g. thumbnails vs. lightbox still uses full **`getImageUrl`** where wired); **`loading="lazy"`** and **`decoding="async"`** on those **`<Image>`** elements.
+
+## [1.2.20] - 2026-04-29 — Footer & contact, GitHub feedback, extended turtle photos
+
+### Added
+
+- **About & Contact in the footer** (Washburn-focused copy); staff/admin drawer breakpoint adjusted. Contact uses **`POST /api/contact`** on the auth-backend (**`CONTACT_FORM_RECIPIENTS`**, SMTP, Reply-To visitor); Washburn links remain as fallback where applicable.
+- **`/feedback`** with **`POST /api/feedback`**: creates GitHub issues (REST); optional Projects v2 link and status via GraphQL; labels from **`GITHUB_FEEDBACK_LABELS`** plus type labels. Env documented in **`.env.docker.example`**.
+- **Turtle photo categories** (homepage, Sheets browser, Review Queue, Match): anterior, posterior, left/right side, people, injury, plus existing types; filenames encode category (e.g. `right-side_…`). **Drag-and-drop** onto category buttons to stage photos (homepage and admin).
+- **Sheets browser**: optional photo category filter; **`GET /api/turtles/images/search-labels`** supports tag-only, category-only, or combined queries (`q` and/or `type`, at least one required).
+
+### Changed
+
+- **`EmailVerificationGuard`**: **`/feedback`** allowed before email verification (same as About/Contact).
+- **`.gitignore`**: **`project-query.graphql`** (local GraphQL helpers).
+- **Legacy labels**: `head` / `tail` no longer shown as buttons; stored values still map to **anterior** / **posterior**.
+- **Review queue** additional-image uploads use the same category set as turtle records.
+- **Admin token validation**: if **`AUTH_URL`** uses `localhost` and validation fails, one retry against **`127.0.0.1`** (Windows/dev hostname quirks).
+
+### Testing
+
+- Playwright: footer nav including Feedback; Sheets browser type-only search; homepage categories and drag-and-drop (mobile/WebKit skipped where unreliable).
+- Backend: **`search-labels`** filters; **`right-side`** on review packet additional images.
 
 ## [1.2.19] - 2026-04-27 — Mobile tutorial viewport + Specific Property label and Location reminder
 
 ### Fixed
 
+- **UI polish**: Inline **external-link** icons, clearer **Contact** CTA, automatic footer height (`311444d`).
 - **First-visit mobile tutorial viewport**: Fixed a mobile rendering issue where opening the instructions tutorial on a fresh device could initially render the app in desktop-like scale. Mobile media queries now resolve on initial render for home/tutorial flow, and tutorial scroll height uses dynamic viewport sizing for more stable phone layout.
 
 ### Changed
@@ -393,7 +486,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.19...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.22...HEAD
+[1.2.22]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.22
+[1.2.21]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.21
+[1.2.20]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.20
 [1.2.19]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.19
 [1.2.18]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.18
 [1.2.17]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.17

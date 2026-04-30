@@ -540,7 +540,7 @@ test.describe('Admin Turtle Match', () => {
     await expect(page).toHaveURL('/');
   });
 
-  test('Match page shows Microhabitat / Condition photos section', async ({ page }) => {
+  test('Match page shows Additional photos section', async ({ page }) => {
     test.setTimeout(60_000);
     await loginAsAdmin(page);
 
@@ -559,9 +559,7 @@ test.describe('Admin Turtle Match', () => {
 
     // Wait for either outcome — avoids racing upload/match load on slow mobile WebKit.
     const noMatches = page.getByText('No matches found');
-    // Section heading was renamed by the main merge from "Microhabitat / Condition photos"
-    // to plain "Additional Photos" — match exactly to avoid colliding with the empty-state copy.
-    const additionalSection = page.getByText('Additional Photos', { exact: true });
+    const additionalSection = page.getByText('Additional photos');
     await expect(noMatches.or(additionalSection)).toBeVisible({ timeout: 25_000 });
     if (await noMatches.isVisible()) return;
     await expect(additionalSection).toBeVisible({ timeout: 10_000 });

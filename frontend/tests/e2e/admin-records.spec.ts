@@ -74,11 +74,11 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
       await expect(page.getByRole('button', { name: /Back to list/ })).toBeVisible();
       await expect(page.getByText('Uploaded Photo')).toBeVisible();
     } else {
-      await expect(page.getByText('No pending reviews')).toBeVisible();
+      await expect(tabPanel.getByText('No pending reviews')).toBeVisible({ timeout: 10_000 });
     }
   });
 
-  test('When a queue item is selected, Microhabitat / Condition photos section is visible', async ({
+  test('When a queue item is selected, Additional photos section is visible', async ({
     page,
   }) => {
     await loginAsAdmin(page);
@@ -102,7 +102,9 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
     const hasItems = (await matchLink.count()) > 0;
     if (hasItems) {
       await matchLink.click();
-      await expect(page.getByText('Additional Photos', { exact: true })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText('Additional photos', { exact: true })).toBeVisible({
+        timeout: 5000,
+      });
     } else {
       await expect(page.getByText('No pending reviews')).toBeVisible({ timeout: 10_000 });
     }

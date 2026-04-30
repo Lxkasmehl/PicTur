@@ -5,6 +5,7 @@ JWT Authentication utilities and decorators
 import json
 import ssl
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import jwt
@@ -20,12 +21,12 @@ def verify_jwt_token(token):
     """
     if not token:
         return False, None, 'No token provided'
-    
+
     try:
-        # Remove 'Bearer ' prefix if present
         if token.startswith('Bearer '):
             token = token[7:]
-        
+        token = token.strip()
+
         decoded = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
         return True, decoded, None
     except jwt.ExpiredSignatureError:
@@ -42,11 +43,11 @@ def get_user_from_request():
     auth_header = request.headers.get('Authorization')
     if not auth_header:
         return False, None, 'Authorization header required'
-    
+
     success, payload, error = verify_jwt_token(auth_header)
     if not success:
         return False, None, error
-    
+
     return True, payload, None
 
 
@@ -58,26 +59,56 @@ def check_auth_revocation(auth_header):
     """
     if not AUTH_URL:
         return False, 'AUTH_URL must be set to verify staff/admin tokens (revocation check)'
-    url = f'{AUTH_URL}/auth/validate'
-    try:
-        req = urllib.request.Request(url, method='POST', headers={'Authorization': auth_header})
-        # Optional: don't verify SSL in dev if auth uses self-signed cert
-        ctx = ssl.create_default_context()
-        with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
-            if resp.status != 200:
-                return False, 'Token validation failed'
-            return True, None
-    except urllib.error.HTTPError as e:
-        if e.code == 403:
+
+    def validate_against(auth_base_url):
+        """Returns (allowed, error, connectivity_failure).
+
+        connectivity_failure is True only when the auth service could not be reached
+        (no HTTP response). Used to decide whether a localhost → 127.0.0.1 fallback
+        is safe: never retry after a definitive HTTP outcome (e.g. 403 revocation).
+        """
+        url = f'{auth_base_url.rstrip("/")}/auth/validate'
+        try:
+            req = urllib.request.Request(url, method='POST', headers={'Authorization': auth_header})
+            # Optional: don't verify SSL in dev if auth uses self-signed cert
+            ctx = ssl.create_default_context()
+            with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
+                if resp.status != 200:
+                    return False, f'Auth validation failed (HTTP {resp.status})', False
+                return True, None, False
+        except urllib.error.HTTPError as e:
+            error_message = None
             try:
                 body = json.loads(e.read().decode())
-                return False, body.get('error', 'Token has been revoked')
+                error_message = body.get('error')
             except (ValueError, AttributeError):
-                pass
-        return False, 'Token has been revoked'
-    except (urllib.error.URLError, OSError, TimeoutError):
-        # Fail closed: if we can't reach auth service, deny access
-        return False, 'Unable to verify token; try again later'
+                error_message = None
+
+            if e.code == 403:
+                return False, error_message or 'Token has been revoked', False
+            return False, error_message or f'Auth validation failed (HTTP {e.code})', False
+        except (urllib.error.URLError, OSError, TimeoutError):
+            # Fail closed: if we can't reach auth service, deny access
+            return False, 'Unable to verify token; try again later', True
+
+    allowed, revoke_error, primary_unreachable = validate_against(AUTH_URL)
+    if allowed:
+        return True, None
+
+    # Windows/dev environments can resolve "localhost" to a different service than 127.0.0.1.
+    # Retry once against 127.0.0.1 only when the primary host could not be reached — not after
+    # a definitive HTTP response (403 revocation, 401, etc.), which would weaken revocation.
+    parsed = urllib.parse.urlparse(AUTH_URL)
+    if parsed.hostname == 'localhost' and primary_unreachable:
+        fallback_netloc = parsed.netloc.replace('localhost', '127.0.0.1', 1)
+        fallback_url = urllib.parse.urlunparse(parsed._replace(netloc=fallback_netloc))
+        if fallback_url != AUTH_URL:
+            retry_allowed, retry_error, _ = validate_against(fallback_url)
+            if retry_allowed:
+                return True, None
+            revoke_error = retry_error or revoke_error
+
+    return False, revoke_error
 
 
 def require_auth(f):
@@ -87,8 +118,7 @@ def require_auth(f):
         success, user_data, error = get_user_from_request()
         if not success:
             return jsonify({'error': error or 'Authentication required'}), 401
-        
-        # Attach user data to request for use in route
+
         request.user = user_data
         return f(*args, **kwargs)
     return decorated_function
@@ -106,7 +136,6 @@ def optional_auth(f):
                 if success and user_data is not None:
                     request.user = user_data
             except Exception:
-                # Any token error: treat as anonymous
                 request.user = None
         return f(*args, **kwargs)
     return decorated_function
@@ -116,7 +145,6 @@ def require_admin(f):
     """Decorator to require staff or admin role (turtle records, release, sheets, review)."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Allow OPTIONS requests for CORS preflight
         if request.method == 'OPTIONS':
             return jsonify({}), 200
 
@@ -127,14 +155,12 @@ def require_admin(f):
         if user_data.get('role') not in ('staff', 'admin'):
             return jsonify({'error': 'Staff or admin access required'}), 403
 
-        # Enforce demotion revocation: auth service rejects tokens issued before tokens_valid_after
         auth_header = request.headers.get('Authorization')
         if auth_header:
             allowed, revoke_error = check_auth_revocation(auth_header)
             if not allowed:
                 return jsonify({'error': revoke_error or 'Token has been revoked'}), 403
 
-        # Attach user data to request for use in route
         request.user = user_data
         return f(*args, **kwargs)
     return decorated_function

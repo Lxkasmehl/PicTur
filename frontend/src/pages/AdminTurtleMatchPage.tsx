@@ -829,7 +829,7 @@ export default function AdminTurtleMatchPage() {
                 <Stack gap='md'>
                   <div>
                     <Text fw={600} size='sm' mb={4}>
-                      Additional Photos
+                      Additional photos
                     </Text>
                     <Text size='xs' c='dimmed' mb='sm'>
                       From this upload and already stored for this turtle.

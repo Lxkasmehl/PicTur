@@ -10,6 +10,7 @@ const ALLOWED_WITHOUT_VERIFICATION = [
   '/register',
   '/about',
   '/contact',
+  '/feedback',
   '/observer',
 ];
 

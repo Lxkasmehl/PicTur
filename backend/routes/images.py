@@ -3,9 +3,46 @@ Image serving endpoint
 """
 
 import os
+from io import BytesIO
+
+import image_utils  # noqa: F401 — registers HEIF opener for Pillow
 from flask import request, jsonify, send_file
+from PIL import Image, ImageOps
 from services import manager_service
 from config import UPLOAD_FOLDER
+
+
+def _thumbnail_jpeg_bytes(full_path: str, max_dim: int):
+    """Resize so longest edge is at most ``max_dim``; return JPEG bytes or ``None`` if no resize needed."""
+    with Image.open(full_path) as im:
+        im = ImageOps.exif_transpose(im)
+        if im.mode in ('RGBA', 'LA'):
+            background = Image.new('RGB', im.size, (255, 255, 255))
+            if im.mode == 'RGBA':
+                background.paste(im, mask=im.split()[3])
+            else:
+                background.paste(im, mask=im.split()[1])
+            im = background
+        elif im.mode == 'P':
+            if 'transparency' in im.info:
+                im = im.convert('RGBA')
+                background = Image.new('RGB', im.size, (255, 255, 255))
+                background.paste(im, mask=im.split()[3])
+                im = background
+            else:
+                im = im.convert('RGB')
+        elif im.mode != 'RGB':
+            im = im.convert('RGB')
+
+        w, h = im.size
+        if max(w, h) <= max_dim:
+            return None
+
+        im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+        buf = BytesIO()
+        im.save(buf, format='JPEG', quality=85, optimize=True)
+        buf.seek(0)
+        return buf
 
 
 def register_image_routes(app):
@@ -17,6 +54,8 @@ def register_image_routes(app):
         Serve images from the file system
         Used to display uploaded images and matches in the frontend
         Query parameter: path=<encoded_image_path>
+        Optional: max_dim=<int> (32–2048) — longest edge in pixels; returns a JPEG preview.
+        Omits resize when the original is already smaller than max_dim.
         """
         image_path = request.args.get('path')
         if not image_path:
@@ -79,8 +118,23 @@ def register_image_routes(app):
 
         # ?download=1 forces the browser to save rather than render inline.
         # Filename in Content-Disposition is the file's basename on disk.
+        # Wins over max_dim — a download means the user wants the original full-res file.
         download_flag = (request.args.get('download') or '').strip().lower()
         as_attachment = download_flag in ('1', 'true', 'yes')
         if as_attachment:
             return send_file(full_path, as_attachment=True, download_name=os.path.basename(full_path))
+
+        max_dim_raw = request.args.get('max_dim', type=int)
+        if max_dim_raw is not None:
+            max_dim = max(32, min(2048, max_dim_raw))
+            lower = full_path.lower()
+            if lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif', '.tif', '.tiff', '.heic', '.heif')):
+                try:
+                    thumb = _thumbnail_jpeg_bytes(full_path, max_dim)
+                    if thumb is not None:
+                        return send_file(thumb, mimetype='image/jpeg')
+                except Exception:
+                    pass
+
+
         return send_file(full_path)

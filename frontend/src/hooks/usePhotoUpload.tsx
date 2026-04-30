@@ -54,7 +54,7 @@ interface UsePhotoUploadReturn {
   setCollectedToLab: (v: 'yes' | 'no' | null) => void;
   physicalFlag: 'yes' | 'no' | 'no_flag' | null;
   setPhysicalFlag: (v: 'yes' | 'no' | 'no_flag' | null) => void;
-  /** Optional extra images (microhabitat, condition) – community upload */
+  /** Optional extra images (all additional-photo categories) – upload with main photo */
   extraFiles: UploadExtraFile[];
   setExtraFiles: (files: UploadExtraFile[] | ((prev: UploadExtraFile[]) => UploadExtraFile[])) => void;
   handleDrop: (acceptedFiles: FileWithPath[]) => void;

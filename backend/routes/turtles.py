@@ -14,8 +14,10 @@ from image_utils import normalize_to_jpeg
 from services import manager_service
 from turtle_manager import _extract_exif_date
 from additional_image_labels import (
+    normalize_additional_type,
     normalize_label_list,
     parse_labels_from_form,
+    parse_additional_type_filter,
     read_labels_for_file,
 )
 
@@ -341,17 +343,24 @@ def register_turtle_routes(app):
     @require_admin
     def search_turtle_images_by_label():
         """
-        Find additional images whose labels match query (substring, case-insensitive).
-        Query: q (required)
+        Find additional images by label substring and/or additional-image category.
+        Query: q (optional), type (optional). At least one is required.
         """
         if not manager_service.manager_ready.wait(timeout=5):
             return jsonify({'error': 'TurtleManager is still initializing'}), 503
         if manager_service.manager is None:
             return jsonify({'error': 'TurtleManager not available'}), 500
         q = (request.args.get('q') or '').strip()
-        if not q:
-            return jsonify({'error': 'q required'}), 400
-        matches = manager_service.manager.search_additional_images_by_label(q)
+        try:
+            image_type = parse_additional_type_filter(request.args.get('type'))
+        except ValueError:
+            return jsonify({'error': 'Invalid type filter'}), 400
+        if not q and not image_type:
+            return jsonify({'error': 'q or type required'}), 400
+        matches = manager_service.manager.search_additional_images(
+            query=q,
+            photo_type=image_type,
+        )
         return jsonify({'matches': matches})
 
     @app.route('/api/turtles/images/additional-labels', methods=['PATCH'])
@@ -582,8 +591,8 @@ def register_turtle_routes(app):
     @require_admin
     def add_turtle_additional_images():
         """
-        Add microhabitat/condition images to an existing turtle folder (Admin only).
-        Form: file_0, type_0, labels_0, ... (type: microhabitat | condition | carapace | plastron | other),
+        Add additional images to an existing turtle folder (Admin only).
+        Form: file_0, type_0, labels_0, ... (type normalized server-side),
         optional sheet_name. When the folder is missing, sheet_name creates data/<location>/<turtle_id>/ .
         """
         if not manager_service.manager_ready.wait(timeout=5):
@@ -607,9 +616,7 @@ def register_turtle_routes(app):
                 if not f or not f.filename:
                     continue
                 idx = key.replace('file_', '')
-                typ = (request.form.get(f'type_{idx}') or 'other').strip().lower()
-                if typ not in ('microhabitat', 'condition', 'carapace', 'plastron', 'other'):
-                    typ = 'other'
+                typ = normalize_additional_type(request.form.get(f'type_{idx}'))
                 lbs = parse_labels_from_form(request.form, idx)
                 if not allowed_file(f.filename):
                     continue

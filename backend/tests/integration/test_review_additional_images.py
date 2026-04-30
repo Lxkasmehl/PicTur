@@ -152,6 +152,33 @@ def test_add_additional_images_carapace_with_labels(client, review_packet_dir, t
     assert any("e2e_review_label" in str(x) for x in labels)
 
 
+def test_add_additional_images_right_side_type(client, review_packet_dir, tmp_path):
+    """POST with new category (right-side) is accepted and persisted in packet manifest output."""
+    request_id, _ = review_packet_dir
+    img_path = str(tmp_path / "right_side.jpg")
+    _make_dummy_image(img_path)
+    with open(img_path, "rb") as f:
+        file_data = f.read()
+    r = client.post(
+        f"/api/review-queue/{request_id}/additional-images",
+        data={
+            "file_0": ("right_side.jpg", BytesIO(file_data)),
+            "type_0": "right-side",
+            "labels_0": "burned, right_side_e2e",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json().get("success") is True
+
+    r2 = client.get(f"/api/review-queue/{request_id}")
+    assert r2.status_code == 200
+    item = r2.json()["item"]
+    right_side = next((a for a in item["additional_images"] if a.get("type") == "right-side"), None)
+    assert right_side is not None
+    labels = right_side.get("labels") or []
+    assert any("right_side_e2e" in str(x) for x in labels)
+
+
 def test_remove_additional_image_no_filename(client, review_packet_dir):
     """DELETE additional-images with no filename in body returns 400."""
     request_id, _ = review_packet_dir

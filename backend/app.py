@@ -12,6 +12,7 @@ import config
 # Import Flask and CORS
 from flask import Flask
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 
 # Fix Unicode encoding issues on Windows
 if sys.platform == 'win32':
@@ -59,6 +60,15 @@ register_turtle_routes(app)
 register_locations_routes(app)
 register_general_location_routes(app)
 register_admin_backup_routes(app)
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(err: HTTPException):
+    """404/405/etc. must not be turned into 500 by the generic handler below."""
+    return (
+        {'error': err.description or err.name},
+        err.code,
+        {'Content-Type': 'application/json'},
+    )
 
 @app.errorhandler(Exception)
 def handle_exception(err):

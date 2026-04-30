@@ -11,6 +11,7 @@ import {
   Grid,
   Group,
   Image,
+  Loader,
   Menu,
   Modal,
   Paper,
@@ -52,6 +53,10 @@ import { OldTurtlePhotosSection, type HistoryPhotoExternal } from '../../compone
 import { ConfirmDeletePhotoModal, type DeleteModalContext } from '../../components/ConfirmDeletePhotoModal';
 import { validateFile } from '../../utils/fileValidation';
 import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
+import {
+  ADDITIONAL_PHOTO_KIND_OPTIONS,
+  additionalPhotoKindLabel,
+} from '../../constants/additionalPhotoKinds';
 
 type StagedType = 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional';
 type ReferenceType = 'plastron' | 'carapace';
@@ -126,6 +131,8 @@ export function SheetsBrowserTab() {
   // active reference paths are stable across uploads, so without ts the
   // browser keeps serving the previously-cached bytes.
   const [primaryImages, setPrimaryImages] = useState<Record<string, { path: string; ts: number | null } | null>>({});
+  /** True while `getTurtlePrimariesBatch` is in flight for the current filter list (distinct from "no plastron"). */
+  const [primaryImagesLoading, setPrimaryImagesLoading] = useState(false);
   // Staged photos awaiting commit on "Update Turtle" save — any type.
   const [stagedPhotos, setStagedPhotos] = useState<StagedPhoto[]>([]);
   const [pendingPrompt, setPendingPrompt] = useState<StagedPhoto | null>(null);
@@ -134,6 +141,7 @@ export function SheetsBrowserTab() {
   // Photo-tag search mode (main): filter the left column by tag instead of records.
   const [listMode, setListMode] = useState<'records' | 'tags'>('records');
   const [tagQuery, setTagQuery] = useState('');
+  const [photoTypeFilter, setPhotoTypeFilter] = useState<string | null>('');
   const [photoMatches, setPhotoMatches] = useState<TurtleAdditionalLabelSearchMatch[]>([]);
   const [photoSearchLoading, setPhotoSearchLoading] = useState(false);
   const [selectedMatchPath, setSelectedMatchPath] = useState<string | null>(null);
@@ -473,6 +481,7 @@ export function SheetsBrowserTab() {
   useEffect(() => {
     if (filteredTurtles.length === 0) {
       setPrimaryImages({});
+      setPrimaryImagesLoading(false);
       return;
     }
     const rows = filteredTurtles
@@ -485,14 +494,19 @@ export function SheetsBrowserTab() {
       .filter((r) => r.turtle_id);
     if (rows.length === 0) {
       setPrimaryImages({});
+      setPrimaryImagesLoading(false);
       return;
     }
+    let cancelled = false;
+    setPrimaryImagesLoading(true);
+    setPrimaryImages({});
     getTurtlePrimariesBatch(rows.map((r) => ({
       turtle_id: r.turtle_id,
       sheet_name: r.sheet_name,
       primary_id: r.primary_id,
     })))
       .then((res) => {
+        if (cancelled) return;
         const map: Record<string, { path: string; ts: number | null } | null> = {};
         res.images.forEach((img, i) => {
           const key = rows[i]?.key;
@@ -500,7 +514,15 @@ export function SheetsBrowserTab() {
         });
         setPrimaryImages(map);
       })
-      .catch(() => setPrimaryImages({}));
+      .catch(() => {
+        if (!cancelled) setPrimaryImages({});
+      })
+      .finally(() => {
+        if (!cancelled) setPrimaryImagesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [filteredTurtles]);
 
   // Show only images uploaded *today* in the Additional Turtle Photos pane.
@@ -592,11 +614,12 @@ export function SheetsBrowserTab() {
 
   const runPhotoSearch = async () => {
     const q = tagQuery.trim();
-    if (!q) return;
+    const typeFilter = (photoTypeFilter || '').trim();
+    if (!q && !typeFilter) return;
     setPhotoSearchLoading(true);
     setSelectedMatchPath(null);
     try {
-      const res = await searchTurtleImagesByLabel(q);
+      const res = await searchTurtleImagesByLabel(q, typeFilter || undefined);
       setPhotoMatches(res.matches ?? []);
     } catch {
       setPhotoMatches([]);
@@ -839,14 +862,20 @@ export function SheetsBrowserTab() {
                               minHeight: 84,
                             }}
                           >
-                            {primaryImages[turtleKey(turtle)] ? (
+                            {primaryImagesLoading ? (
+                              <Center w='100%' h='100%' style={{ minHeight: 84 }}>
+                                <Loader size='sm' color='gray' aria-label='Loading plastron preview' />
+                              </Center>
+                            ) : primaryImages[turtleKey(turtle)] ? (
                               <Image
                                 src={getImageUrl(
                                   primaryImages[turtleKey(turtle)]!.path,
-                                  primaryImages[turtleKey(turtle)]!.ts,
+                                  { version: primaryImages[turtleKey(turtle)]!.ts, maxDim: 240 },
                                 )}
                                 alt='Plastron'
                                 fit='contain'
+                                loading='lazy'
+                                decoding='async'
                                 style={{ width: '100%', height: 'auto', display: 'block' }}
                               />
                             ) : (
@@ -864,8 +893,8 @@ export function SheetsBrowserTab() {
             ) : (
               <>
                 <Text size='xs' c='dimmed'>
-                  Find additional photos by tag (substring match, case-insensitive). Results respect the
-                  location filter above.
+                  Find additional photos by tag, category, or both. Results respect the location
+                  filter above.
                 </Text>
                 <TextInput
                   placeholder='e.g. burned, shell crack'
@@ -875,6 +904,15 @@ export function SheetsBrowserTab() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void runPhotoSearch();
                   }}
+                />
+                <Select
+                  label='Photo category'
+                  placeholder='Any category'
+                  value={photoTypeFilter}
+                  onChange={(value) => setPhotoTypeFilter(value ?? '')}
+                  data={[{ value: '', label: 'Any category' }, ...ADDITIONAL_PHOTO_KIND_OPTIONS]}
+                  searchable
+                  clearable={false}
                 />
                 <Button
                   onClick={() => void runPhotoSearch()}
@@ -945,7 +983,8 @@ export function SheetsBrowserTab() {
                             <ScrollArea type='scroll' scrollbars='x' offsetScrollbars>
                               <Group gap='md' wrap='nowrap' pb='xs' align='flex-start'>
                                 {group.map((m) => {
-                                  const src = getImageUrl(m.path);
+                                  const previewSrc = getImageUrl(m.path, { maxDim: 360 });
+                                  const fullSrc = getImageUrl(m.path);
                                   const oneActive = selectedMatchPath === m.path;
                                   return (
                                     <Box
@@ -980,15 +1019,17 @@ export function SheetsBrowserTab() {
                                             }}
                                             onClick={() => {
                                               setSelectedMatchPath(m.path);
-                                              setTagSearchLightbox(src);
+                                              setTagSearchLightbox(fullSrc);
                                             }}
                                           >
                                             <Image
-                                              src={src}
+                                              src={previewSrc}
                                               alt={m.filename}
                                               h='100%'
                                               w='100%'
                                               fit='cover'
+                                              loading='lazy'
+                                              decoding='async'
                                             />
                                           </Box>
                                           <ActionIcon
@@ -1002,7 +1043,7 @@ export function SheetsBrowserTab() {
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               setSelectedMatchPath(m.path);
-                                              setTagSearchLightbox(src);
+                                              setTagSearchLightbox(fullSrc);
                                             }}
                                           >
                                             <IconZoomIn size={14} />
@@ -1021,7 +1062,7 @@ export function SheetsBrowserTab() {
                                           tt={m.type === 'other' ? undefined : 'capitalize'}
                                           style={{ alignSelf: 'center' }}
                                         >
-                                          {m.type === 'other' ? 'Other' : m.type}
+                                          {additionalPhotoKindLabel(m.type)}
                                         </Badge>
                                       </Stack>
                                     </Box>

@@ -2725,16 +2725,21 @@ class TurtleManager:
                 return True, None
         return False, "Image not found in manifest"
 
-    def search_additional_images_by_label(self, query):
+    def search_additional_images(self, query=None, photo_type=None):
         """
         Scan every per-directory manifest under each turtle for entries whose
-        labels match ``query`` (substring, case-insensitive). Returns hits from
+        labels match ``query`` (substring, case-insensitive) and/or whose
+        ``type`` matches ``photo_type`` (canonical kind). Returns hits from
         active plastron / carapace, their Old References and Other archives,
         legacy ``loose_images`` / ``ref_data``, AND ``additional_images``.
         Excludes ``Review_Queue/``, ``benchmarks/``, and any ``Deleted/``
         subtree. Pre-fix this only walked ``additional_images`` so plastron
         and carapace tags were silently invisible to the Sheets browser tag
         search.
+
+        At least one of ``query`` or ``photo_type`` must be non-empty;
+        otherwise returns an empty list (the Sheets browser's photo-tag
+        panel won't issue a query without one of them).
 
         Each match: ``{ turtle_id, sheet_name, path, filename, type, labels,
         timestamp }``. ``sheet_name`` is the relative path from base_dir to
@@ -2748,7 +2753,8 @@ class TurtleManager:
         (``microhabitat`` / ``condition`` / etc.).
         """
         q = (query or '').strip()
-        if not q:
+        kind_filter = normalize_additional_type(photo_type) if photo_type else None
+        if not q and not kind_filter:
             return []
 
         skip_top = {'Review_Queue', 'benchmarks'}
@@ -2833,12 +2839,17 @@ class TurtleManager:
                 if not fn:
                     continue
                 labels = entry.get('labels')
-                if not label_query_matches(labels, q):
+                # Label substring filter is only applied when the query is
+                # non-empty; type-only searches (kind_filter without q) must
+                # not be discarded here.
+                if q and not label_query_matches(labels, q):
                     continue
                 p = os.path.join(root, fn)
                 if not os.path.isfile(p):
                     continue
                 kind = derived if derived is not None else normalize_additional_type(entry.get('type'))
+                if kind_filter and kind != kind_filter:
+                    continue
                 matches.append({
                     'turtle_id': turtle_id,
                     'sheet_name': sheet_name,
@@ -2851,6 +2862,10 @@ class TurtleManager:
 
         matches.sort(key=lambda m: (m.get('sheet_name') or '', m.get('turtle_id') or '', m.get('filename') or ''))
         return matches
+
+    def search_additional_images_by_label(self, query):
+        """Backward-compatible wrapper for label-only search."""
+        return self.search_additional_images(query=query, photo_type=None)
 
     def remove_additional_image_from_turtle(self, turtle_id, filename, sheet_name=None):
         turtle_dir = self._get_turtle_folder(turtle_id, sheet_name)

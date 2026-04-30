@@ -1,4 +1,4 @@
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   AppShell,
   Burger,
@@ -19,8 +19,6 @@ import {
   IconSun,
   IconMoon,
   IconHome,
-  IconInfoCircle,
-  IconMail,
   IconLogin,
   IconLogout,
   IconUser,
@@ -41,8 +39,13 @@ interface NavigationProps {
 
 const navigationItems = [
   { label: 'Home', path: '/', icon: IconHome },
-  { label: 'About', path: '/about', icon: IconInfoCircle },
-  { label: 'Contact', path: '/contact', icon: IconMail },
+];
+
+/** About & Contact live in the footer so the header stays compact for staff/admin. */
+const footerNavItems = [
+  { label: 'About', path: '/about', testId: 'footer-link-about' as const },
+  { label: 'Contact', path: '/contact', testId: 'footer-link-contact' as const },
+  { label: 'Feedback', path: '/feedback', testId: 'footer-link-feedback' as const },
 ];
 
 export default function Navigation({ children }: NavigationProps) {
@@ -96,8 +99,8 @@ export default function Navigation({ children }: NavigationProps) {
   const dynamicBreakpoint = useMemo(() => {
     const baseBreakpoint = 1000; // Base breakpoint for customer view with normal name
 
-    // Home + Observer HQ + About + Contact (+ staff/admin ops)
-    const itemCount = isAdmin ? 7 : isStaff ? 6 : 5;
+    // Home + Observer HQ (+ staff/admin ops); About/Contact are in the footer
+    const itemCount = isAdmin ? 5 : isStaff ? 4 : 2;
 
     // Admin has 2 extra items, increase breakpoint by ~167px per extra item
     // This makes drawer appear earlier when there are more nav items
@@ -174,7 +177,7 @@ export default function Navigation({ children }: NavigationProps) {
   return (
     <AppShell
       header={{ height: isMobile ? 56 : 60 }}
-      footer={{ height: isMobile ? 52 : 44 }}
+      footer={{ height: isMobile ? 100 : 88 }}
       padding={isMobile ? 'xs' : 'md'}
     >
       <AppShell.Header>
@@ -386,39 +389,65 @@ export default function Navigation({ children }: NavigationProps) {
 
       <AppShell.Main>{children}</AppShell.Main>
 
-      <AppShell.Footer p='xs'>
-        <Text size='xs' c='dimmed' ta='center' m={0}>
-          Favicon:{' '}
-          <Anchor
-            href='https://www.flaticon.com/free-icon/turtle_8493027'
-            target='_blank'
-            rel='noopener noreferrer'
-            size='xs'
-            c='dimmed'
-          >
-            turtle icon
-          </Anchor>
-          . Icons made by{' '}
-          <Anchor
-            href='https://www.freepik.com'
-            target='_blank'
-            rel='noopener noreferrer'
-            size='xs'
-            c='dimmed'
-          >
-            Freepik
-          </Anchor>{' '}
-          from{' '}
-          <Anchor
-            href='https://www.flaticon.com/'
-            target='_blank'
-            rel='noopener noreferrer'
-            size='xs'
-            c='dimmed'
-          >
-            www.flaticon.com
-          </Anchor>
-        </Text>
+      <AppShell.Footer py='xs' px='xs'>
+        <Stack gap='xs' align='center'>
+          <Group gap='lg' justify='center' wrap='wrap'>
+            {footerNavItems.map((item) => {
+              const active = location.pathname === item.path;
+              return (
+                <Anchor
+                  key={item.path}
+                  component={Link}
+                  to={item.path}
+                  size='sm'
+                  fw={active ? 600 : 400}
+                  data-testid={item.testId}
+                  c={active ? undefined : 'dimmed'}
+                  style={
+                    active
+                      ? { color: roleColorHex }
+                      : undefined
+                  }
+                  onClick={close}
+                >
+                  {item.label}
+                </Anchor>
+              );
+            })}
+          </Group>
+          <Text size='xs' c='dimmed' ta='center' m={0} lh={1.35}>
+            Favicon:{' '}
+            <Anchor
+              href='https://www.flaticon.com/free-icon/turtle_8493027'
+              target='_blank'
+              rel='noopener noreferrer'
+              size='xs'
+              c='dimmed'
+            >
+              turtle icon
+            </Anchor>
+            . Icons made by{' '}
+            <Anchor
+              href='https://www.freepik.com'
+              target='_blank'
+              rel='noopener noreferrer'
+              size='xs'
+              c='dimmed'
+            >
+              Freepik
+            </Anchor>{' '}
+            from{' '}
+            <Anchor
+              href='https://www.flaticon.com/'
+              target='_blank'
+              rel='noopener noreferrer'
+              size='xs'
+              c='dimmed'
+            >
+              www.flaticon.com
+            </Anchor>
+          </Text>
+        </Stack>
       </AppShell.Footer>
     </AppShell>
   );

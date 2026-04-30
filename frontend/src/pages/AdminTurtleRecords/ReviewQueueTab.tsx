@@ -776,9 +776,11 @@ export function ReviewQueueTab() {
                           </Text>
                           {matchCross?.path ? (
                             <Image
-                              src={getImageUrl(matchCross.path, matchCross.upload_ts ?? null)}
+                              src={getImageUrl(matchCross.path, { version: matchCross.upload_ts ?? null, maxDim: 560 })}
                               alt={`Match ${crossLabel.toLowerCase()} ${selectedCandidate}`}
                               radius='md'
+                              loading='lazy'
+                              decoding='async'
                               style={{
                                 maxHeight: 'min(400px, 50vh)',
                                 objectFit: 'contain',
@@ -803,7 +805,7 @@ export function ReviewQueueTab() {
             <Stack gap='md'>
               <div>
                 <Text fw={600} size='sm' mb={4}>
-                  Additional Photos
+                  Additional photos
                 </Text>
                 <Text size='xs' c='dimmed' mb='sm'>
                   From this upload and, when a match is selected, already stored for that turtle.
@@ -1083,9 +1085,11 @@ export function ReviewQueueTab() {
                         </Group>
                         {item.uploaded_image && (
                           <Image
-                            src={getImageUrl(item.uploaded_image)}
+                            src={getImageUrl(item.uploaded_image, { maxDim: 400 })}
                             alt='Uploaded'
                             radius='md'
+                            loading='lazy'
+                            decoding='async'
                             style={{ maxHeight: 180, objectFit: 'contain' }}
                           />
                         )}
