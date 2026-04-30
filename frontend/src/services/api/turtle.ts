@@ -13,11 +13,14 @@ export interface TurtleMatch {
   filename: string;
 }
 
+export type PhotoType = 'plastron' | 'carapace' | 'unclassified';
+
 export interface UploadPhotoResponse {
   success: boolean;
   request_id?: string;
   matches?: TurtleMatch[];
   uploaded_image_path?: string;
+  photo_type?: PhotoType;
   message: string;
 }
 
@@ -84,6 +87,7 @@ export interface ReviewQueueItem {
   /** Server error message when match_search_failed is true. */
   match_search_error?: string | null;
   status: string;
+  photo_type?: PhotoType;
 }
 
 /** Flag/microhabitat data sent when approving a review (new or matched turtle) */
@@ -113,6 +117,12 @@ export interface ApproveReviewRequest {
   match_from_community?: boolean;
   /** Community sheet tab name where the turtle currently lives (e.g. "Unknown"). Required when match_from_community is true. */
   community_sheet_name?: string;
+  /** Photo type: plastron (belly, default) or carapace (top of shell). */
+  photo_type?: PhotoType;
+  /** Replace the existing plastron reference image with this upload (old image archived). */
+  replace_reference?: boolean;
+  /** Replace the existing carapace reference using the first carapace additional image. */
+  replace_carapace_reference?: boolean;
 }
 
 /** Optional flag/collected-to-lab and extra images for upload (community flow) */
@@ -236,7 +246,7 @@ export const getReviewQueue = async (): Promise<ReviewQueueResponse> => {
   return await response.json();
 };
 
-// Add additional images to a review packet (Admin only)
+// Add additional images (microhabitat, condition, carapace, plastron, additional, other) to a review packet (Admin only)
 export const uploadReviewPacketAdditionalImages = async (
   requestId: string,
   files: Array<{
@@ -334,6 +344,52 @@ export const approveReview = async (
   return await response.json();
 };
 
+/** Cross-check a review packet against a different photo_type cache (diagnostic, does not modify packet). */
+export const crossCheckReviewPacket = async (
+  requestId: string,
+  photoType: PhotoType,
+  imagePath?: string,
+): Promise<{
+  success: boolean;
+  photo_type: string;
+  matches: Array<{ turtle_id: string; location: string; confidence: number; score: number; image_path: string }>;
+  elapsed: number;
+}> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const body: Record<string, string> = { photo_type: photoType };
+  if (imagePath) body.image_path = imagePath;
+  const response = await fetch(
+    `${TURTLE_API_BASE_URL}/review-queue/${encodeURIComponent(requestId)}/cross-check`,
+    { method: 'POST', headers, body: JSON.stringify(body) },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Cross-check failed' }));
+    throw new Error(err.error || 'Failed to cross-check');
+  }
+  return await response.json();
+};
+
+// Classify a review packet as plastron or carapace, triggering AI matching (Admin only)
+export const classifyReviewPacket = async (
+  requestId: string,
+  photoType: PhotoType,
+): Promise<{ success: boolean; item: ReviewQueueItem; matches_found: number }> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(
+    `${TURTLE_API_BASE_URL}/review-queue/${encodeURIComponent(requestId)}/classify`,
+    { method: 'POST', headers, body: JSON.stringify({ photo_type: photoType }) },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Classification failed' }));
+    throw new Error(err.error || 'Failed to classify review packet');
+  }
+  return await response.json();
+};
+
 // Delete review queue item (Admin only)
 export const deleteReviewItem = async (
   requestId: string,
@@ -399,33 +455,133 @@ export const clearReleaseFlag = async (
   }
 };
 
-/** Optional downscaled preview from ``GET /api/images?path=…&max_dim=…`` (server-side JPEG). */
+/**
+ * Optional knobs for ``getImageUrl``:
+ * - ``version`` — cache-bust suffix appended as ``&v=<version>``. Active
+ *   reference paths are stable across replacements (the new file lands at
+ *   the same on-disk location), so without a version the browser keeps
+ *   serving the previously-cached bytes. Pass primary_info.upload_ts /
+ *   primary_ts wherever you render an active reference; non-version-aware
+ *   callers (e.g. archived photos under unique paths) can omit it.
+ * - ``maxDim`` — server-side downscaled JPEG preview (longest edge in
+ *   pixels, clamped 32–2048). Returns the original when it's already
+ *   smaller than ``maxDim``.
+ */
 export interface GetImageUrlOptions {
+  version?: string | number | null;
   maxDim?: number;
 }
 
-// Get image URL helper
-export const getImageUrl = (imagePath: string, options?: GetImageUrlOptions): string => {
+// Get image URL helper. Accepts either a positional version (legacy
+// callers) or an options object (preferred, supports both cache-bust and
+// max_dim previews).
+export const getImageUrl = (
+  imagePath: string,
+  versionOrOptions?: string | number | null | GetImageUrlOptions,
+): string => {
+  if (imagePath.startsWith('http')) {
+    return imagePath;
+  }
+  const opts: GetImageUrlOptions =
+    versionOrOptions == null
+      ? {}
+      : typeof versionOrOptions === 'object'
+        ? versionOrOptions
+        : { version: versionOrOptions };
+  const encodedPath = encodeURIComponent(imagePath);
+  const params: string[] = [`path=${encodedPath}`];
+  if (opts.maxDim != null && Number.isFinite(opts.maxDim) && opts.maxDim > 0) {
+    const dim = Math.min(2048, Math.max(32, Math.round(opts.maxDim)));
+    params.push(`max_dim=${dim}`);
+  }
+  if (opts.version != null && opts.version !== '') {
+    params.push(`v=${encodeURIComponent(String(opts.version))}`);
+  }
+  return `${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?${params.join('&')}`;
+};
+
+/** Download URL — triggers Content-Disposition: attachment server-side. */
+export const getTurtleImageDownloadUrl = (imagePath: string): string => {
   if (imagePath.startsWith('http')) {
     return imagePath;
   }
   const encodedPath = encodeURIComponent(imagePath);
-  const base = `${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?path=${encodedPath}`;
-  if (options?.maxDim != null && Number.isFinite(options.maxDim) && options.maxDim > 0) {
-    const dim = Math.min(2048, Math.max(32, Math.round(options.maxDim)));
-    return `${base}&max_dim=${dim}`;
-  }
-  return base;
+  return `${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?path=${encodedPath}&download=1`;
 };
 
-// Turtle images (Admin only) – primary plastron, additional (microhabitat/condition), loose
+// Turtle images (Admin only) – primary plastron/carapace, additional, loose, history
 export interface TurtleImageAdditional {
   path: string;
   type: string;
   /** Free-form tags (e.g. burned, injury) for filtering in Sheets browser */
   labels?: string[];
+  /** Display-preferred date: EXIF first, upload fallback. */
   timestamp?: string | null;
+  /** When the photo was originally taken (camera EXIF DateTimeOriginal). */
+  exif_date?: string | null;
+  /** When the system stored the file (from manifest, filename stamp, or folder name). */
+  upload_date?: string | null;
+  /** Epoch ms — finer-grained than upload_date; used as sort tiebreaker. */
+  upload_ts?: number | null;
   uploaded_by?: string | null;
+}
+
+export type TurtleLooseSource =
+  | 'plastron_old_ref'
+  | 'plastron_other'
+  | 'carapace_old_ref'
+  | 'carapace_other'
+  | 'loose_legacy';
+
+export interface TurtleLooseImage {
+  path: string;
+  source: TurtleLooseSource;
+  /** Free-form tags from the per-directory manifest (e.g. burned, scarred). */
+  labels?: string[];
+  /** Display-preferred date: EXIF first, upload fallback. */
+  timestamp?: string | null;
+  exif_date?: string | null;
+  upload_date?: string | null;
+  /** Epoch ms — finer-grained than upload_date; used as sort tiebreaker. */
+  upload_ts?: number | null;
+}
+
+export interface TurtlePrimaryInfo {
+  path: string;
+  /** Free-form tags from the per-directory manifest (e.g. healthy, juvenile). */
+  labels?: string[];
+  /** Display-preferred date: EXIF first, upload fallback. */
+  timestamp?: string | null;
+  exif_date?: string | null;
+  upload_date?: string | null;
+  /** Epoch ms — used as cache-bust on the image URL since active-reference
+   *  paths stay identical across replacements. */
+  upload_ts?: number | null;
+}
+
+export type TurtleDeletedCategory =
+  | 'reference'
+  | 'plastron_old_ref'
+  | 'plastron_other'
+  | 'carapace_old_ref'
+  | 'carapace_other'
+  | 'additional'
+  | 'loose_legacy'
+  | 'unknown';
+
+export interface TurtleDeletedImage {
+  /** Absolute path of the file inside {turtle_dir}/Deleted/... */
+  path: string;
+  /** Absolute path where restore would place this file. */
+  original_path: string;
+  /** Turtle-dir relative path starting with "Deleted/". Used by the restore endpoint. */
+  deleted_rel_path: string;
+  category: TurtleDeletedCategory;
+  /** Free-form tags from the per-directory manifest. */
+  labels?: string[];
+  timestamp?: string | null;
+  exif_date?: string | null;
+  upload_date?: string | null;
 }
 
 export interface TurtleAdditionalLabelSearchMatch {
@@ -440,19 +596,29 @@ export interface TurtleAdditionalLabelSearchMatch {
 
 export interface TurtleImagesResponse {
   primary: string | null;
+  primary_carapace: string | null;
+  /** Active plastron reference with its capture/upload dates. */
+  primary_info?: TurtlePrimaryInfo | null;
+  /** Active carapace reference with its capture/upload dates. */
+  primary_carapace_info?: TurtlePrimaryInfo | null;
   additional: TurtleImageAdditional[];
-  loose: string[];
+  loose: TurtleLooseImage[];
+  history_dates: string[];
+  /** Soft-deleted images (in {turtle_dir}/Deleted/). */
+  deleted?: TurtleDeletedImage[];
 }
 
 export const getTurtleImages = async (
   turtleId: string,
   sheetName?: string | null,
+  primaryId?: string | null,
 ): Promise<TurtleImagesResponse> => {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const params = new URLSearchParams({ turtle_id: turtleId });
   if (sheetName) params.set('sheet_name', sheetName);
+  if (primaryId && primaryId !== turtleId) params.set('primary_id', primaryId);
   const response = await fetch(
     `${TURTLE_API_BASE_URL}/turtles/images?${params.toString()}`,
     { method: 'GET', headers },
@@ -514,10 +680,48 @@ export const updateTurtleAdditionalImageLabels = async (
   }
 };
 
-/** Batch get primary (plastron) image paths for multiple turtles (Admin only). */
+/** Update labels on ANY image under a turtle's folder. Admin only.
+ *  Generic counterpart to updateTurtleAdditionalImageLabels: works for active
+ *  references, Old References, Other Plastrons / Other Carapaces, legacy
+ *  loose_images, and additional_images. ``path`` is the absolute filesystem
+ *  path returned in /api/turtles/images responses. ``primaryId`` is tried
+ *  first server-side to avoid bio_id collisions across US state sheets. */
+export const setTurtleImageLabels = async (
+  turtleId: string,
+  imagePath: string,
+  labels: string[],
+  sheetName?: string | null,
+  primaryId?: string | null,
+): Promise<{ labels: string[] }> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const body: Record<string, unknown> = {
+    turtle_id: turtleId,
+    path: imagePath,
+    labels,
+  };
+  if (sheetName) body.sheet_name = sheetName;
+  if (primaryId) body.primary_id = primaryId;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/images/labels`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Failed to update labels' }));
+    throw new Error(err.error || 'Failed to update labels');
+  }
+  return await response.json();
+};
+
+/** Batch get primary (plastron) image paths for multiple turtles (Admin only).
+ *  primary_id is an optional fallback id used when the on-disk folder still
+ *  carries the Primary ID after the sheet's biology ID has changed.
+ */
 export const getTurtlePrimariesBatch = async (
-  turtles: Array<{ turtle_id: string; sheet_name?: string | null }>,
-): Promise<{ images: Array<{ turtle_id: string; sheet_name: string | null; primary: string | null }> }> => {
+  turtles: Array<{ turtle_id: string; sheet_name?: string | null; primary_id?: string | null }>,
+): Promise<{ images: Array<{ turtle_id: string; sheet_name: string | null; primary: string | null; primary_ts?: number | null }> }> => {
   const token = getToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -533,12 +737,42 @@ export const getTurtlePrimariesBatch = async (
   return await response.json();
 };
 
+/** Replace a turtle's plastron or carapace reference image atomically (Admin only). */
+export const uploadTurtleReplaceReference = async (
+  turtleId: string,
+  file: File,
+  photoType: 'plastron' | 'carapace',
+  sheetName?: string | null,
+  primaryId?: string | null,
+): Promise<{ success: boolean; message?: string }> => {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const formData = new FormData();
+  formData.append('turtle_id', turtleId);
+  formData.append('photo_type', photoType);
+  formData.append('file', file);
+  if (sheetName) formData.append('sheet_name', sheetName);
+  if (primaryId) formData.append('primary_id', primaryId);
+  const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/replace-reference`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Failed to replace reference' }));
+    throw new Error(err.error || 'Failed to replace reference');
+  }
+  return await response.json();
+};
+
 /** Set or replace ref_data identifier plastron (.pt + master image). Admin only. */
 export const uploadTurtleIdentifierPlastron = async (
   turtleId: string,
   file: File,
   sheetName: string | null | undefined,
   mode: 'set_if_missing' | 'replace',
+  primaryId?: string | null,
 ): Promise<{ success: boolean; message?: string }> => {
   const token = getToken();
   const headers: Record<string, string> = {};
@@ -548,6 +782,7 @@ export const uploadTurtleIdentifierPlastron = async (
   formData.append('file', file);
   formData.append('mode', mode);
   if (sheetName) formData.append('sheet_name', sheetName);
+  if (primaryId) formData.append('primary_id', primaryId);
   const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/images/identifier-plastron`, {
     method: 'POST',
     headers,
@@ -570,6 +805,7 @@ export const uploadTurtleAdditionalImages = async (
     labels?: string[];
   }>,
   sheetName?: string | null,
+  primaryId?: string | null,
 ): Promise<{ success: boolean; message?: string }> => {
   const token = getToken();
   const headers: Record<string, string> = {};
@@ -577,6 +813,7 @@ export const uploadTurtleAdditionalImages = async (
   const formData = new FormData();
   formData.append('turtle_id', turtleId);
   if (sheetName) formData.append('sheet_name', sheetName);
+  if (primaryId) formData.append('primary_id', primaryId);
   files.forEach((f, i) => {
     formData.append(`file_${i}`, f.file);
     formData.append(`type_${i}`, f.type);
@@ -615,4 +852,91 @@ export const deleteTurtleAdditionalImage = async (
     const err = await response.json().catch(() => ({ error: 'Failed to delete image' }));
     throw new Error(err.error || 'Failed to delete image');
   }
+};
+
+// --------------------------------------------------------------------------
+// Soft-delete / restore (Admin only)
+// --------------------------------------------------------------------------
+
+export interface DeleteTurtleImageResponse {
+  success: boolean;
+  /** Absolute path of the file in Deleted/. */
+  moved_to: string;
+  /** 'plastron' | 'carapace' when the deleted file was the active ref, else null. */
+  was_reference: 'plastron' | 'carapace' | null;
+  /** True if an Old Reference was promoted back to active automatically. */
+  reverted: boolean;
+  /** Absolute path of the newly-promoted active reference, if reverted. */
+  new_reference_path: string | null;
+  /** Present when promotion succeeded on move but .pt regeneration failed. */
+  error_promoting?: string;
+}
+
+export const deleteTurtleImage = async (
+  turtleId: string,
+  imagePath: string,
+  sheetName?: string | null,
+): Promise<DeleteTurtleImageResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/image`, {
+    method: 'DELETE',
+    headers,
+    body: JSON.stringify({
+      turtle_id: turtleId,
+      path: imagePath,
+      sheet_name: sheetName ?? null,
+    }),
+  });
+  const body = await response.json().catch(() => ({ error: 'Failed to delete image' }));
+  if (!response.ok) {
+    throw new Error(body.error || 'Failed to delete image');
+  }
+  return body as DeleteTurtleImageResponse;
+};
+
+export interface RestoreTurtleImageResponse {
+  success: boolean;
+  /** Absolute path the image was restored to. */
+  restored_to: string;
+  /** 'plastron' | 'carapace' when the restore targets an active-ref slot, else null. */
+  is_reference: 'plastron' | 'carapace' | null;
+  /** Present when move succeeded but .pt extraction didn't. */
+  warning?: string;
+}
+
+export class RestoreCollisionError extends Error {
+  collision = true;
+  constructor(message: string) {
+    super(message);
+    this.name = 'RestoreCollisionError';
+  }
+}
+
+export const restoreTurtleImage = async (
+  turtleId: string,
+  deletedPath: string,
+  sheetName?: string | null,
+): Promise<RestoreTurtleImageResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/restore-image`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      turtle_id: turtleId,
+      path: deletedPath,
+      sheet_name: sheetName ?? null,
+    }),
+  });
+  const body = await response.json().catch(() => ({ error: 'Failed to restore image' }));
+  if (!response.ok) {
+    if (response.status === 409 || body.collision) {
+      throw new RestoreCollisionError(body.error || 'A file already exists at the restore location.');
+    }
+    throw new Error(body.error || 'Failed to restore image');
+  }
+  return body as RestoreTurtleImageResponse;
 };

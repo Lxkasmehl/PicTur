@@ -1,37 +1,56 @@
-# PicTur Backend (CUDA-enabled optional image)
-# CUDA 12.8 + torch cu128: Blackwell (RTX 50xx, sm_120) needs PyTorch ≥2.7 with cu128, not cu121 (sm_90 max).
-FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
+# PicTur Backend -- CUDA-enabled image
+# Tested: RTX 5080 (Blackwell) / driver 590.48.01 / CUDA 13.1 host.
+#
+# Blackwell GPUs (sm_120) require CUDA 12.8+ runtime; we use CUDA 13.0 + cu130 wheels.
+# Ubuntu 22.04 (avoids PEP 668) + venv (clean pip).
+
+FROM nvidia/cuda:13.0.1-cudnn-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+# Driver 590 is newer than this image's NVIDIA_REQUIRE_CUDA whitelist (max 575).
+# Override the check so the container toolkit doesn't block GPU access.
+ENV NVIDIA_DISABLE_REQUIRE=1
 
+# System packages: Python 3.11 (deadsnakes), git (LightGlue), OpenCV deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    python3-venv \
-    python-is-python3 \
-    libglib2.0-0 \
-    libgl1 \
-    libheif1 \
-    libde265-0 \
-    ca-certificates \
+        software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-venv \
+        python3.11-dev \
+        git \
+        libgl1 \
+        libglib2.0-0 \
+        libheif-dev \
+        libde265-0 \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Remove compat driver stub — the host driver (590) is injected by nvidia-container-toolkit.
+# The compat libcuda.so.580 is older and can shadow the real driver on some load paths.
+RUN rm -rf /usr/local/cuda/compat
+
+# Virtual environment -- clean pip, no system conflicts
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 WORKDIR /app
 
 # PyPI's default torch wheels are CPU-only; CUDA builds live on download.pytorch.org.
-# kornia/lightglue deps can pull torch from PyPI and overwrite the CUDA build — reinstall at the end.
-# cu128 + torch>=2.7: NVIDIA Blackwell (sm_120) is not supported by cu121 wheels (max sm_90).
+# kornia/lightglue deps can pull torch from PyPI and overwrite the CUDA build — force-reinstall at the end.
+# cu130 + torch: NVIDIA Blackwell (RTX 5080, sm_120) requires CUDA 12.8+; we use cu130 wheels.
 COPY requirements-docker-cuda.txt .
-RUN python3 -m pip install --no-cache-dir --upgrade pip \
-    && python3 -m pip install --no-cache-dir \
-        "torch>=2.7.0" "torchvision>=0.22.0" \
-        --index-url https://download.pytorch.org/whl/cu128 \
-    && python3 -m pip install --no-cache-dir -r requirements-docker-cuda.txt \
-    && python3 -m pip install --no-cache-dir --upgrade --force-reinstall \
-        "torch>=2.7.0" "torchvision>=0.22.0" \
-        --index-url https://download.pytorch.org/whl/cu128 \
+RUN pip install --no-cache-dir \
+        torch torchvision \
+        --index-url https://download.pytorch.org/whl/cu130 \
+    && pip install --no-cache-dir -r requirements-docker-cuda.txt \
+    && pip install --no-cache-dir --upgrade --force-reinstall \
+        torch torchvision \
+        --index-url https://download.pytorch.org/whl/cu130 \
         --no-deps \
-    && python3 -c "import torch; assert torch.version.cuda, 'Expected CUDA PyTorch (torch.version.cuda must be set)'"
+    && python -c "import torch; assert torch.version.cuda, 'Expected CUDA PyTorch (torch.version.cuda must be set)'"
 
 COPY . .
 
@@ -40,4 +59,8 @@ RUN mkdir -p /app/data
 
 EXPOSE 5000
 ENV PORT=5000
-CMD ["python3", "-u", "app.py"]
+
+# Build-time sanity check
+RUN python -c "import torch; print(f'PyTorch {torch.__version__}, CUDA compiled: {torch.version.cuda}')"
+
+CMD ["python", "-u", "app.py"]

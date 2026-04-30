@@ -302,7 +302,14 @@ def test_z_approve_merges_packet_additional_into_turtle(client, review_packet_di
     r2 = client.get(f"/api/review-queue/{request_id}")
     packet_additional = r2.json()["item"]["additional_images"]
     assert len(packet_additional) >= 1
-    merged_filename = packet_additional[0]["filename"]
+    # Pin the entry the test itself just uploaded — earlier tests in this module leave
+    # carapace/plastron entries in the packet that get routed to Other Carapaces / Other
+    # Plastrons on approve and are intentionally absent from additional_images.
+    # Identified by type=microhabitat (this is the only test in the module that adds one).
+    microhabitat_entries = [a for a in packet_additional if a.get("type") == "microhabitat"]
+    assert microhabitat_entries, f"Expected a microhabitat entry in packet: {packet_additional}"
+    merge_entry = microhabitat_entries[-1]
+    merged_filename = merge_entry["filename"]
 
     # Resolve query image path (fixture has query.jpg in packet dir); backend finds it
     # Approve to T42 (fixture Kansas/Topeka/T42)

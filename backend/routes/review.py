@@ -144,6 +144,7 @@ def format_review_packet_item(packet_dir, request_id):
         'match_search_failed': match_search_failed,
         'match_search_error': match_search_error,
         'status': 'pending',
+        'photo_type': metadata.get('photo_type', 'plastron'),
     }
 
 
@@ -197,12 +198,18 @@ def register_review_routes(app):
                 f.seek(0)
                 if size > MAX_FILE_SIZE:
                     continue
-                ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
+                orig_safe = secure_filename(f.filename) or ''
+                ext = os.path.splitext(orig_safe)[1] or '.jpg'
                 temp_path = os.path.join(UPLOAD_FOLDER, f"review_extra_{request_id}_{idx}_{int(time.time())}{ext}")
                 f.save(temp_path)
                 # HEIC/HEIF → JPEG (no-op for other formats)
                 temp_path = normalize_to_jpeg(temp_path)
-                item = {'path': temp_path, 'type': typ, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
+                item = {
+                    'path': temp_path,
+                    'type': typ,
+                    'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                    'original_filename': os.path.basename(orig_safe) if orig_safe else f'upload{ext}',
+                }
                 if lbs:
                     item['labels'] = lbs
                 files_with_types.append(item)
@@ -254,11 +261,181 @@ def register_review_routes(app):
             return jsonify({'error': 'TurtleManager is still initializing.'}), 503
         if manager_service.manager is None:
             return jsonify({'error': 'TurtleManager failed to initialize'}), 500
-        packet_dir = os.path.join(manager_service.manager.review_queue_dir, request_id)
-        if not os.path.isdir(packet_dir):
+        packet_dir = manager_service.manager._resolve_packet_dir(request_id)
+        if not packet_dir or not os.path.isdir(packet_dir):
             return jsonify({'error': 'Request not found'}), 404
         item = format_review_packet_item(packet_dir, request_id)
         return jsonify({'success': True, 'item': item})
+
+    @app.route('/api/review-queue/<request_id>/cross-check', methods=['POST'])
+    @require_admin
+    def cross_check_review_packet(request_id):
+        """Run matching against a different photo_type cache as a cross-check (Admin only).
+
+        Body: { "photo_type": "carapace", "image_path": "/path/to/carapace.jpg" (optional) }
+        If image_path is provided, uses that image for matching (e.g. a carapace additional image).
+        Otherwise uses the packet's main uploaded image.
+        Does NOT update the packet's photo_type or candidates — purely diagnostic.
+        Returns match results for comparison.
+        """
+        if not manager_service.manager_ready.wait(timeout=30):
+            return jsonify({'error': 'TurtleManager is still initializing.'}), 503
+        if manager_service.manager is None:
+            return jsonify({'error': 'TurtleManager failed to initialize'}), 500
+
+        data = request.get_json(silent=True) or {}
+        photo_type = (data.get('photo_type') or '').strip().lower()
+        if photo_type not in ('plastron', 'carapace'):
+            return jsonify({'error': 'photo_type must be "plastron" or "carapace"'}), 400
+
+        packet_dir = manager_service.manager._resolve_packet_dir(request_id)
+        if not packet_dir or not os.path.isdir(packet_dir):
+            return jsonify({'error': 'Request not found'}), 404
+
+        # Use specified image_path if provided, otherwise fall back to packet's main image
+        query_image = None
+        specified_path = (data.get('image_path') or '').strip()
+        if specified_path and os.path.isfile(specified_path):
+            query_image = specified_path
+        else:
+            for fname in os.listdir(packet_dir):
+                if fname.lower().endswith(('.jpg', '.png', '.jpeg')) and fname != 'metadata.json' and not fname.startswith('.'):
+                    query_image = os.path.join(packet_dir, fname)
+                    break
+        if not query_image:
+            return jsonify({'error': 'No image found for cross-check'}), 400
+
+        # Re-use the location scope the admin chose at upload time so the cross-check
+        # searches the same set of turtles as the original plastron match instead of
+        # the entire VRAM cache. Falls back to no filter for legacy packets that
+        # predate persisting match_sheet in metadata.json.
+        location_filter = None
+        metadata_path = os.path.join(packet_dir, 'metadata.json')
+        if os.path.isfile(metadata_path):
+            try:
+                with open(metadata_path, 'r') as mf:
+                    packet_metadata = json.load(mf)
+                location_filter = (packet_metadata.get('match_sheet') or '').strip() or None
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        try:
+            # Cross-check disables the "expand to all locations when < 5 matches"
+            # fallback that the regular match flow uses. Cross-check is diagnostic
+            # — if the carapace finds nothing in the plastron's scope, that's the
+            # answer (plastron and carapace disagree on location). Padding the
+            # result list with distant turtles would mislead the admin, and
+            # running the full-cache fallback against ~700+ candidates was the
+            # source of the minute-long cross-check turnaround when a small
+            # location had few above-threshold carapaces.
+            results, elapsed = manager_service.manager.search_for_matches(
+                query_image,
+                location_filter=location_filter,
+                photo_type=photo_type,
+                expand_to_all_when_short=False,
+            )
+        except Exception as e:
+            return jsonify({'error': f'Cross-check failed: {str(e)}'}), 500
+
+        formatted = []
+        for match in results:
+            pt_path = match.get('file_path', '') or ''
+            image_path = pt_path
+            if pt_path.endswith('.pt'):
+                base = pt_path[:-3]
+                for ext in ['.jpg', '.jpeg', '.png']:
+                    if os.path.exists(base + ext):
+                        image_path = base + ext
+                        break
+            formatted.append({
+                'turtle_id': match.get('site_id', 'Unknown'),
+                'location': match.get('location', 'Unknown'),
+                'confidence': float(match.get('confidence', 0.0)),
+                'score': int(match.get('score', 0)),
+                'image_path': image_path,
+            })
+
+        return jsonify({
+            'success': True,
+            'photo_type': photo_type,
+            'matches': formatted,
+            'elapsed': round(elapsed, 2),
+        })
+
+    @app.route('/api/review-queue/<request_id>/classify', methods=['POST'])
+    @require_admin
+    def classify_review_packet(request_id):
+        """Set photo_type on a review packet and trigger AI matching (Admin only).
+
+        Body: { "photo_type": "plastron" | "carapace" }
+        Updates metadata.json, clears old candidates, runs matching against the chosen cache.
+        """
+        if not manager_service.manager_ready.wait(timeout=30):
+            return jsonify({'error': 'TurtleManager is still initializing.'}), 503
+        if manager_service.manager is None:
+            return jsonify({'error': 'TurtleManager failed to initialize'}), 500
+
+        data = request.get_json(silent=True) or {}
+        photo_type = (data.get('photo_type') or '').strip().lower()
+        if photo_type not in ('plastron', 'carapace'):
+            return jsonify({'error': 'photo_type must be "plastron" or "carapace"'}), 400
+
+        packet_dir = manager_service.manager._resolve_packet_dir(request_id)
+        if not packet_dir or not os.path.isdir(packet_dir):
+            return jsonify({'error': 'Request not found'}), 404
+
+        # Update metadata with photo_type
+        metadata_path = os.path.join(packet_dir, 'metadata.json')
+        metadata = {}
+        if os.path.isfile(metadata_path):
+            try:
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+        metadata['photo_type'] = photo_type
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f)
+
+        # Find the uploaded image in the packet
+        query_image = None
+        for fname in os.listdir(packet_dir):
+            if fname.lower().endswith(('.jpg', '.png', '.jpeg')) and fname != 'metadata.json' and not fname.startswith('.'):
+                query_image = os.path.join(packet_dir, fname)
+                break
+
+        if not query_image:
+            return jsonify({'error': 'No uploaded image found in packet'}), 400
+
+        # Clear old candidates
+        import shutil
+        candidates_dir = os.path.join(packet_dir, 'candidate_matches')
+        if os.path.isdir(candidates_dir):
+            shutil.rmtree(candidates_dir)
+        os.makedirs(candidates_dir, exist_ok=True)
+
+        # Run matching with the chosen photo_type
+        try:
+            results, _ = manager_service.manager.search_for_matches(query_image, photo_type=photo_type)
+        except Exception as e:
+            return jsonify({'error': f'Matching failed: {str(e)}'}), 500
+
+        # Save candidate images to disk
+        for rank, match in enumerate(results, start=1):
+            pt_path = match.get('file_path', '') or ''
+            if pt_path and pt_path.endswith('.pt'):
+                base_path = pt_path[:-3]
+                for ext in ['.jpg', '.jpeg', '.png']:
+                    if os.path.exists(base_path + ext):
+                        turtle_id = match.get('site_id', 'Unknown')
+                        conf_int = int(round(match.get('confidence', 0.0) * 100))
+                        cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
+                        shutil.copy2(base_path + ext, os.path.join(candidates_dir, cand_filename))
+                        break
+
+        # Return the updated packet
+        item = format_review_packet_item(packet_dir, request_id)
+        return jsonify({'success': True, 'item': item, 'matches_found': len(results)})
 
     @app.route('/api/flags', methods=['GET'])
     @require_admin
@@ -334,6 +511,11 @@ def register_review_routes(app):
         match_from_community = data.get('match_from_community') is True  # Admin re-found a community turtle
         community_sheet_name = (data.get('community_sheet_name') or '').strip() or None  # Community tab to remove from
         is_community_upload = not (request_id.startswith('admin_') if request_id else False)
+        photo_type = (data.get('photo_type') or 'plastron').strip().lower()
+        if photo_type not in ('plastron', 'carapace'):
+            photo_type = 'plastron'
+        replace_reference = data.get('replace_reference') is True
+        replace_carapace_reference = data.get('replace_carapace_reference') is True
 
         # When moving turtle from community to admin, new admin path = sheet_name/general_location (e.g. Kansas/NT)
         new_admin_location = None
@@ -380,10 +562,22 @@ def register_review_routes(app):
                     if isinstance(sheets_data, dict):
                         sheets_data['general_location'] = resolved_general_loc
 
+        # For new turtle creation, defer packet deletion until Sheets sync succeeds.
+        # This ensures the packet survives as a retry point if Sheets fails.
+        is_new_turtle = bool(new_location and new_turtle_id and not match_turtle_id)
+
+        # Prepend biology ID to folder name: Biology_ID_PrimaryKey (e.g. F001_K14)
+        if is_new_turtle and isinstance(sheets_data, dict):
+            bio_id = (sheets_data.get('id') or '').strip()
+            if bio_id and new_turtle_id and not new_turtle_id.startswith(f"{bio_id}_"):
+                new_turtle_id = f"{bio_id}_{new_turtle_id}"
+
         try:
             success, message = manager_service.manager.approve_review_packet(
                 request_id,
                 match_turtle_id=match_turtle_id,
+                replace_reference=replace_reference,
+                replace_carapace_reference=replace_carapace_reference,
                 new_location=new_location,
                 new_turtle_id=new_turtle_id,
                 uploaded_image_path=uploaded_image_path,
@@ -392,21 +586,24 @@ def register_review_routes(app):
                 match_from_community=match_from_community,
                 community_sheet_name=community_sheet_name,
                 new_admin_location=new_admin_location,
+                photo_type=photo_type,
+                delete_packet=not is_new_turtle,
             )
 
             if success:
                 # New turtle: create row in the correct spreadsheet (research vs community).
-                # Community uploads: community spreadsheet + Community_Uploads/<sheet> folder only.
-                # Admin uploads: research spreadsheet + data/State/Location.
-                if new_location and new_turtle_id:
+                # For new turtles, Sheets sync must succeed — otherwise roll back disk and keep packet.
+                sheets_sync_error = None
+                if is_new_turtle:
                     sheet_name = (isinstance(sheets_data, dict) and sheets_data.get('sheet_name')) or new_location
                     state = (isinstance(sheets_data, dict) and sheets_data.get('general_location')) or ''
                     location = (isinstance(sheets_data, dict) and sheets_data.get('location')) or ''
 
                     if is_community_upload:
-                        # Community upload: create/ensure row in community spreadsheet only (no research sheet).
                         comm = get_community_sheets_service()
-                        if comm:
+                        if not comm:
+                            sheets_sync_error = "Community spreadsheet not configured"
+                        else:
                             try:
                                 if isinstance(sheets_data, dict) and sheets_data.get('primary_id') and sheets_data.get('sheet_name'):
                                     primary_id = sheets_data.get('primary_id')
@@ -427,11 +624,12 @@ def register_review_routes(app):
                                     comm.create_turtle_data(turtle_data, sheet_name, state, location)
                                     print(f"✅ Created community spreadsheet entry for new turtle {new_turtle_id} with Primary ID {primary_id}")
                             except Exception as comm_err:
-                                print(f"⚠️ Warning: Failed to create community Google Sheets entry: {comm_err}")
+                                sheets_sync_error = f"Community Google Sheets sync failed: {comm_err}"
                     else:
-                        # Admin upload: create in research spreadsheet.
                         service = get_sheets_service()
-                        if service:
+                        if not service:
+                            sheets_sync_error = "Google Sheets not configured"
+                        else:
                             try:
                                 if isinstance(sheets_data, dict) and sheets_data.get('primary_id') and sheets_data.get('sheet_name'):
                                     primary_id = sheets_data.get('primary_id')
@@ -462,7 +660,22 @@ def register_review_routes(app):
                                     service.create_turtle_data(turtle_data, sheet_name, state, location)
                                     print(f"✅ Created Google Sheets entry for new turtle {new_turtle_id} with Primary ID {primary_id} (fallback)")
                             except Exception as sheets_error:
-                                print(f"⚠️ Warning: Failed to create Google Sheets entry: {sheets_error}")
+                                sheets_sync_error = f"Google Sheets sync failed: {sheets_error}"
+
+                    # If Sheets sync failed, roll back the turtle from disk/VRAM and keep the packet
+                    if sheets_sync_error:
+                        print(f"❌ {sheets_sync_error} — rolling back new turtle {new_turtle_id}")
+                        manager_service.manager.rollback_new_turtle(
+                            new_turtle_id, new_location, photo_type=photo_type,
+                        )
+                        return jsonify({
+                            'error': f'Upload could not be fully completed. {sheets_sync_error}. Please re-upload.'
+                        }), 500
+
+                    # Sheets sync succeeded — now safe to delete the packet
+                    packet_dir = manager_service.manager._resolve_packet_dir(request_id)
+                    if packet_dir:
+                        manager_service.manager._delete_packet(packet_dir, request_id=request_id)
 
                 # When admin matched a community turtle: remove that row from the community sheet (turtle moves to research only).
                 # Admin/research matches do not write to the community spreadsheet — the two books stay separate.

@@ -606,4 +606,131 @@ test.describe('Admin Turtle Match', () => {
     await expect(page.getByText('Removed')).toBeVisible({ timeout: 5000 });
     await expect(fromUploadSection.getByText('No additional photos yet')).toBeVisible({ timeout: 5000 });
   });
+
+  test('Create New Turtle modal exposes AdditionalImagesSection (Photos for this upload)', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await loginAsAdmin(page);
+
+    const fileInput = page.locator('input[type="file"]:not([capture])').first();
+    await fileInput.setInputFiles({
+      name: 'create-modal-photos-e2e.png',
+      mimeType: 'image/png',
+      buffer: getTestImageBuffer(),
+    });
+    await page.waitForSelector('button:has-text("Upload Photo")', { timeout: 5000 });
+    await clickUploadPhotoButton(page);
+    await expect(page).toHaveURL(/\/admin\/turtle-match\/[^/]+/, { timeout: 30_000 });
+    await expect(page.getByRole('heading', { name: /Turtle Match Review/ })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await page.getByRole('button', { name: 'Create New Turtle' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    // Photos for this upload section is rendered inside the modal above the Google Sheets divider.
+    await expect(dialog.getByText('Photos for this upload', { exact: false })).toBeVisible();
+    // Upload buttons from AdditionalImagesSection are Mantine Button component="label" — render as <label>, not <button> — so match by visible text.
+    await expect(dialog.getByText('Microhabitat', { exact: false }).first()).toBeVisible();
+    await expect(dialog.getByText('Condition', { exact: false }).first()).toBeVisible();
+    await expect(dialog.getByText('Carapace', { exact: false }).first()).toBeVisible();
+    await expect(dialog.getByText('Additional', { exact: false }).first()).toBeVisible();
+  });
+
+  test('Replace plastron reference checkbox renders above Google Sheets form, not at bottom', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const requestId = 'admin_e2e-replace-ref-placement';
+
+    // Mock upload so we get a deterministic match and request id.
+    await page.route('**/api/upload**', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          request_id: requestId,
+          uploaded_image_path: `Review_Queue/${requestId}/query.jpg`,
+          matches: [
+            {
+              turtle_id: 'F001_K14',
+              location: 'Kansas/Wichita',
+              distance: 0.2,
+              file_path: `data/Kansas/Wichita/F001_K14/plastron/primary.jpg`,
+              filename: 'primary.jpg',
+            },
+          ],
+          message: 'Uploaded',
+        }),
+      });
+    });
+    await page.route(`**/api/review-queue/${requestId}`, async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          item: {
+            request_id: requestId,
+            uploaded_image: `Review_Queue/${requestId}/query.jpg`,
+            metadata: {},
+            additional_images: [],
+            candidates: [
+              {
+                rank: 1,
+                turtle_id: 'F001_K14',
+                confidence: 85,
+                image_path: `data/Kansas/Wichita/F001_K14/plastron/primary.jpg`,
+              },
+            ],
+            status: 'matched',
+          },
+        }),
+      });
+    });
+
+    await loginAsAdmin(page);
+
+    const fileInput = page.locator('input[type="file"]:not([capture])').first();
+    await fileInput.setInputFiles({
+      name: 'replace-ref-placement-e2e.png',
+      mimeType: 'image/png',
+      buffer: getTestImageBuffer(),
+    });
+    await page.waitForSelector('button:has-text("Upload Photo")', { timeout: 5000 });
+    await clickUploadPhotoButton(page);
+    await expect(page).toHaveURL(/\/admin\/turtle-match\/[^/]+/, { timeout: 30_000 });
+    await expect(page.getByRole('heading', { name: /Turtle Match Review/ })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Click the match card to enter the "match-selected" detail view.
+    const matchCard = page.getByText('F001_K14').first();
+    await matchCard.click();
+
+    const replaceCheckbox = page.getByLabel('Replace plastron reference with this upload');
+    const saveButton = page.getByRole('button', { name: /Save to Sheets & Confirm Match/ });
+    await expect(replaceCheckbox).toBeVisible({ timeout: 10_000 });
+    await expect(saveButton).toBeVisible();
+
+    // Placement check: the checkbox should appear BEFORE the Save button in DOM order,
+    // i.e. above the Google Sheets form & action bar, NOT inside the bottom action panel.
+    const order = await page.evaluate(() => {
+      const checkbox = document.querySelector(
+        'input[type="checkbox"]',
+      ) as HTMLInputElement | null;
+      const saveBtn = Array.from(document.querySelectorAll('button')).find((b) =>
+        /Save to Sheets & Confirm Match/.test(b.textContent || ''),
+      );
+      if (!checkbox || !saveBtn) return 'missing';
+      const pos = checkbox.compareDocumentPosition(saveBtn);
+      return pos & Node.DOCUMENT_POSITION_FOLLOWING ? 'before' : 'after';
+    });
+    expect(order).toBe('before');
+  });
 });

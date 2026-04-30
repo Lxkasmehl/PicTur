@@ -200,7 +200,7 @@ def register_upload_routes(app):
                 with open(os.path.join(additional_dir, 'manifest.json'), 'w') as f:
                     json.dump([], f)
 
-                # Process additional partner frontend files (microhabitat / condition / carapace + optional labels)
+                # Process additional partner frontend files (microhabitat / condition / carapace / plastron + optional labels)
                 files_with_types = _collect_extra_upload_files(request, request_id)
 
                 if files_with_types:
@@ -216,9 +216,9 @@ def register_upload_routes(app):
                 candidates_dir = os.path.join(packet_dir, 'candidate_matches')
 
                 try:
-                    # ARCHITECT FIX: Correctly unpacks tuple from SuperPoint search and applies filter
+                    # Admin uploads are always plastron — photo_type is fixed
                     results = manager_service.manager.search_for_matches(
-                        query_save_path, location_filter=match_sheet
+                        query_save_path, location_filter=match_sheet, photo_type='plastron'
                     )
 
                     # Safely unpack the tuple (matches, elapsed_time)
@@ -260,11 +260,42 @@ def register_upload_routes(app):
                         else 'Photo processed successfully. No matches found. You can create a new turtle.'
                     )
 
+                    # Save metadata with photo_type so review queue can display it.
+                    # Persist match_sheet too so a later carapace cross-check on this
+                    # packet uses the same location scope the admin chose at upload.
+                    packet_metadata = {'photo_type': 'plastron'}
+                    if match_sheet:
+                        packet_metadata['match_sheet'] = match_sheet
+                    # Persist the same flag / find-metadata fields the community
+                    # path saves so admin uploads can carry them through approval
+                    # the same way. The form extracts these above into local
+                    # variables but pre-fix nothing wrote them — so any digital
+                    # flag / physical_flag / collected_to_lab an admin set at
+                    # upload time silently disappeared and the Release page
+                    # showed nothing after approval.
+                    if location_hint_lat is not None and location_hint_lon is not None:
+                        packet_metadata['location_hint_lat'] = location_hint_lat
+                        packet_metadata['location_hint_lon'] = location_hint_lon
+                        if location_hint_source in ('gps', 'manual'):
+                            packet_metadata['location_hint_source'] = location_hint_source
+                    if collected_to_lab in ('yes', 'no'):
+                        packet_metadata['collected_to_lab'] = collected_to_lab
+                    if physical_flag in ('yes', 'no', 'no_flag'):
+                        packet_metadata['physical_flag'] = physical_flag
+                    if digital_flag_lat is not None and digital_flag_lon is not None:
+                        packet_metadata['digital_flag_lat'] = digital_flag_lat
+                        packet_metadata['digital_flag_lon'] = digital_flag_lon
+                        if digital_flag_source in ('gps', 'manual'):
+                            packet_metadata['digital_flag_source'] = digital_flag_source
+                    with open(os.path.join(packet_dir, 'metadata.json'), 'w') as mf:
+                        json.dump(packet_metadata, mf)
+
                     return jsonify({
                         'success': True,
                         'request_id': request_id,
                         'matches': formatted_matches,
                         'uploaded_image_path': query_save_path,
+                        'photo_type': 'plastron',
                         'message': message
                     })
                 except Exception as search_exc:
@@ -286,7 +317,8 @@ def register_upload_routes(app):
                 user_info = {
                     'finder': finder_name,
                     'email': user_email,
-                    'uploaded_at': time.time()
+                    'uploaded_at': time.time(),
+                    'photo_type': 'unclassified',
                 }
 
                 if state and location:

@@ -29,6 +29,7 @@ export {
   isAdminRole,
 } from './api/auth';
 export { fetchCommunityGameState, saveCommunityGameState } from './api/communityGame';
+export { getBackupWindow, type BackupWindow } from './api/backup';
 export {
   fetchUserUiPreferences,
   saveUserUiPreferences,
@@ -56,15 +57,24 @@ export {
   getTurtlesWithFlags,
   clearReleaseFlag,
   getImageUrl,
+  getTurtleImageDownloadUrl,
   getTurtleImages,
   getTurtlePrimariesBatch,
   uploadTurtleAdditionalImages,
+  uploadTurtleReplaceReference,
   uploadTurtleIdentifierPlastron,
   deleteTurtleAdditionalImage,
+  deleteTurtleImage,
+  restoreTurtleImage,
+  RestoreCollisionError,
+  classifyReviewPacket,
+  crossCheckReviewPacket,
   searchTurtleImagesByLabel,
   updateTurtleAdditionalImageLabels,
+  setTurtleImageLabels,
 } from './api/turtle';
 export type {
+  PhotoType,
   TurtleMatch,
   UploadPhotoResponse,
   LocationHint,
@@ -78,6 +88,13 @@ export type {
   UploadExtraFile,
   TurtleImageAdditional,
   TurtleImagesResponse,
+  TurtleLooseImage,
+  TurtleLooseSource,
+  TurtlePrimaryInfo,
+  TurtleDeletedImage,
+  TurtleDeletedCategory,
+  DeleteTurtleImageResponse,
+  RestoreTurtleImageResponse,
   TurtleAdditionalLabelSearchMatch,
   GetImageUrlOptions,
 } from './api/turtle';

@@ -26,7 +26,7 @@ import {
   removeReviewPacketAdditionalImage,
   uploadTurtleAdditionalImages,
   deleteTurtleAdditionalImage,
-  updateTurtleAdditionalImageLabels,
+  setTurtleImageLabels,
 } from '../services/api';
 import { notifications } from '@mantine/notifications';
 import {
@@ -36,12 +36,40 @@ import {
   type AdditionalPhotoKind,
 } from '../constants/additionalPhotoKinds';
 
+/**
+ * Display-only kinds that are *derived* from on-disk location, never
+ * user-pickable. The scratchpad / Old Photos viewer uses these to group
+ * plastron / carapace photos by role (active reference vs. archived old
+ * reference vs. an extra) so multiple uploads on the same day stay grouped
+ * instead of collapsing into a single pile. ``loose_legacy`` covers files
+ * still living in the pre-migration ``loose_images/`` folder.
+ */
+export type ScratchpadOnlyKind =
+  | 'plastron_active'
+  | 'plastron_old_ref'
+  | 'plastron_other'
+  | 'carapace_active'
+  | 'carapace_old_ref'
+  | 'carapace_other'
+  | 'loose_legacy';
+
+/**
+ * Every kind the rendered staged-photo grid knows how to display:
+ * canonical kinds the user can stage (carapace / plastron / anterior /
+ * posterior / left-side / right-side / people / microhabitat / condition /
+ * injury / other) plus the scratchpad-only role-suffixed variants.
+ */
+export type DisplayKind = AdditionalPhotoKind | ScratchpadOnlyKind;
+
 /** Single additional image for display (packet or turtle). */
 export interface AdditionalImageDisplay {
   imagePath: string;
   filename: string;
   type: string;
   labels?: string[];
+  /** Epoch ms cache-bust for active references whose path stays stable
+   *  across replacements. Omit for archived / unique-path images. */
+  uploadTs?: number | null;
 }
 
 interface AdditionalImagesSectionProps {
@@ -51,12 +79,39 @@ interface AdditionalImagesSectionProps {
   requestId?: string;
   turtleId?: string;
   sheetName?: string | null;
+  /** Globally-unique primary id used as the FIRST folder-lookup key on the
+   *  backend. Required for cross-state biology-id collisions and for cases
+   *  where the on-disk folder name doesn't match the sheet's current bio_id
+   *  (stray folders / not-yet-renamed combined names). When omitted, only
+   *  the bio-id walk is attempted, which can mis-resolve or fail. */
+  primaryId?: string | null;
   disabled?: boolean;
   embedded?: boolean;
   hideAddButtons?: boolean;
+  /** When provided, ALL button clicks stage via this callback instead of uploading immediately.
+   *  Parent owns the staged files and commits them on save. Plastron button becomes visible,
+   *  and plastron/carapace are rendered in red to signal they may replace the current reference.
+   *  Leave undefined for packet-mode / immediate-upload behavior. */
+  onStagePhoto?: (type: AdditionalPhotoKind, file: File) => void;
+  /** Override for the delete button. When provided, clicking trash calls this instead
+   *  of the built-in handler, and it is the parent's responsibility to refetch. Used
+   *  by scratchpad callers so the confirm-modal and soft-delete routing lives in one
+   *  place instead of being duplicated here. */
+  onDelete?: (photo: AdditionalImageDisplay) => Promise<void> | void;
 }
 
-const TYPE_ORDER: AdditionalPhotoKind[] = [
+// Display ordering for the rendered staged-photos grid: scratchpad-only
+// role variants first (active ref → old ref → other), then the canonical
+// generic kinds (the eleven main introduced), then the legacy loose bucket.
+// Keep separate from BUTTON_KINDS — only canonical kinds get an upload
+// button (scratchpad-only kinds are derived from on-disk location).
+const TYPE_ORDER: DisplayKind[] = [
+  'plastron_active',
+  'plastron_old_ref',
+  'plastron_other',
+  'carapace_active',
+  'carapace_old_ref',
+  'carapace_other',
   'carapace',
   'plastron',
   'anterior',
@@ -67,13 +122,56 @@ const TYPE_ORDER: AdditionalPhotoKind[] = [
   'microhabitat',
   'condition',
   'injury',
+  'loose_legacy',
   'other',
 ];
+
+function normalizeKind(t: string): DisplayKind {
+  const s = (t || '').toLowerCase();
+  if (
+    s === 'plastron_active' ||
+    s === 'plastron_old_ref' ||
+    s === 'plastron_other' ||
+    s === 'carapace_active' ||
+    s === 'carapace_old_ref' ||
+    s === 'carapace_other' ||
+    s === 'loose_legacy'
+  ) {
+    return s;
+  }
+  // Falls through to main's canonical normalizer (head/tail aliases, anything
+  // unknown collapses to 'other'). Legacy 'additional' is aliased to 'other'.
+  if (s === 'additional') return 'other';
+  return normalizeAdditionalPhotoKind(s || 'other');
+}
+
+function kindSectionLabel(k: DisplayKind): string {
+  switch (k) {
+    case 'plastron_active':
+      return 'Plastron (active reference)';
+    case 'plastron_old_ref':
+      return 'Plastron (old reference)';
+    case 'plastron_other':
+      return 'Plastron (additional)';
+    case 'carapace_active':
+      return 'Carapace (active reference)';
+    case 'carapace_old_ref':
+      return 'Carapace (old reference)';
+    case 'carapace_other':
+      return 'Carapace (additional)';
+    case 'loose_legacy':
+      return 'Loose (legacy)';
+    default:
+      return additionalPhotoKindLabel(k);
+  }
+}
 
 type StagedRow = {
   id: string;
   file: File;
   previewUrl: string;
+  /** Canonical kind only — staged uploads route through one of the eleven
+   *  canonical buttons. Scratchpad-only kinds never appear here. */
   type: AdditionalPhotoKind;
   labels: string[];
 };
@@ -142,9 +240,12 @@ export function AdditionalImagesSection({
   requestId,
   turtleId,
   sheetName = null,
+  primaryId = null,
   disabled = false,
   embedded = false,
   hideAddButtons = false,
+  onStagePhoto,
+  onDelete,
 }: AdditionalImagesSectionProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -152,6 +253,18 @@ export function AdditionalImagesSection({
   const [staged, setStaged] = useState<StagedRow[]>([]);
   const [inlineDraft, setInlineDraft] = useState<Record<string, string[]>>({});
   const [savingInline, setSavingInline] = useState<string | null>(null);
+  // Per-image controlled "currently-typed" text inside each TagsInput.
+  // Tracked separately from the committed value array so the autosave on
+  // blur can pick up text the user typed without pressing Enter — Mantine
+  // v8's acceptValueOnBlur does not reliably call onChange before our
+  // onBlur prop in this version, so we merge the pending text in
+  // ourselves.
+  const [inlineSearchValue, setInlineSearchValue] = useState<Record<string, string>>({});
+  // Synchronous mirrors of the React state above so onBlur reads the just-
+  // typed value before React has flushed batched updates from onChange /
+  // onSearchChange within the same blur event.
+  const inlineDraftRef = useRef<Record<string, string[]>>({});
+  const inlineSearchValueRef = useRef<Record<string, string>>({});
 
   const isPacket = !!requestId;
   const isTurtle = !!turtleId;
@@ -171,6 +284,7 @@ export function AdditionalImagesSection({
       next[img.filename] = [...(img.labels ?? [])];
     });
     setInlineDraft(next);
+    inlineDraftRef.current = next;
   }, [images]);
 
   const stagedRef = useRef(staged);
@@ -182,8 +296,8 @@ export function AdditionalImagesSection({
     };
   }, []);
 
-  const openLightboxServer = (path: string) => {
-    setLightboxSrc(getImageUrl(path));
+  const openLightboxServer = (path: string, version?: number | string | null) => {
+    setLightboxSrc(getImageUrl(path, version));
   };
 
   const openLightboxStaged = (url: string) => {
@@ -192,6 +306,20 @@ export function AdditionalImagesSection({
 
   const closeLightbox = () => {
     setLightboxSrc(null);
+  };
+
+  const handleRemoveWithOverride = async (img: AdditionalImageDisplay) => {
+    if (onDelete) {
+      // Parent owns the whole flow (confirm modal + refetch).
+      setRemoving(img.filename);
+      try {
+        await onDelete(img);
+      } finally {
+        setRemoving(null);
+      }
+      return;
+    }
+    await handleRemove(img.filename);
   };
 
   const handleRemove = async (filename: string) => {
@@ -219,6 +347,26 @@ export function AdditionalImagesSection({
     } finally {
       setRemoving(null);
     }
+  };
+
+  // Unified entry point. If parent provides onStagePhoto (e.g. SheetsBrowser commit-on-Update),
+  // route there; otherwise push into the internal staged list so the user can edit type/labels
+  // per row before the explicit Upload click.
+  const handleAdd = (type: AdditionalPhotoKind, files: FileList | null) => {
+    if (!files?.length) return;
+    if (onStagePhoto) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const validation = validateFile(file);
+        if (validation.isValid) {
+          onStagePhoto(type, file);
+        } else if (validation.error) {
+          notifications.show({ title: 'Invalid file', message: validation.error, color: 'red' });
+        }
+      }
+      return;
+    }
+    addFilesToStaging(type, files);
   };
 
   const addFilesToStaging = (type: AdditionalPhotoKind, files: FileList | null) => {
@@ -269,7 +417,7 @@ export function AdditionalImagesSection({
       if (requestId) {
         await uploadReviewPacketAdditionalImages(requestId, payload);
       } else if (turtleId) {
-        await uploadTurtleAdditionalImages(turtleId, payload, sheetName);
+        await uploadTurtleAdditionalImages(turtleId, payload, sheetName, primaryId);
       } else {
         return;
       }
@@ -292,12 +440,21 @@ export function AdditionalImagesSection({
     }
   };
 
-  const saveInlineTags = async (filename: string) => {
+  const saveInlineTags = async (img: AdditionalImageDisplay, tagsOverride?: string[]) => {
     if (!turtleId) return;
-    const tags = inlineDraft[filename] ?? [];
-    setSavingInline(filename);
+    // Prefer the caller-supplied tags (typically the value the onBlur
+    // handler captured from the synchronous draft ref) so we don't lose a
+    // typed-but-not-yet-Entered tag to React's batched state update. Falls
+    // back to the React state when no override is passed.
+    const tags = tagsOverride ?? inlineDraft[img.filename] ?? [];
+    setSavingInline(img.filename);
     try {
-      await updateTurtleAdditionalImageLabels(turtleId, filename, tags, sheetName);
+      // Generic labels endpoint: works for any photo under the turtle folder
+      // (active references, Old References, Other Plastrons, Other Carapaces,
+      // legacy loose_images, AND additional_images). Replaces an earlier
+      // additional-only call that 400'd for plastron/carapace photos in the
+      // scratchpad.
+      await setTurtleImageLabels(turtleId, img.imagePath, tags, sheetName, primaryId);
       await onRefresh();
       notifications.show({ title: 'Saved', message: 'Tags updated', color: 'green' });
     } catch (e) {
@@ -311,8 +468,18 @@ export function AdditionalImagesSection({
     }
   };
 
-  const byKind = (k: AdditionalPhotoKind) =>
-    images.filter((img) => normalizeAdditionalPhotoKind(img.type) === k);
+  // DisplayKind covers BOTH the canonical user-pickable kinds AND the
+  // scratchpad-only role variants (plastron_active / plastron_old_ref /
+  // plastron_other / carapace_*). Pre-fix this used
+  // normalizeAdditionalPhotoKind which collapses anything not in the
+  // canonical 11 to 'other', so scratchpad rows of type 'plastron_active'
+  // (etc.) silently fell into the "Other" bucket and the role-grouped
+  // headers ("Plastron (active reference)" / "Plastron (old reference)" /
+  // "Plastron (additional)" / carapace mirrors / "Loose (legacy)") never
+  // rendered. The local normalizeKind handles both unions and was already
+  // defined for exactly this purpose.
+  const byKind = (k: DisplayKind) =>
+    images.filter((img) => normalizeKind(img.type) === k);
 
   const content = (
     <>
@@ -324,7 +491,7 @@ export function AdditionalImagesSection({
           <Text size="xs" c="dimmed">
             Add photos first, set type and tags per image, then upload.
             {' '}
-            Plastron (additional) keeps an extra underside shot in the manifest only (it does not replace
+            The Plastron button keeps an extra underside shot in the manifest only (it does not replace
             the SuperPoint .pt reference).{' '}
             Tags are searchable under Admin → Turtle records → Sheets → Photo tags.
           </Text>
@@ -336,12 +503,15 @@ export function AdditionalImagesSection({
               1. Choose or drag photos onto a category (you can change type per row below)
             </Text>
             <Group gap="xs">
-              {TYPE_ORDER.map((kind) => (
+              {(isPacket && !onStagePhoto
+                ? ADDITIONAL_PHOTO_KIND_OPTIONS.filter((opt) => opt.value !== 'plastron')
+                : ADDITIONAL_PHOTO_KIND_OPTIONS
+              ).map(({ value }) => (
                 <UploadTypeButton
-                  key={kind}
-                  kind={kind}
+                  key={value}
+                  kind={value}
                   disabled={disabled || uploading}
-                  onFiles={addFilesToStaging}
+                  onFiles={handleAdd}
                 />
               ))}
             </Group>
@@ -447,7 +617,14 @@ export function AdditionalImagesSection({
                         fw={500}
                         c="dimmed"
                       >
-                        {additionalPhotoKindLabel(k)}
+                        {/* kindSectionLabel handles BOTH scratchpad-only
+                            roles (plastron_active / plastron_old_ref / ...)
+                            and canonical kinds; additionalPhotoKindLabel
+                            collapses anything outside its 11-kind set to
+                            'Other', which silently turned every
+                            role-grouped header into "Other" after the
+                            main merge. */}
+                        {kindSectionLabel(k)}
                       </Text>
                       <Group gap="md" wrap="wrap" align="flex-start">
                         {list.map((img) => (
@@ -463,10 +640,10 @@ export function AdditionalImagesSection({
                                   cursor: 'pointer',
                                   flexShrink: 0,
                                 }}
-                                onClick={() => openLightboxServer(img.imagePath)}
+                                onClick={() => openLightboxServer(img.imagePath, img.uploadTs)}
                               >
                                 <Image
-                                  src={getImageUrl(img.imagePath, { maxDim: 160 })}
+                                  src={getImageUrl(img.imagePath, { version: img.uploadTs, maxDim: 160 })}
                                   alt={img.filename}
                                   w={80}
                                   h={80}
@@ -491,25 +668,68 @@ export function AdditionalImagesSection({
                                   </Group>
                                 )}
                                 {canEditLabels ? (
-                                  <>
-                                    <TagsInput
-                                      size="xs"
-                                      label="Tags"
-                                      placeholder="per photo"
-                                      value={inlineDraft[img.filename] ?? []}
-                                      onChange={(tags) =>
-                                        setInlineDraft((d) => ({ ...d, [img.filename]: tags }))
+                                  <TagsInput
+                                    size="xs"
+                                    label={savingInline === img.filename ? 'Tags (saving…)' : 'Tags'}
+                                    placeholder="per photo"
+                                    value={inlineDraft[img.filename] ?? []}
+                                    disabled={savingInline === img.filename}
+                                    // Control the typed text so we can read it on blur
+                                    // even if Mantine's own acceptValueOnBlur didn't
+                                    // commit it via onChange before our handler ran.
+                                    searchValue={inlineSearchValue[img.filename] ?? ''}
+                                    onSearchChange={(v) => {
+                                      inlineSearchValueRef.current = {
+                                        ...inlineSearchValueRef.current,
+                                        [img.filename]: v,
+                                      };
+                                      setInlineSearchValue((s) => ({ ...s, [img.filename]: v }));
+                                    }}
+                                    onChange={(tags) => {
+                                      // Mirror to the ref synchronously so onBlur reads
+                                      // the latest committed tag list without waiting on
+                                      // React's batched state update.
+                                      inlineDraftRef.current = {
+                                        ...inlineDraftRef.current,
+                                        [img.filename]: tags,
+                                      };
+                                      setInlineDraft((d) => ({ ...d, [img.filename]: tags }));
+                                    }}
+                                    // Autosave on blur. Merges any pending typed text
+                                    // (still in the input, never Entered) with the
+                                    // committed tags so "type then click out" saves
+                                    // identically to "type, Enter, click out".
+                                    onBlur={() => {
+                                      const draft = inlineDraftRef.current[img.filename] ?? [];
+                                      const pending = (inlineSearchValueRef.current[img.filename] ?? '').trim();
+                                      const merged =
+                                        pending && !draft.includes(pending)
+                                          ? [...draft, pending]
+                                          : draft;
+                                      const current = img.labels ?? [];
+                                      const same =
+                                        merged.length === current.length &&
+                                        merged.every((t, i) => t === current[i]);
+                                      // Always clear the typed-but-not-committed text so
+                                      // a focus-out → focus-back-in cycle starts clean.
+                                      inlineSearchValueRef.current = {
+                                        ...inlineSearchValueRef.current,
+                                        [img.filename]: '',
+                                      };
+                                      setInlineSearchValue((s) => ({ ...s, [img.filename]: '' }));
+                                      if (!same) {
+                                        // Reflect the merge into state so the chip for
+                                        // the just-committed tag renders immediately,
+                                        // before saveInlineTags' onRefresh roundtrip.
+                                        inlineDraftRef.current = {
+                                          ...inlineDraftRef.current,
+                                          [img.filename]: merged,
+                                        };
+                                        setInlineDraft((d) => ({ ...d, [img.filename]: merged }));
+                                        void saveInlineTags(img, merged);
                                       }
-                                    />
-                                    <Button
-                                      size="xs"
-                                      variant="light"
-                                      loading={savingInline === img.filename}
-                                      onClick={() => void saveInlineTags(img.filename)}
-                                    >
-                                      Save tags
-                                    </Button>
-                                  </>
+                                    }}
+                                  />
                                 ) : (
                                   (img.labels ?? []).length === 0 &&
                                   isPacket && (
@@ -524,7 +744,7 @@ export function AdditionalImagesSection({
                                     variant="subtle"
                                     color="gray"
                                     leftSection={<IconZoomIn size={14} />}
-                                    onClick={() => openLightboxServer(img.imagePath)}
+                                    onClick={() => openLightboxServer(img.imagePath, img.uploadTs)}
                                   >
                                     Large
                                   </Button>
@@ -535,7 +755,7 @@ export function AdditionalImagesSection({
                                       color="red"
                                       leftSection={<IconTrash size={14} />}
                                       loading={removing === img.filename}
-                                      onClick={() => handleRemove(img.filename)}
+                                      onClick={() => handleRemoveWithOverride(img)}
                                     >
                                       Remove
                                     </Button>

@@ -201,25 +201,81 @@ You need to run **all three services** simultaneously:
 
 ### Admin Users
 
-1. **Photo Upload**:
+1. **Photo Upload (match flow)**:
 
-   - Admin uploads a photo
-   - System processes the photo immediately
-   - Top 5 matches are displayed
-   - Admin selects the best match
+   - Admin uploads a plastron photo (always the primary reference)
+   - SuperPoint + LightGlue returns the top 5 plastron matches
+   - If a carapace photo is attached as an additional image, a **Cross-check carapace** button runs a parallel carapace search and displays both result sets side-by-side, flagging disagreements
+   - Admin selects the best match (optionally marking the upload as the new reference) or creates a new turtle
 
 2. **Review Queue**:
-   - Admin sees all community uploads
-   - Each upload has 5 suggested matches
-   - Admin selects the best match or creates a new turtle
+
+   - Admin sees all community uploads, ordered by upload date
+   - Community photos arrive as `unclassified` — admin classifies each as **Plastron** or **Carapace** (or trashes it) before matching runs against the correct VRAM cache
+   - Each upload lists its top 5 suggested matches and any additional photos the community user included
+   - Cross-check flow: if the community upload also has a plastron additional image, **Cross-check with plastron** runs both searches
+
+3. **Google Sheets Browser (Turtle Records)**:
+   - Browse all turtles from Google Sheets with primary plastron thumbnails
+   - Select a turtle to edit its sheet data and manage its photos end-to-end
+   - **Additional Turtle Photos** section: drop new plastron, carapace, microhabitat, condition, or generic additional photos onto a turtle. *Every* photo-type button routes through the **Pending photos (uncommitted)** box first — nothing is written to the turtle until the admin presses **Update Turtle**. Plastron and Carapace uploads additionally open a modal asking whether to replace the existing reference (**Yes, replace** archives the old reference to `plastron/Old References/` or `carapace/Old References/`; **No, save as Other** routes the photo to the Other folder). The pending box has a reserved slot for the tagging UI (rename-on-commit).
+   - The Additional pane resets every calendar day — it only lists uploads from the current local date. Older day-folders remain visible via **View Old Turtle Photos** below.
+   - **View Old Turtle Photos** section: a date dropdown lists every date this turtle has a photo on file (EXIF "when taken" dates preferred, upload dates as fallback). Selecting a date shows all thumbnails from that day alongside their source (`Old Plastron Ref`, `Other Carapace`, `Microhabitat`, etc.). Active plastron and carapace references are included under their capture date with a **(active)** badge.
+
+4. **Create New Turtle** (from either the Admin Match page or the Sheets Browser):
+   - Between the auto-generated Primary ID and the Google Sheets form, a **Photos for this upload** panel offers Microhabitat / Condition / Carapace / Additional upload buttons and displays any photos already attached to the packet. Admins can correct a forgotten photo at creation time instead of discovering the gap post-approval.
+   - All sheet-data fields start **fully editable** — the per-field click-to-unlock flow only applies when *editing* an existing turtle.
+
+5. **Admin Match Page — Match Selected view**:
+   - Order top-to-bottom: uploaded-vs-candidate comparison → **Additional Photos** panel → **Replace plastron / carapace reference** checkboxes → Google Sheets data form → action buttons (Cancel / Save to Sheets & Confirm Match / Create New Turtle Instead). The replace-reference decision sits directly under the photos it affects.
+   - Each candidate card (plastron and cross-checked carapace) shows the on-disk biology id, the turtle's **chosen name** from Google Sheets when set, and the auto-generated **Primary ID** when distinct from the biology id, plus location and confidence. Per-candidate name/Primary ID is read from Sheets in parallel after the match list resolves; Sheets writes are never made from this page.
+
+6. **Backup countdown overlay (staff + admin only)**:
+   - Five minutes before the nightly chronodrop kicks off (`03:00` server time by default), an orange floating badge appears bottom-right on every admin page with a live `mm:ss` countdown and the message *"Server backup in X:XX — please save your work."*
+   - At T-0 the overlay flips to a full-screen un-dismissable modal (*"Nightly backup is running — the system will resume automatically"*) that blocks interaction while the chronodrop runs and, when needed, while the backend container restarts to pick up renamed turtle folders.
+   - The modal polls the backend's health endpoint every 5 seconds and dismisses itself the moment the server is back up *and* the expected duration has elapsed. After 10 minutes of stalled maintenance it surfaces a contact-admin hint.
+   - Schedule and duration are configurable via the backend env vars `BACKUP_SCHEDULE_HOUR`, `BACKUP_SCHEDULE_MINUTE`, and `BACKUP_DURATION_SECONDS`. Window times come from the new `GET /api/backup/window` endpoint, so the server is the source of truth — client clock drift cannot skew the countdown.
 
 ### Community Users
 
 1. **Photo Upload**:
    - Community member uploads a photo
-   - System processes the photo
-   - Photo is saved to review queue
+   - System creates a review-queue packet asynchronously; the response returns immediately
+   - Matching runs in a background thread once an admin classifies the photo as plastron or carapace
    - Waits for admin review
+
+## Matching, Image Storage, and Data Layout
+
+### Backend AI Pipeline
+
+The turtle backend uses **SuperPoint** for keypoint extraction (4,096 keypoints per image across 4 rotations) and **LightGlue** for keypoint matching. The matcher maintains two VRAM caches — one for plastron references and one for carapace references — and switches between them based on the query's `photo_type`. On startup the backend pre-loads every `.pt` feature tensor from disk into GPU VRAM (or CPU RAM when no GPU is detected) so subsequent queries only need to extract features for the query image and run LightGlue against the live cache.
+
+Reference replacement (promoting a new plastron or carapace as the primary reference for a turtle) is atomic: the new `.pt` and image are staged under a temporary `_staged_{timestamp}` name, SuperPoint feature extraction runs against the staged copy, the old reference is archived to `Old References/`, and only then are the staged files promoted to their canonical names. A crash at any step either leaves the old reference intact or the new reference fully in place — never a half-replaced state. On next startup, `_recover_staged_files` sweeps orphaned staged files and promotes any that survived.
+
+### On-Disk Layout
+
+Every turtle folder has the same structure regardless of which references exist:
+
+```
+<State>/<Location>/<BiologyID_PrimaryKey>/
+├── plastron/
+│   ├── <turtle_id>.jpg            # primary plastron reference
+│   ├── <turtle_id>.pt             # SuperPoint features for the reference
+│   ├── Old References/            # archived previous plastron references
+│   └── Other Plastrons/           # non-reference plastron photos
+├── carapace/
+│   ├── <turtle_id>.jpg            # primary carapace reference (if any)
+│   ├── <turtle_id>.pt
+│   ├── Old References/
+│   └── Other Carapaces/
+├── additional_images/
+│   └── YYYY-MM-DD/                # microhabitat, condition, generic additional
+│       ├── manifest.json
+│       └── <type>_<ms>_<date>_<filename>.jpg
+└── find_metadata.json             # flag / physical / digital metadata
+```
+
+Biology IDs are zero-padded to three digits (`F002`, `M010`) and folder names prepend the biology ID to the primary key (`F001_K14`) so IDs reused across sheets don't collide. Every new file written to a turtle folder gets a `_YYYY-MM-DD` suffix embedded in its filename, using the EXIF `DateTimeOriginal` date when available so bulk-ingested archival photos still group correctly in the historical viewer.
 
 ## API Configuration
 
@@ -248,9 +304,11 @@ echo "VITE_API_URL=http://localhost:5000/api" >> .env
 ### PicTur Backend Development
 
 - Flask server with CORS for frontend communication
-- Uses `turtle_manager.py` for main logic
-- SuperPoint + LightGlue for feature extraction and matching
-- In-memory tensor cache for fast repeated matching
+- Uses `turtle_manager.py` for main logic — approval flow, reference replacement (plastron + carapace, atomic and crash-safe), flash-drive ingest, Google Sheets sync
+- SuperPoint + LightGlue for feature extraction and matching (4,096 keypoints × 4 rotations per query)
+- Dual in-memory VRAM caches (plastron / carapace) with incremental updates on approve / replace / ingest — no full rebuild
+- `POST /api/turtles/replace-reference` for direct admin reference replacement from the Sheets Browser
+- `GET /api/turtles/images` exposes primary plastron, primary carapace, date-stamped `additional_images`, structured `loose` images (with `source` discriminant + EXIF/upload dates), and `history_dates` for the historical viewer
 
 ### Frontend Development
 

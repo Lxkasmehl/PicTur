@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconAlertCircle } from '@tabler/icons-react';
@@ -69,7 +69,7 @@ export function usePhotoUpload({
   matchSheet,
 }: UsePhotoUploadOptions = {}): UsePhotoUploadReturn {
   const navigate = useNavigate();
-  const { user } = useUser();
+  const { user, isLoggedIn } = useUser();
   const [files, setFiles] = useState<FileWithPath[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>('idle');
@@ -192,7 +192,7 @@ export function usePhotoUpload({
         locationHint ?? undefined,
         isAdminFlow ? (matchSheet ?? '') : undefined,
         flagOptions,
-        extraFiles.length > 0 ? extraFiles : undefined
+        extraFiles.length > 0 ? extraFiles : undefined,
       );
 
       // Clear interval and set to 100%
@@ -231,7 +231,24 @@ export function usePhotoUpload({
               find_metadata_from_upload,
             }),
           };
-          localStorage.setItem(`match_${response.request_id}`, JSON.stringify(matchData));
+          try {
+            localStorage.setItem(`match_${response.request_id}`, JSON.stringify(matchData));
+          } catch {
+            // localStorage full — clear stale match entries and retry
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+              const key = localStorage.key(i);
+              if (key?.startsWith('match_') && key !== `match_${response.request_id}`) {
+                localStorage.removeItem(key);
+              }
+            }
+            try {
+              localStorage.setItem(`match_${response.request_id}`, JSON.stringify(matchData));
+            } catch {
+              setUploadState('error');
+              setUploadResponse('Browser storage is full. Please clear your browser data and try again.');
+              return;
+            }
+          }
 
           // Navigate to turtle match page with request_id
           navigate(`/admin/turtle-match/${response.request_id}`);
@@ -314,7 +331,7 @@ export function usePhotoUpload({
     }
   };
 
-  const handleRemove = (): void => {
+  const handleRemove = useCallback((): void => {
     setFiles([]);
     setPreview(null);
     setUploadState('idle');
@@ -327,7 +344,20 @@ export function usePhotoUpload({
     setCollectedToLab(null);
     setPhysicalFlag(null);
     setExtraFiles([]);
-  };
+  }, []);
+
+  // Clear any in-progress upload state when the session ends so a logged-out
+  // user (or whoever logs in next on this device) doesn't inherit the previous
+  // session's file, preview, flags, and extra photos. Only fires on the
+  // logged-in -> logged-out transition; anonymous (never-logged-in) sessions
+  // are left alone.
+  const prevLoggedInRef = useRef(isLoggedIn);
+  useEffect(() => {
+    if (prevLoggedInRef.current && !isLoggedIn) {
+      handleRemove();
+    }
+    prevLoggedInRef.current = isLoggedIn;
+  }, [isLoggedIn, handleRemove]);
 
   return {
     files,

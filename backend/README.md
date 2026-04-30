@@ -99,18 +99,24 @@ The backend uses the following directory structure:
 
 ```
 backend/
-├── data/                    # Main data directory
-│   ├── Review_Queue/        # Community uploads (waiting for review)
-│   ├── Community_Uploads/   # Saved community uploads
-│   └── [Location]/ or [State]/[Location]/  # Official turtle data
-│       └── [TurtleID]/
-│           ├── ref_data/     # Reference images
-│           └── loose_images/ # Additional observations
-├── app.py                   # Flask API Server
-├── turtle_manager.py        # Main logic for turtle management
-├── turtles/image_processing.py  # SuperPoint/LightGlue matching
-└── routes/                  # API route modules
+├── data/                                       # Main data directory
+│   ├── Review_Queue/                           # Community uploads (waiting for review)
+│   ├── Community_Uploads/                      # Saved community uploads
+│   └── [Location]/ or [State]/[Location]/      # Official turtle data
+│       └── [TurtleID]/                         # Bio ID, e.g. F042 (or {bio_id}_{primary_id} once renamed)
+│           ├── plastron/                       # Plastron reference image + .pt tensor
+│           │   ├── Old References/             # Archived plastron masters from past replacements
+│           │   └── Other Plastrons/            # Extra plastron observations (non-reference)
+│           └── carapace/                       # Carapace reference image + .pt tensor
+│               ├── Old References/             # Archived carapace masters from past replacements
+│               └── Other Carapaces/            # Extra carapace observations (non-reference)
+├── app.py                                      # Flask API Server
+├── turtle_manager.py                           # Main logic for turtle management
+├── turtles/image_processing.py                 # SuperPoint/LightGlue matching
+└── routes/                                     # API route modules
 ```
+
+Each turtle gets the full dual-reference tree regardless of which photo types it currently has — empty subdirs stay empty until manually populated. Legacy `ref_data/` directories from before the dual-reference refactor are migrated to `plastron/` by `ingest_rebuild_folder.py`; production data may still be pre-migration. Some turtles also have an `additional_images/<YYYY-MM-DD>/` tree at the turtle root for microhabitat/condition photos that are not SuperPoint references.
 
 ## Important Notes
 
@@ -143,6 +149,104 @@ To clear only the Review Queue:
 ```bash
 python clear_uploads.py --review-only
 ```
+
+## Maintenance Scripts
+
+Two operational scripts live alongside the Flask app for one-off migrations and daily drift correction. Both default to **dry-run mode** — they print a full manifest of what they *would* do and exit without changing anything on disk. Pass `--apply` to actually execute the changes.
+
+Both scripts treat Google Sheets as **read-only** — they never edit the production spreadsheets.
+
+### `backfill_folder_names.py` — sync folder names to Sheets
+
+Keeps turtle folder names in sync with the current state of the research + community spreadsheets. Three jobs in one pass:
+
+1. Adds `_{primary_id}` to bio-ID-only folders once the sheet has assigned a primary key (`F017/` → `F017_T177.../`).
+2. Rehomes misplaced `T177...`-only folders that landed in a state root instead of a location directory (production bug), giving them their combined `{bio_id}_{primary_id}` name in the correct `state/location/`.
+3. Detects bio-ID changes (juvenile → adult, misgender corrections) on already-renamed folders and renames both the folder and its internal reference files.
+
+Idempotent. Safe to run daily — intended to be tied into the Sheets-backup chronodrop once `main` is merged.
+
+```bash
+# Dry run: see what would change
+docker compose exec backend python backfill_folder_names.py
+
+# Apply the changes
+docker compose exec backend python backfill_folder_names.py --apply
+```
+
+The `--apply` flag is what actually writes to disk. Without it, you see a manifest and no files are touched. Exit code is `1` if any errors were reported, `0` otherwise.
+
+### `ingest_rebuild_folder.py` — ingest carapaces + new turtles
+
+Walks a host-side "Rebuild Ingest" folder tree and pushes its contents into the backend data directory. Expected layout:
+
+```
+<ingest root>/
+  Lawrence/
+    F017 Plastron.jpg
+    F017 Plastron 2.jpg
+    F017 Carapace.jpg
+    F999 Carapace.jpg
+  North Topeka/
+    ...
+```
+
+Each top-level folder name must match a key in `DRIVE_LOCATION_TO_BACKEND_PATH` (`turtle_manager.py`).
+
+**Symmetric folder layout.** Every turtle the script touches receives the full dual-reference tree, regardless of which photo types this ingest provides:
+
+```
+<turtle_id>/
+  plastron/
+    Old References/
+    Other Plastrons/
+  carapace/
+    Old References/
+    Other Carapaces/
+```
+
+Empty subdirs stay empty until a manual upload fills them. Plastron-only and carapace-only ingests therefore produce the same shape as combined ones — so a turtle with only a carapace today is ready to receive a plastron later without any folder-creation logic.
+
+**Per bio-ID group:**
+
+- **Existing turtle:** migrates legacy `ref_data/` → `plastron/` when present (moves all files including any pre-existing `.pt`), removes empty `loose_images/`, files new plastrons into `plastron/Other Plastrons/`, and places a carapace reference (or routes extras to `carapace/Other Carapaces/`) as needed.
+- **Unknown turtle:** creates a bio-id-named folder with the full subdir tree, then places whatever references the ingest provides.
+
+**Feature extraction (`.pt` files) runs inline by default.** Every newly-placed reference image gets its sibling `.pt` before the script exits — so when the backend comes back up, `refresh_database_index()` just *indexes* the existing `.pt`s and pushes both caches to VRAM (it does **not** generate features itself, despite older docstrings claiming otherwise). Pass `--no-extract` to skip extraction for filesystem-only smoke tests, but be aware those references will stay invisible to matching until you re-run with extraction or upload them via the admin UI.
+
+Turtles not yet in the sheets stay bio-id-only named. They pick up their `primary_id` later when someone matches against them through the normal admin/community upload flow, at which point `backfill_folder_names.py` will rename the folder on its next run.
+
+**Running from a Windows host:** mount the host-side ingest folder into the backend container with a one-off `docker compose run`. The backend should be **stopped first** when running `--apply` with extraction — both processes load SuperPoint, doubling VRAM use, which can OOM tighter GPUs.
+
+```bash
+# Dry run — preview what would be written to /app/data
+docker compose run --rm \
+    -v "C:/Users/gking/Desktop/Rebuild Ingest:/ingest:ro" \
+    backend python ingest_rebuild_folder.py --ingest-path /ingest
+
+# Apply with inline keypoint extraction (recommended path)
+docker compose stop backend
+docker compose run --rm \
+    -v "C:/Users/gking/Desktop/Rebuild Ingest:/ingest:ro" \
+    backend python ingest_rebuild_folder.py --ingest-path /ingest --apply
+docker compose start backend
+
+# Apply without extraction — fast filesystem-only smoke test
+docker compose run --rm \
+    -v "C:/Users/gking/Desktop/Rebuild Ingest:/ingest:ro" \
+    backend python ingest_rebuild_folder.py --ingest-path /ingest --apply --no-extract
+```
+
+On Linux/macOS, replace the host path with your equivalent (e.g. `-v "$HOME/rebuild_ingest:/ingest:ro"`).
+
+**Suggested order** when running both scripts for the first time on a production machine:
+
+1. `docker compose stop backend` — free GPU memory for the ingest run.
+2. `ingest_rebuild_folder.py --apply` — drops images into the dual-reference layout and extracts `.pt` files inline.
+3. `backfill_folder_names.py --apply` — renames the folders to `{bio_id}_{primary_id}`.
+4. `docker compose start backend` — `refresh_database_index()` indexes the new `.pt` files and loads both VRAM caches.
+
+Step 3 can be re-run any time afterwards to catch new primary-key assignments or bio-ID changes (it's idempotent and wired into the nightly chronodrop). If you skipped extraction in step 2, you'll need to re-run step 2 (or upload references through the admin UI) before any of those turtles can match.
 
 ## Troubleshooting
 
@@ -207,7 +311,7 @@ Older VLAD/FAISS experiments could fail with mismatched `vlad_vocab.pkl` and `tu
 **Typical causes:**
 
 1. **No or empty `backend/data/`**  
-   The backend expects turtle reference data under `backend/data/` in the structure `data/<Location>/.../<TurtleID>/ref_data/` with `.jpg/.jpeg/.png` plus generated `.pt` tensors. If data is empty, uploads still work but return no matches.
+   The backend expects turtle reference data under `backend/data/` in the structure `data/<Location>/.../<TurtleID>/plastron/` (and optionally `/carapace/`) with `.jpg/.jpeg/.png` plus generated `.pt` tensors. Pre-migration turtles may still use the legacy `ref_data/` layout, which is read in compatibility mode. If data is empty, uploads still work but return no matches.
 
 2. **Corrupted tensors / unreadable images**  
    If `.pt` files are stale or corrupted, matching may fail for specific turtles. Rebuilding tensors from source images resolves this.

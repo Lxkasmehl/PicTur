@@ -16,7 +16,7 @@ export type AdditionalPhotoKind = (typeof ADDITIONAL_PHOTO_KINDS)[number];
 
 export const ADDITIONAL_PHOTO_KIND_LABELS: Record<AdditionalPhotoKind, string> = {
   carapace: 'Carapace',
-  plastron: 'Plastron (additional)',
+  plastron: 'Plastron',
   anterior: 'Anterior',
   posterior: 'Posterior',
   'left-side': 'Left side',

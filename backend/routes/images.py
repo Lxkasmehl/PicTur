@@ -116,6 +116,14 @@ def register_image_routes(app):
         if not full_path or not os.path.exists(full_path):
             return jsonify({'error': 'Image not found'}), 404
 
+        # ?download=1 forces the browser to save rather than render inline.
+        # Filename in Content-Disposition is the file's basename on disk.
+        # Wins over max_dim — a download means the user wants the original full-res file.
+        download_flag = (request.args.get('download') or '').strip().lower()
+        as_attachment = download_flag in ('1', 'true', 'yes')
+        if as_attachment:
+            return send_file(full_path, as_attachment=True, download_name=os.path.basename(full_path))
+
         max_dim_raw = request.args.get('max_dim', type=int)
         if max_dim_raw is not None:
             max_dim = max(32, min(2048, max_dim_raw))
@@ -127,5 +135,6 @@ def register_image_routes(app):
                         return send_file(thumb, mimetype='image/jpeg')
                 except Exception:
                     pass
+
 
         return send_file(full_path)

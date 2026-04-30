@@ -15,8 +15,10 @@ import {
   Divider,
   Modal,
   SimpleGrid,
+  Checkbox,
+  Alert,
 } from '@mantine/core';
-import { IconPhoto, IconCheck, IconArrowLeft, IconPlus } from '@tabler/icons-react';
+import { IconPhoto, IconCheck, IconArrowLeft, IconPlus, IconAlertTriangle } from '@tabler/icons-react';
 import { useEffect, useState, useRef } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -33,10 +35,12 @@ import {
   generatePrimaryId,
   getTurtleSheetsData,
   listSheets,
+  crossCheckReviewPacket,
   type TurtleSheetsData,
   type FindMetadata,
   type ReviewQueueItem,
   type TurtleImagesResponse,
+  type PhotoType,
 } from '../services/api';
 import { notifications } from '@mantine/notifications';
 import {
@@ -49,6 +53,7 @@ interface MatchData {
   request_id: string;
   uploaded_image_path: string;
   matches: TurtleMatch[];
+  photo_type?: PhotoType;
 }
 
 export default function AdminTurtleMatchPage() {
@@ -73,6 +78,13 @@ export default function AdminTurtleMatchPage() {
   const [availableSheets, setAvailableSheets] = useState<string[]>([]);
   const [findMetadata] = useState<FindMetadata | null>(null);
   const [selectedMatchTurtleImages, setSelectedMatchTurtleImages] = useState<TurtleImagesResponse | null>(null);
+  const [crossCheckResults, setCrossCheckResults] = useState<Array<{ turtle_id: string; location: string; confidence: number; score: number; image_path: string }> | null>(null);
+  /** Per-candidate summary fetched from the row's Sheets tab.
+   *  Keyed by `${turtle_id}|${location}` because biology IDs are not globally unique. */
+  const [candidateSummaries, setCandidateSummaries] = useState<Record<string, { primary_id?: string; name?: string }>>({});
+  const [crossCheckLoading, setCrossCheckLoading] = useState(false);
+  const [replaceReference, setReplaceReference] = useState(false);
+  const [replaceCarapaceReference, setReplaceCarapaceReference] = useState(false);
   const formRef = useRef<TurtleSheetsDataFormRef>(null);
   const isMobile = useMediaQuery('(max-width: 576px)');
 
@@ -95,6 +107,63 @@ export default function AdminTurtleMatchPage() {
       .then(setSelectedMatchTurtleImages)
       .catch(() => setSelectedMatchTurtleImages(null));
   }, [selectedMatch, selectedMatchData]);
+
+  // Fetch per-candidate (primary_id, name) from Sheets so cards can show
+  // the chosen turtle name alongside the on-disk id. Parallel calls; first
+  // path segment of `location` is the sheet tab (Community_Uploads is
+  // routed to the community spreadsheet via the state arg).
+  useEffect(() => {
+    const items: Array<{ turtleId: string; location: string }> = [];
+    if (matchData?.matches) {
+      for (const m of matchData.matches) items.push({ turtleId: m.turtle_id, location: m.location || '' });
+    }
+    if (crossCheckResults) {
+      for (const m of crossCheckResults) items.push({ turtleId: m.turtle_id, location: m.location || '' });
+    }
+    if (items.length === 0) {
+      setCandidateSummaries({});
+      return;
+    }
+    const seen = new Set<string>();
+    const unique = items.filter((it) => {
+      const k = `${it.turtleId}|${it.location}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    let cancelled = false;
+    Promise.all(
+      unique.map(async (it) => {
+        const parts = (it.location || '').replace(/\\/g, '/').split('/').filter(Boolean);
+        if (parts.length === 0) return null;
+        const isCommunity = parts[0] === 'Community_Uploads';
+        const sheet = isCommunity ? (parts[1] || '') : parts[0];
+        const stateArg = isCommunity ? 'Community_Uploads' : parts[0];
+        const locArg = isCommunity ? (parts[1] || '') : parts.slice(1).join('/');
+        if (!sheet) return null;
+        try {
+          const res = await getTurtleSheetsData(it.turtleId, sheet, stateArg, locArg);
+          if (res.success && res.data) {
+            return [
+              `${it.turtleId}|${it.location}`,
+              { primary_id: res.data.primary_id, name: res.data.name },
+            ] as const;
+          }
+        } catch {
+          /* ignore — card just won't show name/primary_id */
+        }
+        return null;
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      const map: Record<string, { primary_id?: string; name?: string }> = {};
+      for (const e of entries) if (e) map[e[0]] = e[1];
+      setCandidateSummaries(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [matchData, crossCheckResults]);
 
   // Load sheets once when staff/admin (avoids each TurtleSheetsDataForm calling listSheets)
   useEffect(() => {
@@ -119,7 +188,17 @@ export default function AdminTurtleMatchPage() {
         if (imageId) {
           const stored = localStorage.getItem(`match_${imageId}`);
           if (stored) {
-            const data: MatchData = JSON.parse(stored);
+            let data: MatchData;
+            try {
+              data = JSON.parse(stored);
+            } catch {
+              console.error('Corrupted match data in localStorage, removing');
+              localStorage.removeItem(`match_${imageId}`);
+              setMatchData(null);
+              setPacketItem(null);
+              setLoading(false);
+              return;
+            }
             setMatchData(data);
             try {
               const { item } = await getReviewPacket(imageId);
@@ -152,6 +231,11 @@ export default function AdminTurtleMatchPage() {
       return;
     }
     setSelectedMatch(turtleId);
+    // Keep crossCheckResults intact: they describe the candidate set, not the
+    // currently-selected match, so they should still be visible when the user
+    // hits "Back to matches" and lands on the grid again.
+    setReplaceReference(false);
+    setReplaceCarapaceReference(false);
     setSheetsData(null);
     setPrimaryId(turtleId);
     setLoadingTurtleData(true);
@@ -276,6 +360,9 @@ export default function AdminTurtleMatchPage() {
         },
         match_from_community: isMatchFromCommunity,
         community_sheet_name: isMatchFromCommunity ? communitySheetName : undefined,
+        photo_type: matchData.photo_type ?? 'plastron',
+        replace_reference: replaceReference || undefined,
+        replace_carapace_reference: replaceCarapaceReference || undefined,
       });
 
       localStorage.removeItem(`match_${imageId}`);
@@ -425,7 +512,15 @@ export default function AdminTurtleMatchPage() {
         }
       }
 
-      const turtleIdForReview = finalPrimaryId || `T${Date.now()}`;
+      // Folder naming convention is `{bio_id}_{primary_id}` (e.g. F003_T1771234567)
+      // — keeps biology-id lookups working immediately without waiting for the
+      // nightly chronodrop rename. Falls back to primary_id-only when the admin
+      // hasn't filled in a biology id yet (chronodrop will rename later when
+      // the row finally has both).
+      const bioIdForFolder = (effectiveSheetsData?.id || '').trim();
+      const turtleIdForReview = bioIdForFolder && finalPrimaryId
+        ? `${bioIdForFolder}_${finalPrimaryId}`
+        : (finalPrimaryId || `T${Date.now()}`);
       const isAdminUpload = imageId.startsWith('admin_');
 
       // Admin upload + new turtle: create row in research (admin) spreadsheet first; backend does not sync to community.
@@ -452,6 +547,7 @@ export default function AdminTurtleMatchPage() {
               primary_id: finalPrimaryId ?? undefined,
             }
           : undefined,
+        photo_type: matchData?.photo_type ?? 'plastron',
       });
 
       localStorage.removeItem(`match_${imageId}`);
@@ -640,6 +736,58 @@ export default function AdminTurtleMatchPage() {
                     </Grid.Col>
                   </Grid>
 
+                  {(() => {
+                    const uploadedCarapace = packetItem?.additional_images?.find(
+                      (a) => a.type === 'carapace',
+                    );
+                    if (!uploadedCarapace) return null;
+                    const matchCarapacePath =
+                      selectedMatchTurtleImages?.primary_carapace ?? null;
+                    return (
+                      <>
+                        <Divider variant='dashed' />
+                        <Grid gutter='md'>
+                          <Grid.Col span={{ base: 12, sm: 6 }}>
+                            <Text size='sm' c='dimmed' mb={4}>
+                              Uploaded Carapace
+                            </Text>
+                            <Image
+                              src={getImageUrl(uploadedCarapace.image_path)}
+                              alt='Uploaded carapace'
+                              radius='md'
+                              style={{
+                                maxHeight: 'min(400px, 50vh)',
+                                objectFit: 'contain',
+                                width: '100%',
+                              }}
+                            />
+                          </Grid.Col>
+                          <Grid.Col span={{ base: 12, sm: 6 }}>
+                            <Text size='sm' c='dimmed' mb={4}>
+                              Match Carapace: {selectedMatch}
+                            </Text>
+                            {matchCarapacePath ? (
+                              <Image
+                                src={getImageUrl(matchCarapacePath)}
+                                alt={`Match carapace ${selectedMatch}`}
+                                radius='md'
+                                style={{
+                                  maxHeight: 'min(400px, 50vh)',
+                                  objectFit: 'contain',
+                                  width: '100%',
+                                }}
+                              />
+                            ) : (
+                              <Text size='xs' c='dimmed' mt='sm'>
+                                No carapace reference on file for this turtle.
+                              </Text>
+                            )}
+                          </Grid.Col>
+                        </Grid>
+                      </>
+                    );
+                  })()}
+
                   {/* Match metadata */}
                   <Grid mt='xs'>
                     <Grid.Col span={{ base: 12, sm: 4 }}>
@@ -734,6 +882,46 @@ export default function AdminTurtleMatchPage() {
                 </Stack>
               </Paper>
 
+              {/* Reference replacement controls */}
+              <Paper shadow='sm' p='md' radius='md' withBorder>
+                <Stack gap='sm'>
+                  <Checkbox
+                    label='Replace plastron reference with this upload'
+                    description='The current plastron reference will be archived to loose_images'
+                    checked={replaceReference}
+                    onChange={(e) => setReplaceReference(e.currentTarget.checked)}
+                    disabled={!!processing}
+                  />
+                  {replaceReference && (
+                    <Alert
+                      icon={<IconAlertTriangle size={16} />}
+                      color='orange'
+                      radius='md'
+                    >
+                      The current plastron reference image will be replaced with this upload. The old image will be archived.
+                    </Alert>
+                  )}
+                  {packetItem?.additional_images?.some(img => img.type === 'carapace') && (
+                    <Checkbox
+                      label='Replace carapace reference (first carapace photo)'
+                      description='The current carapace reference will be archived'
+                      checked={replaceCarapaceReference}
+                      onChange={(e) => setReplaceCarapaceReference(e.currentTarget.checked)}
+                      disabled={!!processing}
+                    />
+                  )}
+                  {replaceCarapaceReference && (
+                    <Alert
+                      icon={<IconAlertTriangle size={16} />}
+                      color='orange'
+                      radius='md'
+                    >
+                      The current carapace reference image will be replaced with the first carapace additional photo. The old image will be archived.
+                    </Alert>
+                  )}
+                </Stack>
+              </Paper>
+
               {/* Google Sheets Data Form */}
               <Paper shadow='sm' p='md' radius='md' withBorder>
                 <TurtleSheetsDataForm
@@ -755,33 +943,35 @@ export default function AdminTurtleMatchPage() {
 
               {/* Action Buttons */}
               <Paper shadow='sm' p='md' radius='md' withBorder>
-                <Group justify='space-between' gap='md' wrap='wrap'>
-                  <Button
-                    variant='subtle'
-                    leftSection={<IconPlus size={16} />}
-                    onClick={handleCreateNewTurtle}
-                    disabled={processing}
-                  >
-                    Create New Turtle Instead
-                  </Button>
-                  <Group gap='md'>
+                <Stack gap='md'>
+                  <Group justify='space-between' gap='md' wrap='wrap'>
                     <Button
-                      variant='light'
-                      onClick={() => navigate('/')}
+                      variant='subtle'
+                      leftSection={<IconPlus size={16} />}
+                      onClick={handleCreateNewTurtle}
                       disabled={processing}
                     >
-                      Cancel
+                      Create New Turtle Instead
                     </Button>
-                    <Button
-                      onClick={handleCombinedButtonClick}
-                      disabled={!selectedMatch || processing}
-                      loading={processing}
-                      leftSection={<IconCheck size={16} />}
-                    >
-                      Save to Sheets & Confirm Match
-                    </Button>
+                    <Group gap='md'>
+                      <Button
+                        variant='light'
+                        onClick={() => navigate('/')}
+                        disabled={processing}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleCombinedButtonClick}
+                        disabled={!selectedMatch || processing}
+                        loading={processing}
+                        leftSection={<IconCheck size={16} />}
+                      >
+                        Save to Sheets & Confirm Match
+                      </Button>
+                    </Group>
                   </Group>
-                </Group>
+                </Stack>
               </Paper>
             </Stack>
           ) : (
@@ -789,35 +979,115 @@ export default function AdminTurtleMatchPage() {
                MATCH GRID — uploaded photo + large match cards
                ══════════════════════════════════════════════ */
             <Stack gap='md'>
-              {/* Uploaded photo — full width */}
-              <Paper shadow='sm' p='md' radius='md' withBorder>
-                <Stack gap='sm'>
-                  <Text fw={500} size='lg'>
-                    Uploaded Photo
-                  </Text>
-                  <Image
-                    src={
-                      matchData.uploaded_image_path
-                        ? getImageUrl(matchData.uploaded_image_path)
-                        : ''
-                    }
-                    alt='Uploaded photo'
-                    radius='md'
-                    style={{
-                      maxHeight: 'min(500px, 60vh)',
-                      objectFit: 'contain',
-                      width: '100%',
-                    }}
-                  />
-                </Stack>
-              </Paper>
+              {/* Uploaded photo — full width, with carapace alongside when present */}
+              {(() => {
+                const uploadedCarapaceGrid = packetItem?.additional_images?.find(
+                  (a) => a.type === 'carapace',
+                );
+                return (
+                  <Paper shadow='sm' p='md' radius='md' withBorder>
+                    <Stack gap='sm'>
+                      <Text fw={500} size='lg'>
+                        Uploaded Photo
+                      </Text>
+                      <Grid gutter='md'>
+                        <Grid.Col span={uploadedCarapaceGrid ? { base: 12, sm: 6 } : 12}>
+                          <Text size='sm' c='dimmed' mb={4}>
+                            Plastron
+                          </Text>
+                          <Image
+                            src={
+                              matchData.uploaded_image_path
+                                ? getImageUrl(matchData.uploaded_image_path)
+                                : ''
+                            }
+                            alt='Uploaded plastron'
+                            radius='md'
+                            style={{
+                              maxHeight: 'min(500px, 60vh)',
+                              objectFit: 'contain',
+                              width: '100%',
+                            }}
+                          />
+                        </Grid.Col>
+                        {uploadedCarapaceGrid && (
+                          <Grid.Col span={{ base: 12, sm: 6 }}>
+                            <Text size='sm' c='dimmed' mb={4}>
+                              Carapace
+                            </Text>
+                            <Image
+                              src={getImageUrl(uploadedCarapaceGrid.image_path)}
+                              alt='Uploaded carapace'
+                              radius='md'
+                              style={{
+                                maxHeight: 'min(500px, 60vh)',
+                                objectFit: 'contain',
+                                width: '100%',
+                              }}
+                            />
+                          </Grid.Col>
+                        )}
+                      </Grid>
+                    </Stack>
+                  </Paper>
+                );
+              })()}
 
-              {/* Top 5 Matches heading + Create New Turtle */}
+              {/* Cross-check carapace — only when a carapace additional image exists */}
+              {imageId && packetItem?.additional_images?.some(img => img.type === 'carapace') && (
+                <Paper shadow='sm' p='md' radius='md' withBorder>
+                  <Group gap='md' align='center'>
+                    <Text fw={500} size='sm'>
+                      Carapace additional image available
+                    </Text>
+                    {!crossCheckResults && (
+                      <Button
+                        size='sm'
+                        variant='light'
+                        loading={crossCheckLoading}
+                        onClick={async () => {
+                          setCrossCheckLoading(true);
+                          const carapaceImg = packetItem?.additional_images?.find(img => img.type === 'carapace');
+                          try {
+                            const result = await crossCheckReviewPacket(
+                              imageId,
+                              'carapace' as PhotoType,
+                              carapaceImg?.image_path,
+                            );
+                            setCrossCheckResults(result.matches);
+                            if (result.matches.length === 0) {
+                              notifications.show({ title: 'Cross-check', message: 'No carapace matches found', color: 'yellow' });
+                            }
+                          } catch (err) {
+                            notifications.show({
+                              title: 'Error',
+                              message: err instanceof Error ? err.message : 'Cross-check failed',
+                              color: 'red',
+                            });
+                          } finally {
+                            setCrossCheckLoading(false);
+                          }
+                        }}
+                      >
+                        Cross-check Carapace
+                      </Button>
+                    )}
+                    {crossCheckResults !== null && (
+                      <Badge size='lg' variant='light' color={crossCheckResults.length > 0 ? 'teal' : 'gray'}>
+                        {crossCheckResults.length} carapace match(es)
+                      </Badge>
+                    )}
+                  </Group>
+                </Paper>
+              )}
+
+              {/* Matches — side-by-side when cross-check results exist.
+                  Column-specific headers (title + description) live INSIDE each
+                  Grid.Col so the plastron and carapace card grids start at the
+                  same vertical offset. The Create-New-Turtle button stays at
+                  the top of the Paper as a section-wide affordance. */}
               <Paper shadow='sm' p='md' radius='md' withBorder>
-                <Group justify='space-between' mb='md'>
-                  <Text fw={500} size='lg'>
-                    Top 5 Matches
-                  </Text>
+                <Group justify='flex-end' mb='md'>
                   <Button
                     variant='light'
                     leftSection={<IconPlus size={16} />}
@@ -827,82 +1097,197 @@ export default function AdminTurtleMatchPage() {
                   </Button>
                 </Group>
 
-                <Text size='sm' c='dimmed' mb='md'>
-                  Select a match to view details
-                </Text>
-
-                {/* Responsive grid of match cards */}
-                <SimpleGrid
-                  cols={{ base: 1, xs: 2, md: 3, lg: 5 }}
-                  spacing='md'
-                >
-                  {matchData.matches.map((match, index) => (
-                    <Card
-                      key={`${match.turtle_id}-${index}`}
-                      shadow='sm'
-                      padding='sm'
-                      radius='md'
-                      withBorder
-                      style={{
-                        cursor: 'pointer',
-                        border: '1px solid #dee2e6',
-                        transition: 'transform 0.1s, box-shadow 0.1s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = '';
-                        e.currentTarget.style.boxShadow = '';
-                      }}
-                      onClick={() => handleSelectMatch(match.turtle_id)}
+                <Grid gutter='lg'>
+                  <Grid.Col span={crossCheckResults && crossCheckResults.length > 0 ? { base: 12, md: 6 } : 12}>
+                    <Group gap='xs' mb='md'>
+                      <Text fw={500} size='lg'>
+                        {crossCheckResults && crossCheckResults.length > 0 ? 'Plastron Matches' : 'Top 5 Matches'}
+                      </Text>
+                    </Group>
+                    <Text size='sm' c='dimmed' mb='md'>
+                      Select a match to view details
+                    </Text>
+                    {/* Plastron match cards */}
+                    <SimpleGrid
+                      cols={crossCheckResults && crossCheckResults.length > 0 ? { base: 1, xs: 2 } : { base: 1, xs: 2, md: 3, lg: 5 }}
+                      spacing='md'
                     >
-                      {/* Large match image */}
-                      {match.file_path ? (
-                        <Image
-                          src={getImageUrl(match.file_path)}
-                          alt={`Match ${index + 1}`}
+                      {matchData.matches.map((match, index) => {
+                        const summary = candidateSummaries[`${match.turtle_id}|${match.location || ''}`];
+                        const showSecondaryId =
+                          summary?.primary_id && summary.primary_id !== match.turtle_id;
+                        return (
+                        <Card
+                          key={`${match.turtle_id}-${index}`}
+                          shadow='sm'
+                          padding='sm'
                           radius='md'
+                          withBorder
                           style={{
-                            aspectRatio: '1',
-                            objectFit: 'cover',
-                            width: '100%',
+                            cursor: 'pointer',
+                            border: '1px solid #dee2e6',
+                            transition: 'transform 0.1s, box-shadow 0.1s',
                           }}
-                          mb='sm'
-                        />
-                      ) : (
-                        <Center
-                          style={{
-                            aspectRatio: '1',
-                            backgroundColor: '#f8f9fa',
-                            borderRadius: 'var(--mantine-radius-md)',
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
                           }}
-                          mb='sm'
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = '';
+                            e.currentTarget.style.boxShadow = '';
+                          }}
+                          onClick={() => handleSelectMatch(match.turtle_id)}
                         >
-                          <IconPhoto size={48} stroke={1.5} style={{ opacity: 0.3 }} />
-                        </Center>
-                      )}
+                          {match.file_path ? (
+                            <Image
+                              src={getImageUrl(match.file_path)}
+                              alt={`Match ${index + 1}`}
+                              radius='md'
+                              style={{
+                                aspectRatio: '1',
+                                objectFit: 'cover',
+                                width: '100%',
+                              }}
+                              mb='sm'
+                            />
+                          ) : (
+                            <Center
+                              style={{
+                                aspectRatio: '1',
+                                backgroundColor: '#f8f9fa',
+                                borderRadius: 'var(--mantine-radius-md)',
+                              }}
+                              mb='sm'
+                            >
+                              <IconPhoto size={48} stroke={1.5} style={{ opacity: 0.3 }} />
+                            </Center>
+                          )}
 
-                      <Group justify='space-between' mb={4}>
-                        <Badge color='blue' size='sm' variant='filled'>
-                          #{index + 1}
-                        </Badge>
-                        <Badge color='gray' size='sm' variant='light'>
-                          {typeof match.confidence === 'number'
-                            ? `${(match.confidence * 100).toFixed(1)}%`
-                            : '0.0%'}
-                        </Badge>
+                          <Group justify='space-between' mb={4}>
+                            <Badge color='blue' size='sm' variant='filled'>
+                              #{index + 1}
+                            </Badge>
+                            <Badge color='gray' size='sm' variant='light'>
+                              {typeof match.confidence === 'number'
+                                ? `${(match.confidence * 100).toFixed(1)}%`
+                                : '0.0%'}
+                            </Badge>
+                          </Group>
+                          <Text fw={500} size='sm' truncate>
+                            {match.turtle_id}
+                          </Text>
+                          {summary?.name && (
+                            <Text size='xs' fw={500} c='dark' truncate>
+                              {summary.name}
+                            </Text>
+                          )}
+                          {showSecondaryId && (
+                            <Text size='xs' c='dimmed' truncate>
+                              {summary!.primary_id}
+                            </Text>
+                          )}
+                          <Text size='xs' c='dimmed' truncate>
+                            {match.location}
+                          </Text>
+                        </Card>
+                        );
+                      })}
+                    </SimpleGrid>
+                  </Grid.Col>
+
+                  {crossCheckResults && crossCheckResults.length > 0 && (
+                    <Grid.Col span={{ base: 12, md: 6 }}>
+                      <Group gap='xs' mb='md'>
+                        <Text fw={500} size='lg'>
+                          Carapace Matches
+                        </Text>
+                        {matchData.matches.length > 0 && crossCheckResults[0].turtle_id !== matchData.matches[0].turtle_id && (
+                          <Badge color='orange' variant='light'>Top match differs</Badge>
+                        )}
                       </Group>
-                      <Text fw={500} size='sm' truncate>
-                        {match.turtle_id}
+                      <Text size='sm' c='dimmed' mb='md'>
+                        Cross-check results from carapace image
                       </Text>
-                      <Text size='xs' c='dimmed' truncate>
-                        {match.location}
-                      </Text>
-                    </Card>
-                  ))}
-                </SimpleGrid>
+                      <SimpleGrid cols={{ base: 1, xs: 2 }} spacing='md'>
+                        {crossCheckResults.map((match, index) => {
+                          const summary = candidateSummaries[`${match.turtle_id}|${match.location || ''}`];
+                          const showSecondaryId =
+                            summary?.primary_id && summary.primary_id !== match.turtle_id;
+                          return (
+                          <Card
+                            key={`${match.turtle_id}-xcheck-${index}`}
+                            shadow='sm'
+                            padding='sm'
+                            radius='md'
+                            withBorder
+                            style={{
+                              border: '1px solid #dee2e6',
+                              transition: 'transform 0.1s, box-shadow 0.1s',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.transform = 'translateY(-2px)';
+                              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.transform = '';
+                              e.currentTarget.style.boxShadow = '';
+                            }}
+                          >
+                            {match.image_path ? (
+                              <Image
+                                src={getImageUrl(match.image_path)}
+                                alt={`Carapace match ${index + 1}`}
+                                radius='md'
+                                style={{
+                                  aspectRatio: '1',
+                                  objectFit: 'cover',
+                                  width: '100%',
+                                }}
+                                mb='sm'
+                              />
+                            ) : (
+                              <Center
+                                style={{
+                                  aspectRatio: '1',
+                                  backgroundColor: '#f8f9fa',
+                                  borderRadius: 'var(--mantine-radius-md)',
+                                }}
+                                mb='sm'
+                              >
+                                <IconPhoto size={48} stroke={1.5} style={{ opacity: 0.3 }} />
+                              </Center>
+                            )}
+                            <Group justify='space-between' mb={4}>
+                              <Badge color='teal' size='sm' variant='filled'>
+                                #{index + 1}
+                              </Badge>
+                              <Badge color='gray' size='sm' variant='light'>
+                                {Math.round(match.confidence * 100)}%
+                              </Badge>
+                            </Group>
+                            <Text fw={500} size='sm' truncate>
+                              {match.turtle_id}
+                            </Text>
+                            {summary?.name && (
+                              <Text size='xs' fw={500} c='dark' truncate>
+                                {summary.name}
+                              </Text>
+                            )}
+                            {showSecondaryId && (
+                              <Text size='xs' c='dimmed' truncate>
+                                {summary!.primary_id}
+                              </Text>
+                            )}
+                            <Text size='xs' c='dimmed' truncate>
+                              {match.location}
+                            </Text>
+                          </Card>
+                          );
+                        })}
+                      </SimpleGrid>
+                    </Grid.Col>
+                  )}
+                </Grid>
               </Paper>
             </Stack>
           )}
@@ -929,6 +1314,29 @@ export default function AdminTurtleMatchPage() {
                 Primary ID
               </Text>
               <Text fw={500}>{newTurtlePrimaryId}</Text>
+            </Paper>
+          )}
+
+          {imageId && (
+            <Paper p='sm' withBorder radius='md'>
+              <AdditionalImagesSection
+                title='Photos for this upload'
+                embedded
+                images={(packetItem?.additional_images ?? []).map((a) => ({
+                  imagePath: a.image_path,
+                  filename: a.filename,
+                  type: a.type,
+                }))}
+                requestId={imageId}
+                onRefresh={async () => {
+                  try {
+                    const { item } = await getReviewPacket(imageId);
+                    setPacketItem(item);
+                  } catch {
+                    // ignore
+                  }
+                }}
+              />
             </Paper>
           )}
 

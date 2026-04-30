@@ -598,19 +598,30 @@ export function PreviewCard({
               <Stack gap='xs' data-testid='upload-progress'>
                 <Group justify='space-between'>
                   <Text size='sm' fw={500}>
-                    {isGettingLocation ? 'Getting location...' : 'Uploading...'}
+                    {isGettingLocation ? 'Getting location...' : uploadProgress >= 90 ? 'Matching in progress...' : 'Uploading...'}
                   </Text>
-                  <Text size='sm' c='dimmed'>
-                    {uploadProgress}%
-                  </Text>
+                  {uploadProgress < 90 && (
+                    <Text size='sm' c='dimmed'>
+                      {uploadProgress}%
+                    </Text>
+                  )}
                 </Group>
-                <Progress value={uploadProgress} size='lg' radius='xl' animated />
+                {uploadProgress < 90 ? (
+                  <Progress value={uploadProgress} size='lg' radius='xl' animated />
+                ) : (
+                  <Progress value={100} size='lg' radius='xl' animated color='blue' />
+                )}
                 <Center>
                   <Loader size='sm' />
                 </Center>
                 {isGettingLocation && (
                   <Text size='xs' c='dimmed' ta='center'>
                     Please allow location access to track turtle sightings
+                  </Text>
+                )}
+                {uploadProgress >= 90 && !isGettingLocation && (
+                  <Text size='xs' c='dimmed' ta='center'>
+                    Photo uploaded. Running AI matching against the dataset — this may take a minute.
                   </Text>
                 )}
               </Stack>
