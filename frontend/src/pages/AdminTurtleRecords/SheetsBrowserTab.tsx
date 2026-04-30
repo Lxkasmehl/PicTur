@@ -51,7 +51,6 @@ import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
 import { OldTurtlePhotosSection, type HistoryPhotoExternal } from '../../components/OldTurtlePhotosSection';
 import { ConfirmDeletePhotoModal, type DeleteModalContext } from '../../components/ConfirmDeletePhotoModal';
-import { validateFile } from '../../utils/fileValidation';
 import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
 import {
   ADDITIONAL_PHOTO_KIND_OPTIONS,
