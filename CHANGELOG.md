@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-04-30
+
+Major version bump. The Superpoint-Implementation branch reaches parity with
+its design goals and merges back to main. The matching pipeline is fully
+replaced (VLAD/FAISS → SuperPoint + LightGlue), every turtle now supports
+two independent references (plastron + carapace) backed by dual VRAM caches,
+the on-disk folder layout migrates to a per-turtle, per-photo-type tree
+(`{state}/{location}/{turtle_id}/{plastron,carapace,additional_images,...}`),
+and the admin photo workflow gets a full rewrite (staged uploads, soft
+delete with restore, per-directory manifest tags, replace-reference flow,
+flag → release-page chain, scratchpad role-grouped headers, expanded photo
+categories). Folder layout and matcher are non-backward-compatible with
+1.x — operators must run `ingest_rebuild_folder.py --apply` followed by
+`backfill_folder_names.py --apply` against a 1.x data dir before starting
+a 2.0.0 backend, and matching always uses the new `.pt` SuperPoint tensors
+rather than the legacy VLAD index.
+
 ### Added
 
 - **SuperPoint + LightGlue matching pipeline**: Replaces the legacy VLAD / FAISS search. `turtles/image_processing.py` defines a `TurtleDeepMatcher` singleton (`brain`) that pre-loads all reference `.pt` feature tensors into GPU VRAM (or CPU RAM when no GPU) at startup. Extracts 4-rotation SuperPoint features for queries once, reuses them across all fallback searches. Switchable device mode via `brain.set_device()`. Legacy `search_utils.py` kept as a no-op compatibility module.
@@ -65,6 +82,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Digital flag / physical_flag / collected_to_lab on admin uploads silently disappeared on approval**: the admin upload path in `routes/upload.py` extracted these fields from the multipart form into local variables but only persisted `photo_type` (and optionally `match_sheet`) into the packet's `metadata.json`, so the form values were lost the moment the route returned; the community upload path was already saving them via `user_info`. Admin packet metadata writes now persist `digital_flag_lat/lon/source`, `physical_flag`, `collected_to_lab`, and `location_hint_*` the same way community uploads do. Combined with the approval-side fallback below, the Release page now shows admin-uploaded flagged turtles after approval.
 - **Approval flow dropped flag/find data because the frontend never sent it back**: `_approve_review_packet_locked` only wrote `find_metadata.json` to the turtle directory when the caller passed a `find_metadata` dict, but the two production approve calls in `useAdminTurtleRecords.tsx` (`handleSaveAndApprove`, `handleConfirmNewTurtle`) only sent `match_turtle_id` / `new_turtle_id` / `photo_type` / `sheets_data` — `find_metadata` was always None. Added `_extract_find_metadata_from_packet` that reads the packet's `metadata.json` and pulls the `digital_flag_*`, `physical_flag`, `collected_to_lab`, `microhabitat_uploaded`, `other_angles_uploaded`, and `location_hint_*` fields. Approval now uses this as a fallback when no `find_metadata` was passed; caller-supplied data still wins for any future flow that wants to override.
 - **`get_turtles_with_flags` skipped the entire `Community_Uploads/` subtree**: when an admin approved a community upload as a brand-new turtle (without re-classifying it into a state folder), the turtle landed at `Community_Uploads/<sheet>/<turtle_id>/` along with its `find_metadata.json` — but the flag scan excluded that directory, so those turtles never appeared on the Release page. Now skips only `Review_Queue/`; `Community_Uploads/` is walked the same as any other state directory.
+- **Scratchpad role-grouped headers all collapsed to "Other" after the main merge**: the merge from `origin/main` brought in a shared `frontend/src/constants/additionalPhotoKinds.ts` and rewired `AdditionalImagesSection.tsx` to label the "Saved photos" sections with `additionalPhotoKindLabel(k)`, which only knows the eleven canonical kinds and silently collapses anything outside that set (including this branch's seven scratchpad-only role variants — `plastron_active`, `plastron_old_ref`, `plastron_other`, `carapace_active`, `carapace_old_ref`, `carapace_other`, `loose_legacy`) to `"Other"`. Visible result: every active reference / old reference / other plastron / loose-legacy section all rendered with a "Other" header. Switched the header back to the local `kindSectionLabel(k)` (which has explicit cases for the role variants and falls through to the canonical helper for everything else); `byKind` likewise routes through the local `normalizeKind` so the role-suffixed kinds match their TYPE_ORDER entries instead of normalising to `'other'`.
+- **`StagedType` on `SheetsBrowserTab.tsx` was the pre-merge five-value union (`microhabitat | condition | carapace | plastron | additional`)**: the new category buttons (anterior / posterior / left-side / right-side / people / injury) flowed through to `handleStagePhoto` via TypeScript bivariance, which meant runtime worked but `strictFunctionTypes` would surface the mismatch. Widened `StagedType` to the constants module's `AdditionalPhotoKind` and dropped the legacy `'additional'` literal (which the backend already aliases to `'other'`).
+- **Scratchpad inline-tag autosave only saved when the user pressed Enter before clicking out**: the previous attempt relied on Mantine v8's `acceptValueOnBlur` calling `onChange` *before* our `onBlur` prop ran, which it doesn't reliably do — typed-but-not-Entered text was lost on blur, and the autosave saw the pre-typed tag list. Reworked to control the input via `searchValue` / `onSearchChange`, mirror both the committed tags and the pending typed text into synchronous refs, and merge them in `onBlur` before calling `saveInlineTags(img, merged)`. Mantine's blur behaviour is no longer load-bearing.
+
+### Changed (post-main-merge polish)
+
+- **`Plastron (additional)` button label simplified to `Plastron`**: the canonical-plastron button on `AdditionalImagesSection` now reads `Plastron`. The role-suffixed `plastron_other` section header (loose plastron extras living in `plastron/Other Plastrons/`) keeps its `"Plastron (additional)"` label so it stays distinguishable from the active reference. The accompanying description text is updated to "The Plastron button keeps an extra underside shot…".
+- **Old Photos viewer category labels normalized through `additionalPhotoKindLabel`**: the auto-discovered category dropdown options and per-photo card badges now go through the constants helper, so `'left-side'` reads as **Left side** (not the prior simple-capitalize `Left-side`) and any future kind addition picks up its label automatically. The label for additional photos is also imported from the helper rather than the raw type string.
 
 ### Removed
 

@@ -253,6 +253,18 @@ export function AdditionalImagesSection({
   const [staged, setStaged] = useState<StagedRow[]>([]);
   const [inlineDraft, setInlineDraft] = useState<Record<string, string[]>>({});
   const [savingInline, setSavingInline] = useState<string | null>(null);
+  // Per-image controlled "currently-typed" text inside each TagsInput.
+  // Tracked separately from the committed value array so the autosave on
+  // blur can pick up text the user typed without pressing Enter — Mantine
+  // v8's acceptValueOnBlur does not reliably call onChange before our
+  // onBlur prop in this version, so we merge the pending text in
+  // ourselves.
+  const [inlineSearchValue, setInlineSearchValue] = useState<Record<string, string>>({});
+  // Synchronous mirrors of the React state above so onBlur reads the just-
+  // typed value before React has flushed batched updates from onChange /
+  // onSearchChange within the same blur event.
+  const inlineDraftRef = useRef<Record<string, string[]>>({});
+  const inlineSearchValueRef = useRef<Record<string, string>>({});
 
   const isPacket = !!requestId;
   const isTurtle = !!turtleId;
@@ -272,6 +284,7 @@ export function AdditionalImagesSection({
       next[img.filename] = [...(img.labels ?? [])];
     });
     setInlineDraft(next);
+    inlineDraftRef.current = next;
   }, [images]);
 
   const stagedRef = useRef(staged);
@@ -427,9 +440,13 @@ export function AdditionalImagesSection({
     }
   };
 
-  const saveInlineTags = async (img: AdditionalImageDisplay) => {
+  const saveInlineTags = async (img: AdditionalImageDisplay, tagsOverride?: string[]) => {
     if (!turtleId) return;
-    const tags = inlineDraft[img.filename] ?? [];
+    // Prefer the caller-supplied tags (typically the value the onBlur
+    // handler captured from the synchronous draft ref) so we don't lose a
+    // typed-but-not-yet-Entered tag to React's batched state update. Falls
+    // back to the React state when no override is passed.
+    const tags = tagsOverride ?? inlineDraft[img.filename] ?? [];
     setSavingInline(img.filename);
     try {
       // Generic labels endpoint: works for any photo under the turtle folder
@@ -451,8 +468,18 @@ export function AdditionalImagesSection({
     }
   };
 
-  const byKind = (k: AdditionalPhotoKind) =>
-    images.filter((img) => normalizeAdditionalPhotoKind(img.type) === k);
+  // DisplayKind covers BOTH the canonical user-pickable kinds AND the
+  // scratchpad-only role variants (plastron_active / plastron_old_ref /
+  // plastron_other / carapace_*). Pre-fix this used
+  // normalizeAdditionalPhotoKind which collapses anything not in the
+  // canonical 11 to 'other', so scratchpad rows of type 'plastron_active'
+  // (etc.) silently fell into the "Other" bucket and the role-grouped
+  // headers ("Plastron (active reference)" / "Plastron (old reference)" /
+  // "Plastron (additional)" / carapace mirrors / "Loose (legacy)") never
+  // rendered. The local normalizeKind handles both unions and was already
+  // defined for exactly this purpose.
+  const byKind = (k: DisplayKind) =>
+    images.filter((img) => normalizeKind(img.type) === k);
 
   const content = (
     <>
@@ -464,7 +491,7 @@ export function AdditionalImagesSection({
           <Text size="xs" c="dimmed">
             Add photos first, set type and tags per image, then upload.
             {' '}
-            Plastron (additional) keeps an extra underside shot in the manifest only (it does not replace
+            The Plastron button keeps an extra underside shot in the manifest only (it does not replace
             the SuperPoint .pt reference).{' '}
             Tags are searchable under Admin → Turtle records → Sheets → Photo tags.
           </Text>
@@ -590,7 +617,14 @@ export function AdditionalImagesSection({
                         fw={500}
                         c="dimmed"
                       >
-                        {additionalPhotoKindLabel(k)}
+                        {/* kindSectionLabel handles BOTH scratchpad-only
+                            roles (plastron_active / plastron_old_ref / ...)
+                            and canonical kinds; additionalPhotoKindLabel
+                            collapses anything outside its 11-kind set to
+                            'Other', which silently turned every
+                            role-grouped header into "Other" after the
+                            main merge. */}
+                        {kindSectionLabel(k)}
                       </Text>
                       <Group gap="md" wrap="wrap" align="flex-start">
                         {list.map((img) => (
@@ -640,24 +674,59 @@ export function AdditionalImagesSection({
                                     placeholder="per photo"
                                     value={inlineDraft[img.filename] ?? []}
                                     disabled={savingInline === img.filename}
-                                    onChange={(tags) =>
-                                      setInlineDraft((d) => ({ ...d, [img.filename]: tags }))
-                                    }
-                                    // Autosave on blur — committing tags no longer requires
-                                    // a separate "Save tags" click. The draft is already
-                                    // tracked per-filename, and saveInlineTags reads from
-                                    // inlineDraft so onBlur firing here picks up the latest
-                                    // value. Only saves when the draft actually differs from
-                                    // what the server returned, to avoid spurious writes
-                                    // when the user just clicks in/out of the field.
+                                    // Control the typed text so we can read it on blur
+                                    // even if Mantine's own acceptValueOnBlur didn't
+                                    // commit it via onChange before our handler ran.
+                                    searchValue={inlineSearchValue[img.filename] ?? ''}
+                                    onSearchChange={(v) => {
+                                      inlineSearchValueRef.current = {
+                                        ...inlineSearchValueRef.current,
+                                        [img.filename]: v,
+                                      };
+                                      setInlineSearchValue((s) => ({ ...s, [img.filename]: v }));
+                                    }}
+                                    onChange={(tags) => {
+                                      // Mirror to the ref synchronously so onBlur reads
+                                      // the latest committed tag list without waiting on
+                                      // React's batched state update.
+                                      inlineDraftRef.current = {
+                                        ...inlineDraftRef.current,
+                                        [img.filename]: tags,
+                                      };
+                                      setInlineDraft((d) => ({ ...d, [img.filename]: tags }));
+                                    }}
+                                    // Autosave on blur. Merges any pending typed text
+                                    // (still in the input, never Entered) with the
+                                    // committed tags so "type then click out" saves
+                                    // identically to "type, Enter, click out".
                                     onBlur={() => {
-                                      const draft = inlineDraft[img.filename] ?? [];
+                                      const draft = inlineDraftRef.current[img.filename] ?? [];
+                                      const pending = (inlineSearchValueRef.current[img.filename] ?? '').trim();
+                                      const merged =
+                                        pending && !draft.includes(pending)
+                                          ? [...draft, pending]
+                                          : draft;
                                       const current = img.labels ?? [];
                                       const same =
-                                        draft.length === current.length &&
-                                        draft.every((t, i) => t === current[i]);
+                                        merged.length === current.length &&
+                                        merged.every((t, i) => t === current[i]);
+                                      // Always clear the typed-but-not-committed text so
+                                      // a focus-out → focus-back-in cycle starts clean.
+                                      inlineSearchValueRef.current = {
+                                        ...inlineSearchValueRef.current,
+                                        [img.filename]: '',
+                                      };
+                                      setInlineSearchValue((s) => ({ ...s, [img.filename]: '' }));
                                       if (!same) {
-                                        void saveInlineTags(img);
+                                        // Reflect the merge into state so the chip for
+                                        // the just-committed tag renders immediately,
+                                        // before saveInlineTags' onRefresh roundtrip.
+                                        inlineDraftRef.current = {
+                                          ...inlineDraftRef.current,
+                                          [img.filename]: merged,
+                                        };
+                                        setInlineDraft((d) => ({ ...d, [img.filename]: merged }));
+                                        void saveInlineTags(img, merged);
                                       }
                                     }}
                                   />

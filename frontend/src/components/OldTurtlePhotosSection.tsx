@@ -9,6 +9,7 @@ import type {
   TurtleLooseSource,
   TurtlePrimaryInfo,
 } from '../services/api';
+import { additionalPhotoKindLabel } from '../constants/additionalPhotoKinds';
 
 interface OldTurtlePhotosSectionProps {
   /** All dates (YYYY-MM-DD) for which this turtle has photos. */
@@ -176,10 +177,15 @@ export function OldTurtlePhotosSection({
       });
     }
     for (const a of additional) {
+      const cat = a.type || 'other';
       out.push({
         path: a.path,
-        label: a.type || 'additional',
-        category: a.type || 'additional',
+        // Pretty label (e.g. 'Left side' rather than the raw 'left-side')
+        // — falls back to the helper for any canonical kind, including the
+        // ones main expanded into (anterior / posterior / left-side /
+        // right-side / people / injury).
+        label: additionalPhotoKindLabel(cat),
+        category: cat,
         labels: a.labels,
         exifDate: a.exif_date,
         uploadDate: a.upload_date,
@@ -226,8 +232,9 @@ export function OldTurtlePhotosSection({
     }
 
     // Additional.type values — anything not already covered above. This is
-    // where microhabitat / condition / additional / future main types
-    // (left, right, back, ...) surface automatically.
+    // where microhabitat / condition + the post-merge canonical kinds
+    // (anterior / posterior / left-side / right-side / people / injury)
+    // surface automatically.
     const knownKeys = new Set<string>([
       CAT_REFERENCE, CAT_PLASTRON_OLD_REF, CAT_PLASTRON_OTHER,
       CAT_CARAPACE_OLD_REF, CAT_CARAPACE_OTHER, CAT_LOOSE_LEGACY,
@@ -237,9 +244,10 @@ export function OldTurtlePhotosSection({
       if (!knownKeys.has(p.category)) additionalTypes.add(p.category);
     }
     for (const t of Array.from(additionalTypes).sort()) {
-      // Capitalize first letter for display only; value stays the raw type.
-      const label = t.length > 0 ? t[0].toUpperCase() + t.slice(1) : t;
-      opts.push({ value: t, label });
+      // Use the canonical kind label so 'left-side' renders as 'Left side'
+      // (not 'Left-side' from the old simple-capitalize fallback). Unknown
+      // values fall through to 'Other'.
+      opts.push({ value: t, label: additionalPhotoKindLabel(t) });
     }
 
     return opts;

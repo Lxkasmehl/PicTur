@@ -56,9 +56,17 @@ import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
 import {
   ADDITIONAL_PHOTO_KIND_OPTIONS,
   additionalPhotoKindLabel,
+  type AdditionalPhotoKind,
 } from '../../constants/additionalPhotoKinds';
 
-type StagedType = 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional';
+// Staged photos can be any of the canonical category buttons that
+// AdditionalImagesSection renders (the eleven AdditionalPhotoKind values).
+// Pre-merge this was a narrow five-element union and tsc only let
+// handleStagePhoto take the new categories ('anterior' / 'posterior' /
+// 'left-side' / 'right-side' / 'people' / 'injury') because of function-
+// parameter bivariance. Widening to AdditionalPhotoKind makes the
+// assignment provably correct under strictFunctionTypes too.
+type StagedType = AdditionalPhotoKind;
 type ReferenceType = 'plastron' | 'carapace';
 
 interface StagedPhoto {
@@ -1186,11 +1194,12 @@ export function SheetsBrowserTab() {
                       const isRef = isReferenceType(s.photoType);
                       const isWinner = isRef && s.replaceReference && replaceWinnerIds[s.photoType as ReferenceType] === s.id;
                       const isSuperseded = isRef && s.replaceReference && replaceWinnerIds[s.photoType as ReferenceType] !== s.id;
+                      const prettyType = additionalPhotoKindLabel(s.photoType);
                       const badgeLabel = (() => {
-                        if (isWinner) return `${s.photoType} · will replace`;
-                        if (isSuperseded) return `${s.photoType} · superseded → Other`;
-                        if (isRef && !s.replaceReference) return `${s.photoType} · Other`;
-                        return s.photoType;
+                        if (isWinner) return `${prettyType} · will replace`;
+                        if (isSuperseded) return `${prettyType} · superseded → Other`;
+                        if (isRef && !s.replaceReference) return `${prettyType} · Other`;
+                        return prettyType;
                       })();
                       const badgeColor = isWinner ? 'red' : isSuperseded ? 'orange' : 'blue';
                       return (
