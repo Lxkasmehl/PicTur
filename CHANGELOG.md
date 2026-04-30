@@ -7,28 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.20] - 2026-04-29 — Footer & contact, GitHub feedback, extended turtle photos
+
 ### Added
 
-- **About & Contact in the footer**: Public **About** and **Contact** moved from the header to the footer; drawer breakpoint adjusted for staff/admin. **About** content refocused on Washburn turtle research. **Contact** removes placeholder phone/address; optional **`VITE_CONTACT_EMAIL`** mailto or external form; Mantine styling and Playwright footer test ids (`0966b41`).
-- **Contact form → lab inboxes**: **`POST /api/contact`** on the auth-backend sends one email to **`CONTACT_FORM_RECIPIENTS`** (comma/semicolon) via SMTP, **Reply-To** the visitor. **`VITE_CONTACT_EMAIL`** removed from the flow; Contact page calls the auth API only, with Washburn links as fallback. Docker / env docs updated (`556f553`).
-- **In-app feedback → GitHub**: **Feedback** page at **`/feedback`**, footer link, and **`POST /api/feedback`**. Creates **GitHub issues** via the REST API (no redirect). Optional **Projects (v2)** link and **Status** update via GraphQL. Labels from **`GITHUB_FEEDBACK_LABELS`** plus **`bug`** / **`enhancement`** / **`question`**. Documented in **`.env.docker.example`**.
-- **Additional turtle photo categories** shared across homepage upload (PreviewCard), Admin Sheets browser, Review Queue, and Admin Match: anterior, posterior, left/right side, people, injury, and existing types (carapace, plastron, microhabitat, condition, other). Filenames continue to encode the category (e.g. `right-side_…`).
-- **Drag-and-drop** onto each category button to stage additional photos (same UX pattern on homepage and admin additional-photo sections).
-- **Sheets browser — Photo tags**: optional **Photo category** filter; search supports **category only**, **tags only**, or **combined** tag + category. **`GET /api/turtles/images/search-labels`** accepts `q` and/or `type` (at least one required).
+- **About & Contact in the footer** (Washburn-focused copy); staff/admin drawer breakpoint adjusted. Contact uses **`POST /api/contact`** on the auth-backend (**`CONTACT_FORM_RECIPIENTS`**, SMTP, Reply-To visitor); Washburn links remain as fallback where applicable.
+- **`/feedback`** with **`POST /api/feedback`**: creates GitHub issues (REST); optional Projects v2 link and status via GraphQL; labels from **`GITHUB_FEEDBACK_LABELS`** plus type labels. Env documented in **`.env.docker.example`**.
+- **Turtle photo categories** (homepage, Sheets browser, Review Queue, Match): anterior, posterior, left/right side, people, injury, plus existing types; filenames encode category (e.g. `right-side_…`). **Drag-and-drop** onto category buttons to stage photos (homepage and admin).
+- **Sheets browser**: optional photo category filter; **`GET /api/turtles/images/search-labels`** supports tag-only, category-only, or combined queries (`q` and/or `type`, at least one required).
 
 ### Changed
 
-- **`EmailVerificationGuard`**: **`/feedback`** allowed before email verification, like About and Contact.
-- **`.gitignore`**: Ignore **`project-query.graphql`** for local GraphQL helpers.
-- **Legacy labels**: `head` / `tail` are no longer offered as buttons; stored values still normalize to **anterior** / **posterior** for backward compatibility.
-- **Review queue** additional-image uploads use the same normalized category set as turtle records.
-- **Admin token validation** (`backend/auth.py`): if **`AUTH_URL`** uses `localhost` and validation fails, retry once against **`127.0.0.1`** to avoid Windows/dev hostname resolution mismatches.
+- **`EmailVerificationGuard`**: **`/feedback`** allowed before email verification (same as About/Contact).
+- **`.gitignore`**: **`project-query.graphql`** (local GraphQL helpers).
+- **Legacy labels**: `head` / `tail` no longer shown as buttons; stored values still map to **anterior** / **posterior**.
+- **Review queue** additional-image uploads use the same category set as turtle records.
+- **Admin token validation**: if **`AUTH_URL`** uses `localhost` and validation fails, one retry against **`127.0.0.1`** (Windows/dev hostname quirks).
 
 ### Testing
 
-- **Playwright**: Public nav includes **Feedback** via the footer (`navigation.spec.ts`, `fixtures.ts`).
-- Backend integration tests for **`search-labels`** type-only and combined filters and for **`right-side`** on review packet additional-images.
-- Playwright: Sheets browser type-only search; homepage extended category buttons and drag-and-drop staging (mobile/WebKit skipped where event simulation is unreliable).
+- Playwright: footer nav including Feedback; Sheets browser type-only search; homepage categories and drag-and-drop (mobile/WebKit skipped where unreliable).
+- Backend: **`search-labels`** filters; **`right-side`** on review packet additional images.
 
 ## [1.2.19] - 2026-04-27 — Mobile tutorial viewport + Specific Property label and Location reminder
 
@@ -344,7 +343,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.19...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.20...HEAD
+[1.2.20]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.20
 [1.2.19]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.19
 [1.2.18]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.18
 [1.2.17]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.17
