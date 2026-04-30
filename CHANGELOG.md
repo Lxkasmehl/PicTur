@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Flask** (`backend/app.py`): Handle **`HTTPException`** (404, 405, etc.) before the generic **`Exception`** handler so client errors keep the correct status and JSON **`error`** body instead of being treated as **500**.
+
+### Changed
+
+- **`.env.docker.example`**: Clarify reverse-proxy routing — send **`/api/auth`**, **`/api/admin`**, **`/api/contact`**, **`/api/feedback`** (and auth-backend **`/api/health`**) to the Node auth service; route remaining **`/api/*`** to Flask — with longest/specific paths first so contact and feedback are not handled by Flask by mistake.
+
 ## [1.2.20] - 2026-04-29 — Footer & contact, GitHub feedback, extended turtle photos
 
 ### Added
