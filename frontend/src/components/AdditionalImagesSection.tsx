@@ -26,11 +26,39 @@ import {
   removeReviewPacketAdditionalImage,
   uploadTurtleAdditionalImages,
   deleteTurtleAdditionalImage,
-  updateTurtleAdditionalImageLabels,
+  setTurtleImageLabels,
 } from '../services/api';
 import { notifications } from '@mantine/notifications';
 
-export type AdditionalPhotoKind = 'microhabitat' | 'condition' | 'carapace' | 'plastron' | 'additional' | 'other';
+/**
+ * Photo categories the section knows how to render.
+ *
+ * The bare ``plastron`` / ``carapace`` values are what staged uploads use
+ * (the user picks "Plastron" or "Carapace" from the upload buttons). The
+ * suffixed variants (``plastron_active``, ``plastron_old_ref``,
+ * ``plastron_other``, and the carapace mirrors) come from the historical-
+ * scratchpad use case where we want to distinguish:
+ *  - the active SuperPoint reference (``plastron_active``),
+ *  - a previously-active reference now archived (``plastron_old_ref``), and
+ *  - any extra plastron not used as a reference (``plastron_other``).
+ * Each gets its own section header so multiple plastron uploads in one day
+ * stay grouped by role instead of collapsing into a single "Plastron
+ * (additional)" pile.
+ */
+export type AdditionalPhotoKind =
+  | 'microhabitat'
+  | 'condition'
+  | 'carapace'
+  | 'plastron'
+  | 'additional'
+  | 'other'
+  | 'plastron_active'
+  | 'plastron_old_ref'
+  | 'plastron_other'
+  | 'carapace_active'
+  | 'carapace_old_ref'
+  | 'carapace_other'
+  | 'loose_legacy';
 
 /** Single additional image for display (packet or turtle). */
 export interface AdditionalImageDisplay {
@@ -38,6 +66,9 @@ export interface AdditionalImageDisplay {
   filename: string;
   type: string;
   labels?: string[];
+  /** Epoch ms cache-bust for active references whose path stays stable
+   *  across replacements. Omit for archived / unique-path images. */
+  uploadTs?: number | null;
 }
 
 interface AdditionalImagesSectionProps {
@@ -62,7 +93,23 @@ interface AdditionalImagesSectionProps {
   onDelete?: (photo: AdditionalImageDisplay) => Promise<void> | void;
 }
 
-const TYPE_ORDER: AdditionalPhotoKind[] = ['carapace', 'plastron', 'microhabitat', 'condition', 'additional', 'other'];
+// Active references first, then old refs, then "other" (extras), then the
+// generic plastron/carapace staging kinds, then the additional-image kinds.
+const TYPE_ORDER: AdditionalPhotoKind[] = [
+  'plastron_active',
+  'plastron_old_ref',
+  'plastron_other',
+  'carapace_active',
+  'carapace_old_ref',
+  'carapace_other',
+  'carapace',
+  'plastron',
+  'microhabitat',
+  'condition',
+  'additional',
+  'loose_legacy',
+  'other',
+];
 
 const KIND_OPTIONS = [
   { value: 'carapace', label: 'Carapace' },
@@ -84,7 +131,14 @@ function normalizeKind(t: string): AdditionalPhotoKind {
     s === 'carapace' ||
     s === 'plastron' ||
     s === 'additional' ||
-    s === 'other'
+    s === 'other' ||
+    s === 'plastron_active' ||
+    s === 'plastron_old_ref' ||
+    s === 'plastron_other' ||
+    s === 'carapace_active' ||
+    s === 'carapace_old_ref' ||
+    s === 'carapace_other' ||
+    s === 'loose_legacy'
   )
     return s;
   return 'other';
@@ -94,6 +148,13 @@ function kindSectionLabel(k: AdditionalPhotoKind): string {
   if (k === 'other') return 'Other';
   if (k === 'plastron') return 'Plastron (additional)';
   if (k === 'additional') return 'Additional';
+  if (k === 'plastron_active') return 'Plastron (active reference)';
+  if (k === 'plastron_old_ref') return 'Plastron (old reference)';
+  if (k === 'plastron_other') return 'Plastron (additional)';
+  if (k === 'carapace_active') return 'Carapace (active reference)';
+  if (k === 'carapace_old_ref') return 'Carapace (old reference)';
+  if (k === 'carapace_other') return 'Carapace (additional)';
+  if (k === 'loose_legacy') return 'Loose (legacy)';
   return k;
 }
 
@@ -155,8 +216,8 @@ export function AdditionalImagesSection({
     };
   }, []);
 
-  const openLightboxServer = (path: string) => {
-    setLightboxSrc(getImageUrl(path));
+  const openLightboxServer = (path: string, version?: number | string | null) => {
+    setLightboxSrc(getImageUrl(path, version));
   };
 
   const openLightboxStaged = (url: string) => {
@@ -305,12 +366,17 @@ export function AdditionalImagesSection({
     }
   };
 
-  const saveInlineTags = async (filename: string) => {
+  const saveInlineTags = async (img: AdditionalImageDisplay) => {
     if (!turtleId) return;
-    const tags = inlineDraft[filename] ?? [];
-    setSavingInline(filename);
+    const tags = inlineDraft[img.filename] ?? [];
+    setSavingInline(img.filename);
     try {
-      await updateTurtleAdditionalImageLabels(turtleId, filename, tags, sheetName);
+      // Generic labels endpoint: works for any photo under the turtle folder
+      // (active references, Old References, Other Plastrons, Other Carapaces,
+      // legacy loose_images, AND additional_images). Replaces an earlier
+      // additional-only call that 400'd for plastron/carapace photos in the
+      // scratchpad.
+      await setTurtleImageLabels(turtleId, img.imagePath, tags, sheetName);
       await onRefresh();
       notifications.show({ title: 'Saved', message: 'Tags updated', color: 'green' });
     } catch (e) {
@@ -571,10 +637,10 @@ export function AdditionalImagesSection({
                                   cursor: 'pointer',
                                   flexShrink: 0,
                                 }}
-                                onClick={() => openLightboxServer(img.imagePath)}
+                                onClick={() => openLightboxServer(img.imagePath, img.uploadTs)}
                               >
                                 <Image
-                                  src={getImageUrl(img.imagePath)}
+                                  src={getImageUrl(img.imagePath, img.uploadTs)}
                                   alt={img.filename}
                                   w={80}
                                   h={80}
@@ -597,25 +663,33 @@ export function AdditionalImagesSection({
                                   </Group>
                                 )}
                                 {canEditLabels ? (
-                                  <>
-                                    <TagsInput
-                                      size="xs"
-                                      label="Tags"
-                                      placeholder="per photo"
-                                      value={inlineDraft[img.filename] ?? []}
-                                      onChange={(tags) =>
-                                        setInlineDraft((d) => ({ ...d, [img.filename]: tags }))
+                                  <TagsInput
+                                    size="xs"
+                                    label={savingInline === img.filename ? 'Tags (saving…)' : 'Tags'}
+                                    placeholder="per photo"
+                                    value={inlineDraft[img.filename] ?? []}
+                                    disabled={savingInline === img.filename}
+                                    onChange={(tags) =>
+                                      setInlineDraft((d) => ({ ...d, [img.filename]: tags }))
+                                    }
+                                    // Autosave on blur — committing tags no longer requires
+                                    // a separate "Save tags" click. The draft is already
+                                    // tracked per-filename, and saveInlineTags reads from
+                                    // inlineDraft so onBlur firing here picks up the latest
+                                    // value. Only saves when the draft actually differs from
+                                    // what the server returned, to avoid spurious writes
+                                    // when the user just clicks in/out of the field.
+                                    onBlur={() => {
+                                      const draft = inlineDraft[img.filename] ?? [];
+                                      const current = img.labels ?? [];
+                                      const same =
+                                        draft.length === current.length &&
+                                        draft.every((t, i) => t === current[i]);
+                                      if (!same) {
+                                        void saveInlineTags(img);
                                       }
-                                    />
-                                    <Button
-                                      size="xs"
-                                      variant="light"
-                                      loading={savingInline === img.filename}
-                                      onClick={() => void saveInlineTags(img.filename)}
-                                    >
-                                      Save tags
-                                    </Button>
-                                  </>
+                                    }}
+                                  />
                                 ) : (
                                   (img.labels ?? []).length === 0 &&
                                   isPacket && (
@@ -630,7 +704,7 @@ export function AdditionalImagesSection({
                                     variant="subtle"
                                     color="gray"
                                     leftSection={<IconZoomIn size={14} />}
-                                    onClick={() => openLightboxServer(img.imagePath)}
+                                    onClick={() => openLightboxServer(img.imagePath, img.uploadTs)}
                                   >
                                     Large
                                   </Button>

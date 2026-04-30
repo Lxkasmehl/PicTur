@@ -16,6 +16,7 @@ from turtle_manager import _extract_exif_date
 from additional_image_labels import (
     normalize_label_list,
     parse_labels_from_form,
+    read_labels_for_file,
 )
 
 
@@ -55,6 +56,34 @@ def _extract_upload_date_from_filename(filename, fallback_path=None):
             # wall clock (frontend uses new Date()), so UTC would slip a day
             # for anyone west of Greenwich during evening hours.
             return time.strftime('%Y-%m-%d', time.localtime(os.path.getmtime(fallback_path)))
+        except OSError:
+            pass
+    return None
+
+
+def _extract_upload_ts_from_filename(filename, fallback_path=None):
+    """Epoch ms when this file was placed/last modified.
+
+    Sibling of ``_extract_upload_date_from_filename`` for callers that need
+    finer-than-day granularity — used by the Old Photos sort comparator (so
+    multiple uploads on the same day don't tie and fall back to array order)
+    and as a cache-bust version for active-reference image URLs (which keep
+    the same path across replacements). Prefers the embedded ms timestamp
+    baked into archive / loose / observation filenames; falls back to mtime.
+    """
+    for rx in (_LOOSE_TS_RE, _ARCHIVED_TS_RE, _OBS_TS_RE):
+        m = rx.search(filename)
+        if m:
+            try:
+                ts = int(m.group(1))
+                if ts < 1_000_000_000_000:  # seconds → ms
+                    ts *= 1000
+                return ts
+            except ValueError:
+                pass
+    if fallback_path and os.path.exists(fallback_path):
+        try:
+            return int(os.path.getmtime(fallback_path) * 1000)
         except OSError:
             pass
     return None
@@ -123,12 +152,20 @@ def register_turtle_routes(app):
             upload = _extract_upload_date_from_filename(
                 os.path.basename(path), fallback_path=path
             )
-            return {
+            upload_ts = _extract_upload_ts_from_filename(
+                os.path.basename(path), fallback_path=path
+            )
+            labels = read_labels_for_file(os.path.dirname(path), os.path.basename(path))
+            info = {
                 'path': path,
                 'timestamp': exif or upload,
                 'exif_date': exif,
                 'upload_date': upload,
+                'upload_ts': upload_ts,
             }
+            if labels:
+                info['labels'] = labels
+            return info
 
         # --- PRIMARY PLASTRON ---
         primary_path = None
@@ -179,6 +216,7 @@ def register_turtle_routes(app):
                                 exif_date = entry.get('exif_date') or _extract_exif_date(p)
                                 manifest_ts = entry.get('timestamp')
                                 upload_date = (manifest_ts[:10] if isinstance(manifest_ts, str) and len(manifest_ts) >= 10 else None) or folder_upload_date
+                                upload_ts = _extract_upload_ts_from_filename(fn, fallback_path=p)
                                 row = {
                                     'path': p,
                                     'type': kind,
@@ -186,6 +224,7 @@ def register_turtle_routes(app):
                                     'timestamp': exif_date or upload_date,
                                     'exif_date': exif_date,
                                     'upload_date': upload_date,
+                                    'upload_ts': upload_ts,
                                     'uploaded_by': entry.get('uploaded_by'),
                                 }
                                 lbs = entry.get('labels')
@@ -202,6 +241,7 @@ def register_turtle_routes(app):
                         full = os.path.join(target_dir, f)
                         exif_date = _extract_exif_date(full)
                         upload_date = _extract_upload_date_from_filename(f, fallback_path=full) or folder_upload_date
+                        upload_ts = _extract_upload_ts_from_filename(f, fallback_path=full)
                         results.append({
                             'path': full,
                             'type': 'other',
@@ -209,6 +249,7 @@ def register_turtle_routes(app):
                             'timestamp': exif_date or upload_date,
                             'exif_date': exif_date,
                             'upload_date': upload_date,
+                            'upload_ts': upload_ts,
                             'uploaded_by': None,
                         })
             return results
@@ -240,14 +281,20 @@ def register_turtle_routes(app):
                 full = os.path.join(ld, f)
                 exif_date = _extract_exif_date(full)
                 upload_date = _extract_upload_date_from_filename(f, fallback_path=full)
-                loose.append({
+                upload_ts = _extract_upload_ts_from_filename(f, fallback_path=full)
+                labels = read_labels_for_file(ld, f)
+                entry = {
                     'path': full,
                     'source': source_tag,
                     # Display-preferred date: EXIF when available, else upload
                     'timestamp': exif_date or upload_date,
                     'exif_date': exif_date,
                     'upload_date': upload_date,
-                })
+                    'upload_ts': upload_ts,
+                }
+                if labels:
+                    entry['labels'] = labels
+                loose.append(entry)
 
         # --- HISTORY DATES: unique sorted dates across additional + loose ---
         # Prefers EXIF date (when the photo was taken) over upload date. Falls back to
@@ -337,6 +384,51 @@ def register_turtle_routes(app):
             return jsonify({'error': err or 'Failed to update labels'}), 400
         return jsonify({'success': True})
 
+    @app.route('/api/turtles/images/labels', methods=['PATCH'])
+    @require_admin
+    def patch_turtle_image_labels():
+        """
+        Update labels on ANY image under a turtle's folder. Admin only.
+        Generic counterpart to ``/additional-labels`` — works for active
+        plastron/carapace references, Old References, Other Plastrons /
+        Other Carapaces, legacy loose_images, and additional_images.
+
+        JSON: { turtle_id, path, labels: string[], sheet_name?, primary_id? }
+        ``path`` is the absolute filesystem path returned in
+        ``/api/turtles/images`` responses. The handler validates the path
+        lives under the resolved turtle folder before writing.
+        """
+        if not manager_service.manager_ready.wait(timeout=5):
+            return jsonify({'error': 'TurtleManager is still initializing'}), 503
+        if manager_service.manager is None:
+            return jsonify({'error': 'TurtleManager not available'}), 500
+        data = request.get_json(silent=True) or {}
+        turtle_id = (data.get('turtle_id') or '').strip()
+        primary_id_fallback = (data.get('primary_id') or '').strip() or None
+        sheet_name = (data.get('sheet_name') or '').strip() or None
+        image_path = (data.get('path') or '').strip()
+        labels = data.get('labels')
+        if not turtle_id and not primary_id_fallback:
+            return jsonify({'error': 'turtle_id or primary_id required'}), 400
+        if not image_path:
+            return jsonify({'error': 'path required'}), 400
+        if labels is not None and not isinstance(labels, list):
+            return jsonify({'error': 'labels must be an array of strings'}), 400
+        lbs = normalize_label_list(labels if isinstance(labels, list) else [])
+
+        # Same primary-first lookup order as the image endpoints — biology IDs
+        # collide across US state sheets, primaries don't.
+        manager = manager_service.manager
+        ok = False
+        err = None
+        if primary_id_fallback:
+            ok, err = manager.update_image_labels(primary_id_fallback, image_path, lbs, sheet_name)
+        if not ok and turtle_id and turtle_id != primary_id_fallback:
+            ok, err = manager.update_image_labels(turtle_id, image_path, lbs, sheet_name)
+        if not ok:
+            return jsonify({'error': err or 'Failed to update labels'}), 400
+        return jsonify({'success': True, 'labels': lbs})
+
     @app.route('/api/turtles/images/primaries', methods=['POST'])
     @require_admin
     def get_turtle_primaries_batch():
@@ -380,7 +472,18 @@ def register_turtle_routes(app):
                                 break
                     if primary_path:
                         break
-            results.append({'turtle_id': tid, 'sheet_name': sheet, 'primary': primary_path})
+            primary_ts = (
+                _extract_upload_ts_from_filename(
+                    os.path.basename(primary_path), fallback_path=primary_path
+                )
+                if primary_path else None
+            )
+            results.append({
+                'turtle_id': tid,
+                'sheet_name': sheet,
+                'primary': primary_path,
+                'primary_ts': primary_ts,
+            })
         return jsonify({'images': results})
 
     @app.route('/api/turtles/image', methods=['DELETE'])
@@ -489,6 +592,10 @@ def register_turtle_routes(app):
             return jsonify({'error': 'TurtleManager not available'}), 500
         turtle_id = (request.form.get('turtle_id') or request.args.get('turtle_id') or '').strip()
         sheet_name = (request.form.get('sheet_name') or request.args.get('sheet_name') or '').strip() or None
+        # Optional primary_id is tried first when resolving the folder so a
+        # bare bio_id like F004 doesn't accidentally find a same-bio_id turtle
+        # in a different US state.
+        primary_id = (request.form.get('primary_id') or request.args.get('primary_id') or '').strip() or None
         if not turtle_id:
             return jsonify({'error': 'turtle_id required'}), 400
         files_with_types = []
@@ -533,7 +640,7 @@ def register_turtle_routes(app):
             if not files_with_types:
                 return jsonify({'error': 'No valid image files provided'}), 400
             success, msg = manager_service.manager.add_additional_images_to_turtle(
-                turtle_id, files_with_types, sheet_name
+                turtle_id, files_with_types, sheet_name, primary_id=primary_id,
             )
             for item in files_with_types:
                 p = item.get('path')
@@ -569,6 +676,9 @@ def register_turtle_routes(app):
             return jsonify({'error': 'TurtleManager not available'}), 500
         turtle_id = (request.form.get('turtle_id') or '').strip()
         sheet_name = (request.form.get('sheet_name') or '').strip() or None
+        # Optional primary_id is tried first to avoid cross-state biology-id
+        # collisions (see resolve_turtle_dir_for_sheet_upload for details).
+        primary_id = (request.form.get('primary_id') or '').strip() or None
         photo_type = (request.form.get('photo_type') or 'plastron').strip().lower()
         if not turtle_id:
             return jsonify({'error': 'turtle_id required'}), 400
@@ -591,6 +701,7 @@ def register_turtle_routes(app):
         try:
             success, msg = manager_service.manager.replace_turtle_reference(
                 turtle_id, temp_path, photo_type=photo_type, sheet_name=sheet_name,
+                primary_id=primary_id,
             )
             if not success:
                 return jsonify({'error': msg or 'Failed to replace reference'}), 400
@@ -621,6 +732,8 @@ def register_turtle_routes(app):
 
         turtle_id = (request.form.get('turtle_id') or request.args.get('turtle_id') or '').strip()
         sheet_name = (request.form.get('sheet_name') or request.args.get('sheet_name') or '').strip() or None
+        # Optional primary_id tried first during folder resolution.
+        primary_id = (request.form.get('primary_id') or request.args.get('primary_id') or '').strip() or None
         mode = (request.form.get('mode') or request.args.get('mode') or '').strip().lower()
         if not turtle_id:
             return jsonify({'error': 'turtle_id required'}), 400
@@ -650,7 +763,7 @@ def register_turtle_routes(app):
             f.save(temp_path)
             temp_path = normalize_to_jpeg(temp_path)
             ok, msg = manager_service.manager.set_identifier_plastron_from_path(
-                turtle_id, temp_path, sheet_name, mode
+                turtle_id, temp_path, sheet_name, mode, primary_id=primary_id,
             )
             if not ok:
                 return jsonify({'error': msg or 'Failed to update identifier plastron'}), 400

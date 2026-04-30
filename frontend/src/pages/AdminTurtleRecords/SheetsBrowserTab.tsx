@@ -31,8 +31,8 @@ import {
   isAdminRole,
   uploadTurtleAdditionalImages,
   uploadTurtleReplaceReference,
-  uploadTurtleIdentifierPlastron,
   searchTurtleImagesByLabel,
+  setTurtleImageLabels,
   deleteTurtleImage,
   restoreTurtleImage,
   RestoreCollisionError,
@@ -122,7 +122,10 @@ export function SheetsBrowserTab() {
   const { role } = useUser();
   const ctx = useAdminTurtleRecordsContext();
   const [turtleImages, setTurtleImages] = useState<TurtleImagesResponse | null>(null);
-  const [primaryImages, setPrimaryImages] = useState<Record<string, string | null>>({});
+  // path + epoch-ms ts so the sidebar thumbnail can cache-bust on replace —
+  // active reference paths are stable across uploads, so without ts the
+  // browser keeps serving the previously-cached bytes.
+  const [primaryImages, setPrimaryImages] = useState<Record<string, { path: string; ts: number | null } | null>>({});
   // Staged photos awaiting commit on "Update Turtle" save — any type.
   const [stagedPhotos, setStagedPhotos] = useState<StagedPhoto[]>([]);
   const [pendingPrompt, setPendingPrompt] = useState<StagedPhoto | null>(null);
@@ -136,8 +139,6 @@ export function SheetsBrowserTab() {
   const [selectedMatchPath, setSelectedMatchPath] = useState<string | null>(null);
   const [tagSearchLightbox, setTagSearchLightbox] = useState<string | null>(null);
   const [backupLoading, setBackupLoading] = useState(false);
-  const [identifierSubmitting, setIdentifierSubmitting] = useState(false);
-  const identifierFileInputRef = useRef<HTMLInputElement>(null);
   const {
     selectedSheetFilter,
     sheetsListLoading,
@@ -255,6 +256,7 @@ export function SheetsBrowserTab() {
           diskTurtleId,
           nonReplace.map((s) => ({ type: s.photoType, file: s.file })),
           dataPathHint,
+          selectedPrimaryId,
         );
       }
 
@@ -265,11 +267,35 @@ export function SheetsBrowserTab() {
           s.file,
           s.photoType as ReferenceType,
           dataPathHint,
+          selectedPrimaryId,
         );
       }
 
       for (const s of stagedPhotos) URL.revokeObjectURL(s.previewUrl);
       setStagedPhotos([]);
+
+      // Refresh the sidebar thumbnail too — when a replace-reference fires we
+      // just changed which file is the active plastron/carapace, so the
+      // primaries cache for THIS turtle is now stale. The full-list refresh
+      // happens elsewhere on selection change; here we update just the one
+      // entry so the user sees their new reference appear immediately on the
+      // left side without having to deselect+reselect the row.
+      if (selectedTurtle) {
+        try {
+          const pr = await getTurtlePrimariesBatch([
+            { turtle_id: diskTurtleId, sheet_name: dataPathHint, primary_id: selectedPrimaryId },
+          ]);
+          const p = pr.images[0]?.primary ?? null;
+          const ts = pr.images[0]?.primary_ts ?? null;
+          setPrimaryImages((prev) => ({
+            ...prev,
+            [turtleKey(selectedTurtle)]: p ? { path: p, ts } : null,
+          }));
+        } catch {
+          /* sidebar refresh is cosmetic — don't fail the whole commit if it errors */
+        }
+      }
+
       return true;
     } catch (e) {
       notifications.show({
@@ -467,10 +493,10 @@ export function SheetsBrowserTab() {
       primary_id: r.primary_id,
     })))
       .then((res) => {
-        const map: Record<string, string | null> = {};
+        const map: Record<string, { path: string; ts: number | null } | null> = {};
         res.images.forEach((img, i) => {
           const key = rows[i]?.key;
-          if (key) map[key] = img.primary ?? null;
+          if (key) map[key] = img.primary ? { path: img.primary, ts: img.primary_ts ?? null } : null;
         });
         setPrimaryImages(map);
       })
@@ -498,7 +524,7 @@ export function SheetsBrowserTab() {
   })();
   const folderDateRegex = /[\\/](\d{4}-\d{2}-\d{2})[\\/]/;
 
-  type ScratchpadImage = { path: string; type: string; labels?: string[] };
+  type ScratchpadImage = { path: string; type: string; labels?: string[]; uploadTs?: number | null };
 
   const todaysAdditionalImages: ScratchpadImage[] = (() => {
     const out: ScratchpadImage[] = [];
@@ -506,26 +532,30 @@ export function SheetsBrowserTab() {
     for (const img of turtleImages?.additional ?? []) {
       const match = img.path.match(folderDateRegex);
       if (match?.[1] === todayIso) {
-        out.push({ path: img.path, type: img.type, labels: img.labels });
+        out.push({ path: img.path, type: img.type, labels: img.labels, uploadTs: img.upload_ts });
       }
     }
 
-    const looseTypeFor = (source: string): string =>
-      source.startsWith('carapace') ? 'carapace' : 'plastron';
-
+    // Pass the loose ``source`` straight through as the type so the section
+    // header reflects the photo's role: 'plastron_old_ref' / 'plastron_other'
+    // / 'carapace_old_ref' / 'carapace_other'. Previously these all collapsed
+    // to 'plastron' / 'carapace' and merged with active references into a
+    // single misleading "Plastron (additional)" pile.
     for (const img of turtleImages?.loose ?? []) {
       if (img.upload_date === todayIso) {
-        out.push({ path: img.path, type: looseTypeFor(img.source) });
+        out.push({ path: img.path, type: img.source, labels: img.labels, uploadTs: img.upload_ts });
       }
     }
 
+    // Active references uploaded today get their own dedicated section so
+    // admins can see at a glance "this is the new SuperPoint reference."
     const primaryInfo = turtleImages?.primary_info;
     if (primaryInfo && primaryInfo.upload_date === todayIso) {
-      out.push({ path: primaryInfo.path, type: 'plastron' });
+      out.push({ path: primaryInfo.path, type: 'plastron_active', labels: primaryInfo.labels, uploadTs: primaryInfo.upload_ts });
     }
     const primaryCarapaceInfo = turtleImages?.primary_carapace_info;
     if (primaryCarapaceInfo && primaryCarapaceInfo.upload_date === todayIso) {
-      out.push({ path: primaryCarapaceInfo.path, type: 'carapace' });
+      out.push({ path: primaryCarapaceInfo.path, type: 'carapace_active', labels: primaryCarapaceInfo.labels, uploadTs: primaryCarapaceInfo.upload_ts });
     }
 
     // De-duplicate by path (a primary ref and a loose entry can occasionally
@@ -811,7 +841,10 @@ export function SheetsBrowserTab() {
                           >
                             {primaryImages[turtleKey(turtle)] ? (
                               <Image
-                                src={getImageUrl(primaryImages[turtleKey(turtle)]!)}
+                                src={getImageUrl(
+                                  primaryImages[turtleKey(turtle)]!.path,
+                                  primaryImages[turtleKey(turtle)]!.ts,
+                                )}
                                 alt='Plastron'
                                 fit='contain'
                                 style={{ width: '100%', height: 'auto', display: 'block' }}
@@ -1042,109 +1075,36 @@ export function SheetsBrowserTab() {
                 deleted={turtleImages.deleted}
                 onDelete={handlePhotoDelete}
                 onRestore={handleRestore}
+                onLabelsChange={async (path, labels) => {
+                  if (!diskTurtleId) return;
+                  try {
+                    await setTurtleImageLabels(
+                      diskTurtleId,
+                      path,
+                      labels,
+                      dataPathHint,
+                      selectedPrimaryId,
+                    );
+                    const refreshed = await getTurtleImages(
+                      diskTurtleId,
+                      dataPathHint,
+                      selectedPrimaryId,
+                    );
+                    setTurtleImages(refreshed);
+                    notifications.show({
+                      title: 'Tags saved',
+                      message: 'Photo tags updated',
+                      color: 'green',
+                    });
+                  } catch (err) {
+                    notifications.show({
+                      title: 'Failed to save tags',
+                      message: err instanceof Error ? err.message : String(err),
+                      color: 'red',
+                    });
+                  }
+                }}
               />
-            )}
-            {diskTurtleId && (
-              <Paper shadow='sm' p='md' radius='md' withBorder>
-                <Stack gap='sm'>
-                  <Text fw={600} size='sm'>
-                    Identifier plastron (SuperPoint reference)
-                  </Text>
-                  <Text size='xs' c='dimmed'>
-                    Matching uses ref_data with this turtle id (image plus .pt tensor). Replace archives the
-                    previous master into loose_images. A second underside photo only: use Plastron (extra) under
-                    additional photos below.
-                  </Text>
-                  <Group align='flex-start' wrap='wrap' gap='md'>
-                    <Box
-                      style={{
-                        width: 160,
-                        borderRadius: 8,
-                        overflow: 'hidden',
-                        border: '1px solid var(--mantine-color-default-border)',
-                        minHeight: 100,
-                        backgroundColor: 'var(--mantine-color-gray-0)',
-                      }}
-                    >
-                      {turtleImages?.primary ? (
-                        <Image
-                          src={getImageUrl(turtleImages.primary)}
-                          alt='Identifier plastron'
-                          fit='contain'
-                          style={{ width: '100%', height: 'auto', display: 'block' }}
-                        />
-                      ) : (
-                        <Center p='md' style={{ minHeight: 100 }}>
-                          <Text size='xs' c='dimmed' ta='center'>
-                            No identifier image yet — typical for a new sheet-only row.
-                          </Text>
-                        </Center>
-                      )}
-                    </Box>
-                    <Stack gap='xs' style={{ flex: '1 1 12rem' }}>
-                      <input
-                        ref={identifierFileInputRef}
-                        type='file'
-                        accept='image/*'
-                        style={{ display: 'none' }}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          e.currentTarget.value = '';
-                          if (!file || !diskTurtleId) return;
-                          const check = validateFile(file);
-                          if (!check.isValid) {
-                            if (check.error) {
-                              notifications.show({ title: 'Invalid file', message: check.error, color: 'red' });
-                            }
-                            return;
-                          }
-                          void (async () => {
-                            setIdentifierSubmitting(true);
-                            try {
-                              await uploadTurtleIdentifierPlastron(
-                                diskTurtleId,
-                                file,
-                                dataPathHint,
-                                turtleImages?.primary ? 'replace' : 'set_if_missing',
-                              );
-                              notifications.show({
-                                title: 'Saved',
-                                message: turtleImages?.primary
-                                  ? 'Identifier plastron replaced; search index updated.'
-                                  : 'Identifier plastron set; search index updated.',
-                                color: 'green',
-                              });
-                              const res = await getTurtleImages(diskTurtleId, dataPathHint, selectedPrimaryId);
-                              setTurtleImages(res);
-                              if (selectedTurtle) {
-                                const pr = await getTurtlePrimariesBatch([
-                                  { turtle_id: diskTurtleId, sheet_name: dataPathHint, primary_id: selectedPrimaryId },
-                                ]);
-                                const p = pr.images[0]?.primary ?? null;
-                                setPrimaryImages((prev) => ({ ...prev, [turtleKey(selectedTurtle)]: p }));
-                              }
-                            } catch (err) {
-                              notifications.show({ title: 'Error', message: err instanceof Error ? err.message : 'Upload failed', color: 'red' });
-                            } finally {
-                              setIdentifierSubmitting(false);
-                            }
-                          })();
-                        }}
-                      />
-                      <Button
-                        size='sm'
-                        variant='light'
-                        leftSection={<IconPhoto size={16} />}
-                        loading={identifierSubmitting}
-                        disabled={!diskTurtleId || (!dataPathHint && !turtleImages?.primary)}
-                        onClick={() => identifierFileInputRef.current?.click()}
-                      >
-                        {turtleImages?.primary ? 'Replace identifier…' : 'Set identifier…'}
-                      </Button>
-                    </Stack>
-                  </Group>
-                </Stack>
-              </Paper>
             )}
             {diskTurtleId && (
               <AdditionalImagesSection
@@ -1154,6 +1114,7 @@ export function SheetsBrowserTab() {
                   filename: a.path.split(/[/\\]/).pop() ?? a.path,
                   type: a.type,
                   labels: a.labels,
+                  uploadTs: a.uploadTs,
                 }))}
                 turtleId={diskTurtleId}
                 sheetName={dataPathHint}

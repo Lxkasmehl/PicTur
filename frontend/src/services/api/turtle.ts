@@ -443,12 +443,20 @@ export const clearReleaseFlag = async (
 };
 
 // Get image URL helper
-export const getImageUrl = (imagePath: string): string => {
+//
+// ``version`` is an optional cache-bust suffix appended as ``&v=<version>``.
+// Active reference paths stay identical across replacements (the new file
+// lands at the same on-disk location), so without a version the browser
+// keeps serving the previously-cached bytes. Pass primary_info.upload_ts /
+// primary_ts wherever you render an active reference; non-version-aware
+// callers (e.g. archived photos under unique paths) can omit it.
+export const getImageUrl = (imagePath: string, version?: string | number | null): string => {
   if (imagePath.startsWith('http')) {
     return imagePath;
   }
   const encodedPath = encodeURIComponent(imagePath);
-  return `${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?path=${encodedPath}`;
+  const base = `${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?path=${encodedPath}`;
+  return version != null && version !== '' ? `${base}&v=${encodeURIComponent(String(version))}` : base;
 };
 
 /** Download URL — triggers Content-Disposition: attachment server-side. */
@@ -472,6 +480,8 @@ export interface TurtleImageAdditional {
   exif_date?: string | null;
   /** When the system stored the file (from manifest, filename stamp, or folder name). */
   upload_date?: string | null;
+  /** Epoch ms — finer-grained than upload_date; used as sort tiebreaker. */
+  upload_ts?: number | null;
   uploaded_by?: string | null;
 }
 
@@ -485,18 +495,27 @@ export type TurtleLooseSource =
 export interface TurtleLooseImage {
   path: string;
   source: TurtleLooseSource;
+  /** Free-form tags from the per-directory manifest (e.g. burned, scarred). */
+  labels?: string[];
   /** Display-preferred date: EXIF first, upload fallback. */
   timestamp?: string | null;
   exif_date?: string | null;
   upload_date?: string | null;
+  /** Epoch ms — finer-grained than upload_date; used as sort tiebreaker. */
+  upload_ts?: number | null;
 }
 
 export interface TurtlePrimaryInfo {
   path: string;
+  /** Free-form tags from the per-directory manifest (e.g. healthy, juvenile). */
+  labels?: string[];
   /** Display-preferred date: EXIF first, upload fallback. */
   timestamp?: string | null;
   exif_date?: string | null;
   upload_date?: string | null;
+  /** Epoch ms — used as cache-bust on the image URL since active-reference
+   *  paths stay identical across replacements. */
+  upload_ts?: number | null;
 }
 
 export type TurtleDeletedCategory =
@@ -517,6 +536,8 @@ export interface TurtleDeletedImage {
   /** Turtle-dir relative path starting with "Deleted/". Used by the restore endpoint. */
   deleted_rel_path: string;
   category: TurtleDeletedCategory;
+  /** Free-form tags from the per-directory manifest. */
+  labels?: string[];
   timestamp?: string | null;
   exif_date?: string | null;
   upload_date?: string | null;
@@ -614,13 +635,48 @@ export const updateTurtleAdditionalImageLabels = async (
   }
 };
 
+/** Update labels on ANY image under a turtle's folder. Admin only.
+ *  Generic counterpart to updateTurtleAdditionalImageLabels: works for active
+ *  references, Old References, Other Plastrons / Other Carapaces, legacy
+ *  loose_images, and additional_images. ``path`` is the absolute filesystem
+ *  path returned in /api/turtles/images responses. ``primaryId`` is tried
+ *  first server-side to avoid bio_id collisions across US state sheets. */
+export const setTurtleImageLabels = async (
+  turtleId: string,
+  imagePath: string,
+  labels: string[],
+  sheetName?: string | null,
+  primaryId?: string | null,
+): Promise<{ labels: string[] }> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const body: Record<string, unknown> = {
+    turtle_id: turtleId,
+    path: imagePath,
+    labels,
+  };
+  if (sheetName) body.sheet_name = sheetName;
+  if (primaryId) body.primary_id = primaryId;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/images/labels`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Failed to update labels' }));
+    throw new Error(err.error || 'Failed to update labels');
+  }
+  return await response.json();
+};
+
 /** Batch get primary (plastron) image paths for multiple turtles (Admin only).
  *  primary_id is an optional fallback id used when the on-disk folder still
  *  carries the Primary ID after the sheet's biology ID has changed.
  */
 export const getTurtlePrimariesBatch = async (
   turtles: Array<{ turtle_id: string; sheet_name?: string | null; primary_id?: string | null }>,
-): Promise<{ images: Array<{ turtle_id: string; sheet_name: string | null; primary: string | null }> }> => {
+): Promise<{ images: Array<{ turtle_id: string; sheet_name: string | null; primary: string | null; primary_ts?: number | null }> }> => {
   const token = getToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -642,6 +698,7 @@ export const uploadTurtleReplaceReference = async (
   file: File,
   photoType: 'plastron' | 'carapace',
   sheetName?: string | null,
+  primaryId?: string | null,
 ): Promise<{ success: boolean; message?: string }> => {
   const token = getToken();
   const headers: Record<string, string> = {};
@@ -651,6 +708,7 @@ export const uploadTurtleReplaceReference = async (
   formData.append('photo_type', photoType);
   formData.append('file', file);
   if (sheetName) formData.append('sheet_name', sheetName);
+  if (primaryId) formData.append('primary_id', primaryId);
   const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/replace-reference`, {
     method: 'POST',
     headers,
@@ -669,6 +727,7 @@ export const uploadTurtleIdentifierPlastron = async (
   file: File,
   sheetName: string | null | undefined,
   mode: 'set_if_missing' | 'replace',
+  primaryId?: string | null,
 ): Promise<{ success: boolean; message?: string }> => {
   const token = getToken();
   const headers: Record<string, string> = {};
@@ -678,6 +737,7 @@ export const uploadTurtleIdentifierPlastron = async (
   formData.append('file', file);
   formData.append('mode', mode);
   if (sheetName) formData.append('sheet_name', sheetName);
+  if (primaryId) formData.append('primary_id', primaryId);
   const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/images/identifier-plastron`, {
     method: 'POST',
     headers,
@@ -700,6 +760,7 @@ export const uploadTurtleAdditionalImages = async (
     labels?: string[];
   }>,
   sheetName?: string | null,
+  primaryId?: string | null,
 ): Promise<{ success: boolean; message?: string }> => {
   const token = getToken();
   const headers: Record<string, string> = {};
@@ -707,6 +768,7 @@ export const uploadTurtleAdditionalImages = async (
   const formData = new FormData();
   formData.append('turtle_id', turtleId);
   if (sheetName) formData.append('sheet_name', sheetName);
+  if (primaryId) formData.append('primary_id', primaryId);
   files.forEach((f, i) => {
     formData.append(`file_${i}`, f.file);
     formData.append(`type_${i}`, f.type);

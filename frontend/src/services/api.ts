@@ -71,6 +71,7 @@ export {
   crossCheckReviewPacket,
   searchTurtleImagesByLabel,
   updateTurtleAdditionalImageLabels,
+  setTurtleImageLabels,
 } from './api/turtle';
 export type {
   PhotoType,

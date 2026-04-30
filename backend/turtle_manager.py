@@ -66,8 +66,11 @@ if current_dir not in sys.path:
 
 from additional_image_labels import (
     label_query_matches,
+    migrate_labels_to_archive,
     normalize_additional_type,
     normalize_label_list,
+    read_labels_for_file,
+    set_labels_for_file,
 )
 
 # --- IMPORT THE BRAIN (SUPERPOINT/LIGHTGLUE) ---
@@ -433,6 +436,80 @@ class TurtleManager:
 
         if recovered:
             print(f"🔧 Recovered {recovered} interrupted reference replacement(s).")
+
+    def _purge_orphan_refs_in_ref_dir(self, ref_dir, canonical_stem):
+        """Move stray reference files out of a plastron/ or carapace/ directory
+        when a canonical ``{folder_basename}.{ext}`` reference is present.
+
+        Background: an earlier bug wrote new references using the URL-passed
+        ``turtle_id`` (often a bare bio_id like ``F004``) as the file stem
+        instead of the folder basename (``F004_T1771234567``). Folders that
+        went through the buggy flow ended up with parallel pairs — the proper
+        canonical files AND a stray ``F004.jpg/.pt`` next to them. This
+        function archives the strays into ``Old References/`` with an
+        ``Orphan_`` prefix.
+
+        SAFETY: only fires when a canonical ``{canonical_stem}.{ext}`` (.jpg,
+        .jpeg, .png, or .pt) is already present in ``ref_dir``. If the only
+        reference file in there is non-canonical — e.g. a folder that was
+        renamed to its combined form by chronodrop without the files inside
+        being renamed yet — we leave it alone. Otherwise this would archive
+        the only reference the turtle has and brick matching for it.
+
+        Files MOVED (not deleted) so the operation is recoverable.
+        Skipped subdirs (Old References / Other Plastrons / Other Carapaces /
+        manifest.json) and ``_staged_*`` interruption artifacts.
+        """
+        if not ref_dir or not os.path.isdir(ref_dir):
+            return 0
+        if not canonical_stem:
+            return 0
+        try:
+            entries = os.listdir(ref_dir)
+        except OSError:
+            return 0
+        # Safety gate: require a canonical reference to exist before purging
+        # anything. If the only file at this level is non-canonical, treat it
+        # as the legitimate active reference (likely a not-yet-renamed legacy
+        # file) and leave the directory untouched.
+        canonical_present = any(
+            os.path.splitext(f)[0] == canonical_stem
+            and os.path.splitext(f)[1].lower() in ('.jpg', '.jpeg', '.png', '.pt')
+            and os.path.isfile(os.path.join(ref_dir, f))
+            for f in entries
+        )
+        if not canonical_present:
+            return 0
+        archive_dir = os.path.join(ref_dir, 'Old References')
+        moved = 0
+        op_ts = int(time.time() * 1000)
+        for fname in entries:
+            full = os.path.join(ref_dir, fname)
+            if os.path.isdir(full):
+                continue
+            if fname == 'manifest.json':
+                continue
+            stem, ext = os.path.splitext(fname)
+            ext_lower = ext.lower()
+            if ext_lower not in ('.jpg', '.jpeg', '.png', '.pt'):
+                continue
+            if stem == canonical_stem:
+                continue
+            if '_staged_' in stem:
+                continue
+            os.makedirs(archive_dir, exist_ok=True)
+            archive_name = f"Orphan_{op_ts}_{fname}"
+            try:
+                shutil.move(full, os.path.join(archive_dir, archive_name))
+                migrate_labels_to_archive(
+                    ref_dir, fname,
+                    archive_dir, archive_name,
+                )
+                moved += 1
+                print(f"   🧹 Purged orphan ref {fname} → Old References/{archive_name}")
+            except OSError as e:
+                print(f"   ⚠️ Could not purge orphan {full}: {e}")
+        return moved
 
     def _cleanup_temp_files(self):
         """Remove orphaned temp files from uploads that were interrupted by a crash.
@@ -999,7 +1076,7 @@ class TurtleManager:
                     queue_items.append({'request_id': req_id, 'path': req_path, 'status': 'pending'})
         return queue_items
 
-    def replace_turtle_reference(self, turtle_id, new_image_path, photo_type="plastron", sheet_name=None):
+    def replace_turtle_reference(self, turtle_id, new_image_path, photo_type="plastron", sheet_name=None, primary_id=None):
         """Atomically replace the plastron or carapace reference image for an existing turtle.
 
         Archives the old .pt+image to {photo_type}/Old References/, stages the new
@@ -1007,10 +1084,13 @@ class TurtleManager:
         _approval_lock so concurrent admin actions can't race.
 
         Args:
-            turtle_id: Primary key of the turtle (folder name on disk).
+            turtle_id: Biology or primary key. Folder lookup is permissive — finds
+                exact, prefix-with-underscore, and suffix-with-underscore matches.
             new_image_path: Path to the new reference image (must already exist on disk).
             photo_type: 'plastron' (default) or 'carapace'.
             sheet_name: Optional location hint to disambiguate multi-location turtles.
+            primary_id: Optional primary key tried FIRST during folder resolution.
+                Globally unique, so it sidesteps cross-state biology-ID collisions.
 
         Returns:
             (success: bool, message: str)
@@ -1021,9 +1101,23 @@ class TurtleManager:
             return False, "New image file not found"
 
         with self._approval_lock:
-            target_dir = self._get_turtle_folder(turtle_id, sheet_name)
+            target_dir = None
+            if primary_id and primary_id != turtle_id:
+                target_dir = self._get_turtle_folder(primary_id, sheet_name)
+            if not target_dir:
+                target_dir = self._get_turtle_folder(turtle_id, sheet_name)
             if not target_dir:
                 return False, f"Could not find folder for {turtle_id}"
+
+            # Reference files must be named after the FOLDER BASENAME, not the
+            # URL-passed turtle_id. Folders use the canonical
+            # ``{bio_id}_{primary_id}`` form (e.g. ``F004_T1771234567``); when
+            # a caller passes the bare bio_id (``F004``) we still find the
+            # folder via permissive matching, but writing files as ``F004.jpg``
+            # would produce a parallel pair instead of replacing the existing
+            # ``F004_T1771234567.jpg/.pt``. ``refresh_database_index`` would
+            # then index BOTH and ship duplicate VRAM entries for one turtle.
+            ref_stem = os.path.basename(target_dir)
 
             if photo_type == "carapace":
                 ref_dir = os.path.join(target_dir, 'carapace')
@@ -1048,18 +1142,28 @@ class TurtleManager:
             os.makedirs(archive_dir, exist_ok=True)
 
             print(f"{print_prefix} for {turtle_id}...")
-            old_pt_path = os.path.join(ref_dir, f"{turtle_id}.pt")
+            old_pt_path = os.path.join(ref_dir, f"{ref_stem}.pt")
             old_img_path = None
-            for ext in ['.jpg', '.jpeg', '.png']:
-                possible = os.path.join(ref_dir, f"{turtle_id}{ext}")
-                if os.path.exists(possible):
-                    old_img_path = possible
-                    break
+            # Enumerate the directory so old_img_path keeps the file's actual
+            # on-disk case. Constructing the path with a hardcoded lowercase
+            # extension and relying on Windows' case-insensitive os.path.exists
+            # gave us a lowercase ".jpg" string when the real file was ".JPG",
+            # which then caused migrate_labels_to_archive's case-sensitive
+            # manifest lookup to miss — silently leaving the old reference's
+            # tags bound to the new active file at the same path.
+            try:
+                for fname in os.listdir(ref_dir):
+                    stem, ext = os.path.splitext(fname)
+                    if stem == ref_stem and ext.lower() in ('.jpg', '.jpeg', '.png'):
+                        old_img_path = os.path.join(ref_dir, fname)
+                        break
+            except OSError:
+                pass
 
             op_ts = int(time.time() * 1000)
             new_ext = os.path.splitext(new_image_path)[1] or '.jpg'
-            staged_master_path = os.path.join(ref_dir, f"{turtle_id}_staged_{op_ts}{new_ext}")
-            staged_pt_path = os.path.join(ref_dir, f"{turtle_id}_staged_{op_ts}.pt")
+            staged_master_path = os.path.join(ref_dir, f"{ref_stem}_staged_{op_ts}{new_ext}")
+            staged_pt_path = os.path.join(ref_dir, f"{ref_stem}_staged_{op_ts}.pt")
 
             # Stage new master and .pt first; only promote if extraction succeeds.
             shutil.copy2(new_image_path, staged_master_path)
@@ -1077,15 +1181,28 @@ class TurtleManager:
                         pass
                 return False, f"Failed to extract features for replacement image of {turtle_id}"
 
-            new_master_path = os.path.join(ref_dir, f"{turtle_id}{new_ext}")
-            new_pt_path = os.path.join(ref_dir, f"{turtle_id}.pt")
+            new_master_path = os.path.join(ref_dir, f"{ref_stem}{new_ext}")
+            new_pt_path = os.path.join(ref_dir, f"{ref_stem}.pt")
 
             # Step 1: Archive old image to Old References (copy, not move).
-            # Date suffix encodes the EXIF "taken" date (when known) or the upload date.
+            # Date suffix is today's LOCAL date — the archive operation date,
+            # which is also the upload_date for this archived copy. EXIF "when
+            # taken" is still extractable from the file's metadata via
+            # _extract_exif_date, so display can keep both. Using EXIF here
+            # broke the "uploaded today" scratchpad because old photos would
+            # carry years-old date stamps in their archived filenames.
             if old_img_path:
-                archive_date = _extract_exif_date(old_img_path) or time.strftime('%Y-%m-%d', time.gmtime())
+                archive_date = time.strftime('%Y-%m-%d', time.localtime())
                 archive_name = f"{archive_prefix}_{op_ts}_{archive_date}{os.path.splitext(old_img_path)[1]}"
                 shutil.copy2(old_img_path, os.path.join(archive_dir, archive_name))
+                # Carry the old reference's tags over to the archived copy and
+                # clear them from the source manifest, so the NEW reference
+                # (which lands at the same path on step 2) starts with a clean
+                # label slate instead of inheriting whatever was on the old.
+                migrate_labels_to_archive(
+                    ref_dir, os.path.basename(old_img_path),
+                    archive_dir, archive_name,
+                )
                 print(f"   📦 Archived old master to {archive_name}")
 
             # Step 2: Promote staged files atomically
@@ -1102,30 +1219,50 @@ class TurtleManager:
             except OSError:
                 pass
 
-            # Step 3: Clean up old image if it was a different extension
-            if old_img_path and os.path.exists(old_img_path) and old_img_path != new_master_path:
+            # Step 3: Clean up old image if it was a different extension.
+            # Uses os.path.samefile so that case-only differences on Windows
+            # (e.g. old_img_path ends in '.jpg' from the lookup loop while the
+            # newly placed file is '.JPG' from the user's upload extension)
+            # don't cause us to delete the file we just placed. Pre-fix, that
+            # exact case removed the new active reference, leaving the .pt
+            # without its .jpg.
+            if old_img_path and os.path.exists(old_img_path):
                 try:
-                    os.remove(old_img_path)
+                    same_file = (os.path.exists(new_master_path)
+                                 and os.path.samefile(old_img_path, new_master_path))
                 except OSError:
-                    pass
+                    same_file = False
+                if not same_file:
+                    try:
+                        os.remove(old_img_path)
+                    except OSError:
+                        pass
 
-            # Incremental VRAM cache update: evict old entry, add new
+            # Incremental VRAM cache update: evict old entry, add new.
+            # Use ref_stem (folder basename) as the cached site_id so the
+            # incremental insert matches what refresh_database_index would
+            # produce on a full reload (which derives turtle_id from
+            # ``path_parts[-2]``, i.e. the folder basename).
             cache = getattr(brain, cache_attr, [])
             setattr(brain, cache_attr, [c for c in cache if c['file_path'] != old_pt_path])
             rel_path = os.path.relpath(ref_dir, self.base_dir)
             loc_parts = rel_path.split(os.sep)[:-2]
             location_name = "/".join(loc_parts)
-            brain.add_single_to_vram(new_pt_path, turtle_id, location_name, photo_type=photo_type)
+            brain.add_single_to_vram(new_pt_path, ref_stem, location_name, photo_type=photo_type)
+            # Defensive sweep — archive any non-canonical reference files that
+            # may have been left behind by an earlier buggy code path or a
+            # manual copy. Keeps the ref dir self-healing.
+            self._purge_orphan_refs_in_ref_dir(ref_dir, ref_stem)
             print(f"   ✅ {turtle_id} {photo_type} reference upgraded successfully.")
             return True, f"{photo_type.capitalize()} reference replaced for {turtle_id}"
 
-    def replace_plastron_reference(self, turtle_id, new_image_path, sheet_name=None):
+    def replace_plastron_reference(self, turtle_id, new_image_path, sheet_name=None, primary_id=None):
         """Convenience wrapper: replace plastron reference. See replace_turtle_reference."""
-        return self.replace_turtle_reference(turtle_id, new_image_path, photo_type="plastron", sheet_name=sheet_name)
+        return self.replace_turtle_reference(turtle_id, new_image_path, photo_type="plastron", sheet_name=sheet_name, primary_id=primary_id)
 
-    def replace_carapace_reference(self, turtle_id, new_image_path, sheet_name=None):
+    def replace_carapace_reference(self, turtle_id, new_image_path, sheet_name=None, primary_id=None):
         """Convenience wrapper: replace carapace reference. See replace_turtle_reference."""
-        return self.replace_turtle_reference(turtle_id, new_image_path, photo_type="carapace", sheet_name=sheet_name)
+        return self.replace_turtle_reference(turtle_id, new_image_path, photo_type="carapace", sheet_name=sheet_name, primary_id=primary_id)
 
     # ------------------------------------------------------------------
     # Soft delete / restore / list deleted
@@ -1256,6 +1393,13 @@ class TurtleManager:
                 shutil.move(abs_src, dest)
             except OSError as e:
                 return False, {'error': f"Failed to move image to Deleted/: {e}"}
+            # Migrate the file's tags so they follow it into Deleted/ instead
+            # of orphaning in the source manifest (where a future file at the
+            # same path would silently inherit them).
+            migrate_labels_to_archive(
+                os.path.dirname(abs_src), os.path.basename(abs_src),
+                os.path.dirname(dest), os.path.basename(dest),
+            )
             print(f"🗑️ Soft-deleted {rel} for {turtle_id} → Deleted/")
 
             info = {
@@ -1270,12 +1414,17 @@ class TurtleManager:
                 old_pt_path = os.path.splitext(abs_src)[0] + '.pt'
                 self._evict_from_vram(old_pt_path, was_reference)
 
+                # ref_stem must match the FOLDER basename so the promoted file
+                # keeps the canonical naming convention (refresh_database_index
+                # derives turtle_id from path_parts[-2]). A bare turtle_id
+                # passed in via the URL would mismatch a combined-name folder.
+                ref_stem = os.path.basename(turtle_dir)
                 ref_dir = os.path.dirname(abs_src)
                 prev = self._find_most_recent_old_reference(ref_dir)
                 if prev:
                     prev_ext = os.path.splitext(prev)[1] or '.jpg'
-                    new_master_path = os.path.join(ref_dir, f"{turtle_id}{prev_ext}")
-                    new_pt_path = os.path.join(ref_dir, f"{turtle_id}.pt")
+                    new_master_path = os.path.join(ref_dir, f"{ref_stem}{prev_ext}")
+                    new_pt_path = os.path.join(ref_dir, f"{ref_stem}.pt")
                     try:
                         shutil.move(prev, new_master_path)
                     except OSError as e:
@@ -1287,7 +1436,7 @@ class TurtleManager:
                         ok = False
                     if ok:
                         loc_name = self._location_name_for_ref_dir(ref_dir)
-                        brain.add_single_to_vram(new_pt_path, turtle_id, loc_name, photo_type=was_reference)
+                        brain.add_single_to_vram(new_pt_path, ref_stem, loc_name, photo_type=was_reference)
                         info['reverted'] = True
                         info['new_reference_path'] = new_master_path
                         print(f"   ✅ Auto-reverted {turtle_id} {was_reference} to most recent Old Reference.")
@@ -1342,13 +1491,22 @@ class TurtleManager:
                 shutil.move(abs_src, target_abs)
             except OSError as e:
                 return False, {'error': f"Failed to move file: {e}"}
+            # Carry the file's tags back from Deleted/ to its restored location.
+            migrate_labels_to_archive(
+                os.path.dirname(abs_src), os.path.basename(abs_src),
+                os.path.dirname(target_abs), os.path.basename(target_abs),
+            )
 
             is_reference = self._classify_active_ref(turtle_dir, target_abs)
             info = {'restored_to': target_abs, 'is_reference': is_reference}
 
             if is_reference:
+                # ref_stem = folder basename, not the URL turtle_id (see
+                # soft_delete_turtle_image / replace_turtle_reference for
+                # the full rationale).
+                ref_stem = os.path.basename(turtle_dir)
                 ref_dir = os.path.dirname(target_abs)
-                new_pt_path = os.path.join(ref_dir, f"{turtle_id}.pt")
+                new_pt_path = os.path.join(ref_dir, f"{ref_stem}.pt")
                 # Defensive: evict any stale VRAM entry pointing at this turtle+type.
                 self._evict_from_vram(new_pt_path, is_reference)
                 try:
@@ -1360,7 +1518,7 @@ class TurtleManager:
                     info['warning'] = "Image restored but .pt extraction failed; try again or restart backend"
                 else:
                     loc_name = self._location_name_for_ref_dir(ref_dir)
-                    brain.add_single_to_vram(new_pt_path, turtle_id, loc_name, photo_type=is_reference)
+                    brain.add_single_to_vram(new_pt_path, ref_stem, loc_name, photo_type=is_reference)
                     print(f"   ✅ Restored {turtle_id} {is_reference} reference and refreshed VRAM.")
 
             # Clean up now-empty parent dirs inside Deleted/ (purely cosmetic).
@@ -1500,6 +1658,14 @@ class TurtleManager:
             if not target_dir:
                 return False, f"Could not find folder for {match_turtle_id}"
 
+            # Reference files are named after the FOLDER BASENAME, not the
+            # match_turtle_id from the URL. See replace_turtle_reference for
+            # the full rationale: a caller passing the bare bio_id (``F004``)
+            # against a combined-name folder (``F004_T1771234567``) would
+            # otherwise create a parallel ``F004.jpg/.pt`` pair instead of
+            # replacing the existing reference.
+            ref_stem = os.path.basename(target_dir)
+
             if photo_type == "carapace":
                 ref_dir = os.path.join(target_dir, 'carapace')
                 loose_dir = os.path.join(target_dir, 'carapace', 'Other Carapaces')
@@ -1522,14 +1688,14 @@ class TurtleManager:
 
             if replace_reference:
                 print(f"✨ UPGRADING REFERENCE for {match_turtle_id}...")
-                old_pt_path = os.path.join(ref_dir, f"{match_turtle_id}.pt")
+                old_pt_path = os.path.join(ref_dir, f"{ref_stem}.pt")
                 # Case-insensitive lookup so .JPG old references are found on Linux
-                old_img_path = _find_image_in_dir(ref_dir, match_turtle_id)
+                old_img_path = _find_image_in_dir(ref_dir, ref_stem)
 
                 op_ts = int(time.time() * 1000)
                 new_ext = os.path.splitext(query_image)[1]
-                staged_master_path = os.path.join(ref_dir, f"{match_turtle_id}_staged_{op_ts}{new_ext}")
-                staged_pt_path = os.path.join(ref_dir, f"{match_turtle_id}_staged_{op_ts}.pt")
+                staged_master_path = os.path.join(ref_dir, f"{ref_stem}_staged_{op_ts}{new_ext}")
+                staged_pt_path = os.path.join(ref_dir, f"{ref_stem}_staged_{op_ts}.pt")
 
                 # Extract features first; only replace old master if staging succeeds.
                 shutil.copy2(query_image, staged_master_path)
@@ -1551,14 +1717,21 @@ class TurtleManager:
                 # Atomic replacement: promote new files FIRST, then clean up old.
                 # This way a crash at any point either leaves the old reference intact
                 # or the new reference fully in place — never a gap with no .pt file.
-                new_master_path = os.path.join(ref_dir, f"{match_turtle_id}{new_ext}")
-                new_pt_path = os.path.join(ref_dir, f"{match_turtle_id}.pt")
+                new_master_path = os.path.join(ref_dir, f"{ref_stem}{new_ext}")
+                new_pt_path = os.path.join(ref_dir, f"{ref_stem}.pt")
 
                 # Step 1: Archive old image to Old References (copy, not move — original stays until step 3)
                 if old_img_path:
-                    archive_date = _extract_exif_date(old_img_path) or time.strftime('%Y-%m-%d', time.gmtime())
+                    archive_date = time.strftime('%Y-%m-%d', time.localtime())
                     archive_name = f"Archived_Master_{op_ts}_{archive_date}{os.path.splitext(old_img_path)[1]}"
                     shutil.copy2(old_img_path, os.path.join(archive_dir, archive_name))
+                    # Migrate tags so they follow the photo into Old References
+                    # instead of silently sticking to the new reference written
+                    # at the same path.
+                    migrate_labels_to_archive(
+                        ref_dir, os.path.basename(old_img_path),
+                        archive_dir, archive_name,
+                    )
                     print(f"   📦 Archived old master to {archive_name}")
 
                 # Step 2: Promote staged files to canonical names (overwrites old .pt and image atomically)
@@ -1576,30 +1749,46 @@ class TurtleManager:
                     pass
                 # At this point the new reference is live — crash here is safe.
 
-                # Step 3: Clean up old image if it was a different extension
-                if old_img_path and os.path.exists(old_img_path) and old_img_path != new_master_path:
+                # Step 3: Clean up old image if it was a different extension.
+                # Uses os.path.samefile so a case-only difference between the
+                # lookup-loop's lowercase ext and the user's actual ext on a
+                # case-insensitive filesystem doesn't make us delete the file
+                # we just placed.
+                if old_img_path and os.path.exists(old_img_path):
                     try:
-                        os.remove(old_img_path)
+                        same_file = (os.path.exists(new_master_path)
+                                     and os.path.samefile(old_img_path, new_master_path))
                     except OSError:
-                        pass
+                        same_file = False
+                    if not same_file:
+                        try:
+                            os.remove(old_img_path)
+                        except OSError:
+                            pass
 
-                obs_date = _extract_exif_date(query_image) or time.strftime('%Y-%m-%d', time.gmtime())
+                obs_date = time.strftime('%Y-%m-%d', time.localtime())
                 obs_name = f"Obs_{int(time.time())}_{obs_date}_{os.path.basename(query_image)}"
                 shutil.copy2(query_image, os.path.join(loose_dir, obs_name))
 
-                # Incremental cache update: remove old entry and add updated one
+                # Incremental cache update: remove old entry and add updated
+                # one. Use ref_stem (folder basename) as the cached site_id so
+                # the incremental insert matches what refresh_database_index
+                # would produce on a full reload.
                 cache_attr = 'vram_cache_carapace' if photo_type == 'carapace' else 'vram_cache_plastron'
                 cache = getattr(brain, cache_attr, [])
                 setattr(brain, cache_attr, [c for c in cache if c['file_path'] != old_pt_path])
                 rel_path = os.path.relpath(ref_dir, self.base_dir)
                 loc_parts = rel_path.split(os.sep)[:-2]
                 location_name = "/".join(loc_parts)
-                brain.add_single_to_vram(new_pt_path, match_turtle_id, location_name, photo_type=photo_type)
+                brain.add_single_to_vram(new_pt_path, ref_stem, location_name, photo_type=photo_type)
+                # Defensive orphan sweep so any stray non-canonical reference
+                # gets archived to Old References/.
+                self._purge_orphan_refs_in_ref_dir(ref_dir, ref_stem)
                 print(f"   ✅ {match_turtle_id} upgraded successfully.")
 
             else:
                 print(f"📸 Adding observation to {match_turtle_id}...")
-                obs_date = _extract_exif_date(query_image) or time.strftime('%Y-%m-%d', time.gmtime())
+                obs_date = time.strftime('%Y-%m-%d', time.localtime())
                 obs_name = f"Obs_{int(time.time())}_{obs_date}_{os.path.basename(query_image)}"
                 shutil.copy2(query_image, os.path.join(loose_dir, obs_name))
 
@@ -1646,6 +1835,12 @@ class TurtleManager:
         target_dir = self._get_turtle_folder(target_turtle_id, location_hint)
 
         if target_dir:
+            # All reference files inside target_dir use the FOLDER basename as
+            # their stem (refresh_database_index derives turtle_id from
+            # path_parts[-2]). Using target_turtle_id directly fails when the
+            # folder is in canonical combined form (F004_T1771234567) but the
+            # caller passed bare bio_id (F004) — produces parallel pairs.
+            target_ref_stem = os.path.basename(target_dir)
             if find_metadata is not None and isinstance(find_metadata, dict):
                 meta_path = os.path.join(target_dir, 'find_metadata.json')
                 with open(meta_path, 'w') as f:
@@ -1733,12 +1928,12 @@ class TurtleManager:
                             dest_subdir = os.path.join(target_dir, _ref_type_to_dir[img_type])
                             os.makedirs(dest_subdir, exist_ok=True)
                             ext = os.path.splitext(fn)[1] or '.jpg'
-                            dest_img = os.path.join(dest_subdir, f"{target_turtle_id}{ext}")
-                            dest_pt = os.path.join(dest_subdir, f"{target_turtle_id}.pt")
+                            dest_img = os.path.join(dest_subdir, f"{target_ref_stem}{ext}")
+                            dest_pt = os.path.join(dest_subdir, f"{target_ref_stem}.pt")
                             # Also check legacy ref_data/ for existing plastron references
                             has_ref = os.path.exists(dest_pt)
                             if not has_ref and img_type == 'plastron':
-                                has_ref = os.path.exists(os.path.join(target_dir, 'ref_data', f"{target_turtle_id}.pt"))
+                                has_ref = os.path.exists(os.path.join(target_dir, 'ref_data', f"{target_ref_stem}.pt"))
 
                             # Decide: create reference, replace reference, or route to Other folder
                             should_replace_carapace = (img_type == 'carapace' and replace_carapace_reference
@@ -1755,12 +1950,12 @@ class TurtleManager:
                                 old_pt_path = dest_pt
                                 old_img_path = None
                                 for old_ext in ['.jpg', '.jpeg', '.png']:
-                                    possible = os.path.join(dest_subdir, f"{target_turtle_id}{old_ext}")
+                                    possible = os.path.join(dest_subdir, f"{target_ref_stem}{old_ext}")
                                     if os.path.exists(possible):
                                         old_img_path = possible
                                         break
-                                staged_master = os.path.join(dest_subdir, f"{target_turtle_id}_staged_{op_ts}{ext}")
-                                staged_pt = os.path.join(dest_subdir, f"{target_turtle_id}_staged_{op_ts}.pt")
+                                staged_master = os.path.join(dest_subdir, f"{target_ref_stem}_staged_{op_ts}{ext}")
+                                staged_pt = os.path.join(dest_subdir, f"{target_ref_stem}_staged_{op_ts}.pt")
                                 shutil.copy2(src_img, staged_master)
                                 try:
                                     staged_ok = brain.process_and_save(staged_master, staged_pt)
@@ -1775,9 +1970,15 @@ class TurtleManager:
                                     print(f"   ⚠️ Carapace reference upgrade failed for {target_turtle_id}")
                                     continue
                                 if old_img_path:
-                                    archive_date = _extract_exif_date(old_img_path) or time.strftime('%Y-%m-%d', time.gmtime())
+                                    archive_date = time.strftime('%Y-%m-%d', time.localtime())
                                     archive_name = f"Archived_Carapace_{op_ts}_{archive_date}{os.path.splitext(old_img_path)[1]}"
                                     shutil.copy2(old_img_path, os.path.join(archive_dir, archive_name))
+                                    # Tags follow the archived photo; clear from source so
+                                    # the NEW carapace reference (lands at same path) is clean.
+                                    migrate_labels_to_archive(
+                                        dest_subdir, os.path.basename(old_img_path),
+                                        archive_dir, archive_name,
+                                    )
                                 if os.path.exists(dest_img): os.remove(dest_img)
                                 shutil.move(staged_master, dest_img)
                                 shutil.move(staged_pt, dest_pt)
@@ -1788,7 +1989,8 @@ class TurtleManager:
                                 brain.vram_cache_carapace = [c for c in cache if c['file_path'] != old_pt_path]
                                 rel = os.path.relpath(target_dir, self.base_dir)
                                 loc = os.path.dirname(rel).replace(os.sep, "/")
-                                brain.add_single_to_vram(dest_pt, target_turtle_id, loc, photo_type='carapace')
+                                brain.add_single_to_vram(dest_pt, target_ref_stem, loc, photo_type='carapace')
+                                self._purge_orphan_refs_in_ref_dir(dest_subdir, target_ref_stem)
                                 print(f"   ✅ Carapace reference upgraded for {target_turtle_id}")
 
                             elif not has_ref and (img_type == 'plastron' or is_first_carapace):
@@ -1799,7 +2001,8 @@ class TurtleManager:
                                 if brain.process_and_save(dest_img, dest_pt):
                                     rel = os.path.relpath(target_dir, self.base_dir)
                                     loc = os.path.dirname(rel).replace(os.sep, "/")
-                                    brain.add_single_to_vram(dest_pt, target_turtle_id, loc, photo_type=img_type)
+                                    brain.add_single_to_vram(dest_pt, target_ref_stem, loc, photo_type=img_type)
+                                    self._purge_orphan_refs_in_ref_dir(dest_subdir, target_ref_stem)
                                     print(f"   ✅ {img_type.capitalize()} reference created for {target_turtle_id}")
                                 else:
                                     print(f"   ⚠️ {img_type.capitalize()} SuperPoint extraction failed for {target_turtle_id}")
@@ -2035,7 +2238,7 @@ class TurtleManager:
             pass
         return None
 
-    def resolve_turtle_dir_for_sheet_upload(self, turtle_id, sheet_name):
+    def resolve_turtle_dir_for_sheet_upload(self, turtle_id, sheet_name, primary_id=None):
         """
         Resolve or create the on-disk turtle folder for admin uploads from the Sheets browser.
 
@@ -2043,7 +2246,19 @@ class TurtleManager:
         If that path does not exist but another folder named ``turtle_id`` is found elsewhere,
         returns the existing folder (same behaviour as a plain search). If nothing exists,
         creates ``data/<sheet...>/<turtle_id>/`` with ``ref_data`` and ``loose_images``.
+
+        When ``primary_id`` is provided, tries that lookup FIRST. Primary IDs are
+        globally unique while biology IDs collide across US state sheets, so a
+        primary-first resolution avoids picking the wrong same-bio_id turtle in
+        another state. Falls through to ``turtle_id`` when the primary lookup
+        misses (or the folder is still in bio-id-only form pre-chronodrop rename).
         """
+        if primary_id and isinstance(primary_id, str) and primary_id.strip() and primary_id.strip() != (turtle_id or '').strip():
+            # Read-only lookup via _get_turtle_folder — finds existing combined-
+            # name or primary-only folders without creating anything.
+            primary_dir = self._get_turtle_folder(primary_id.strip(), sheet_name)
+            if primary_dir and os.path.isdir(primary_dir):
+                return primary_dir
         if not turtle_id or not isinstance(turtle_id, str):
             return None
         tid = turtle_id.strip()
@@ -2124,7 +2339,13 @@ class TurtleManager:
             return False, f"Failed to extract features for replacement image of {turtle_id}"
         if old_img_path:
             archive_name = f"Archived_Master_{op_ts}{os.path.splitext(old_img_path)[1]}"
+            old_img_basename = os.path.basename(old_img_path)
             shutil.move(old_img_path, os.path.join(loose_dir, archive_name))
+            # Tags follow the photo into loose_images/ archive.
+            migrate_labels_to_archive(
+                ref_dir, old_img_basename,
+                loose_dir, archive_name,
+            )
         if os.path.exists(old_pt_path):
             os.remove(old_pt_path)
         new_master_path = os.path.join(ref_dir, f"{turtle_id}{new_ext}")
@@ -2138,28 +2359,34 @@ class TurtleManager:
         self.refresh_database_index()
         return True, "Identifier plastron replaced"
 
-    def set_identifier_plastron_from_path(self, turtle_id, query_image, sheet_name, mode):
+    def set_identifier_plastron_from_path(self, turtle_id, query_image, sheet_name, mode, primary_id=None):
         """
         Set or replace the SuperPoint identifier (ref_data master image + .pt).
 
         ``mode``: ``set_if_missing`` (error if already present) or ``replace`` (create or upgrade).
         ``sheet_name`` should be the turtle's location path when the folder may not exist yet.
+        ``primary_id`` (optional) is tried first when resolving the folder — see
+        ``resolve_turtle_dir_for_sheet_upload`` for the cross-state-collision rationale.
         """
         if mode not in ("set_if_missing", "replace"):
             return False, "Invalid mode"
-        turtle_dir = self.resolve_turtle_dir_for_sheet_upload(turtle_id, sheet_name)
+        turtle_dir = self.resolve_turtle_dir_for_sheet_upload(turtle_id, sheet_name, primary_id=primary_id)
         if not turtle_dir:
             return False, (
                 "Turtle folder not found. Use the full disk path as sheet_name (e.g. Kansas/North Topeka), "
                 "not the Google tab name alone when sites live under the state. Set General location + Location "
                 "on the row, or fix stray empty folders under data/<State>/."
             )
+        # Use folder basename as ref stem so an existing combined-name folder
+        # (``F004_T1771234567``) gets files named ``F004_T1771234567.{ext}``,
+        # not ``F004.{ext}``. See replace_turtle_reference for the rationale.
+        ref_stem = os.path.basename(turtle_dir)
         ref_dir = os.path.join(turtle_dir, "ref_data")
         loose_dir = os.path.join(turtle_dir, "loose_images")
         os.makedirs(ref_dir, exist_ok=True)
         os.makedirs(loose_dir, exist_ok=True)
-        has_id = os.path.isfile(os.path.join(ref_dir, f"{turtle_id}.pt")) or bool(
-            _find_image_in_dir(ref_dir, turtle_id)
+        has_id = os.path.isfile(os.path.join(ref_dir, f"{ref_stem}.pt")) or bool(
+            _find_image_in_dir(ref_dir, ref_stem)
         )
         if mode == "set_if_missing" and has_id:
             return False, (
@@ -2167,8 +2394,8 @@ class TurtleManager:
                 "a non-identifier plastron under Additional photos as type Plastron (additional)."
             )
         if not has_id:
-            return self._create_identifier_plastron(turtle_id, query_image, ref_dir, loose_dir)
-        return self._replace_identifier_plastron(turtle_id, query_image, ref_dir, loose_dir)
+            return self._create_identifier_plastron(ref_stem, query_image, ref_dir, loose_dir)
+        return self._replace_identifier_plastron(ref_stem, query_image, ref_dir, loose_dir)
 
     def add_additional_images_to_packet(self, request_id, files_with_types):
         packet_dir = self._resolve_packet_dir(request_id)
@@ -2188,7 +2415,14 @@ class TurtleManager:
             ts = item.get('timestamp') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             if not src or not os.path.isfile(src): continue
             exif_date = _extract_exif_date(src)
-            stamp_date = exif_date or time.strftime('%Y-%m-%d', time.gmtime())
+            # Filename date stamp is today's LOCAL date (when uploaded), not
+            # the photo's EXIF "when taken" date. The frontend's
+            # _extract_upload_date_from_filename reads this stamp as the
+            # upload_date; using EXIF here meant a years-old photo uploaded
+            # today fell out of the "today" scratchpad. EXIF is still kept
+            # separately on the manifest entry and via _extract_exif_date for
+            # display, so no information is lost.
+            stamp_date = time.strftime('%Y-%m-%d', time.localtime())
             raw_name = item.get('original_filename')
             name_suffix = os.path.basename(raw_name) if raw_name else os.path.basename(src)
             safe_name = f"{typ}_{int(time.time() * 1000)}_{stamp_date}_{name_suffix}"
@@ -2318,7 +2552,9 @@ class TurtleManager:
         os.makedirs(loose_dir, exist_ok=True)
 
         filename = os.path.basename(source_image_path)
-        obs_date = _extract_exif_date(source_image_path) or time.strftime('%Y-%m-%d', time.gmtime())
+        # Filename date stamp = today (local), not EXIF. See add_additional_images_to_turtle
+        # for the rationale (scratchpad's upload_date filter would otherwise drop old photos).
+        obs_date = time.strftime('%Y-%m-%d', time.localtime())
         save_name = f"Obs_{int(time.time())}_{obs_date}_{filename}"
         dest_path = os.path.join(loose_dir, save_name)
 
@@ -2329,8 +2565,8 @@ class TurtleManager:
         except Exception as e:
             return False, str(e)
 
-    def add_additional_images_to_turtle(self, turtle_id, files_with_types, sheet_name=None):
-        turtle_dir = self.resolve_turtle_dir_for_sheet_upload(turtle_id, sheet_name)
+    def add_additional_images_to_turtle(self, turtle_id, files_with_types, sheet_name=None, primary_id=None):
+        turtle_dir = self.resolve_turtle_dir_for_sheet_upload(turtle_id, sheet_name, primary_id=primary_id)
         if not turtle_dir or not os.path.isdir(turtle_dir):
             return (
                 False,
@@ -2354,7 +2590,14 @@ class TurtleManager:
             ts = item.get('timestamp') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             if not src or not os.path.isfile(src): continue
             exif_date = _extract_exif_date(src)
-            stamp_date = exif_date or time.strftime('%Y-%m-%d', time.gmtime())
+            # Filename date stamp is today's LOCAL date (when uploaded), not
+            # the photo's EXIF "when taken" date. The frontend's
+            # _extract_upload_date_from_filename reads this stamp as the
+            # upload_date; using EXIF here meant a years-old photo uploaded
+            # today fell out of the "today" scratchpad. EXIF is still kept
+            # separately on the manifest entry and via _extract_exif_date for
+            # display, so no information is lost.
+            stamp_date = time.strftime('%Y-%m-%d', time.localtime())
             # Prefer the user's original filename when the upload route preserved it;
             # the temp path basename is opaque (turtle_extra_<tid>_<idx>_<ts>.jpg) and
             # makes labels/searches harder.
@@ -2391,6 +2634,41 @@ class TurtleManager:
             with open(manifest_path, 'w') as f:
                 json.dump(manifest, f, indent=4)
         return True, "OK"
+
+    def update_image_labels(self, turtle_id, image_path, labels, sheet_name=None):
+        """Set labels on any image under the turtle's folder.
+
+        Generic counterpart to update_turtle_additional_image_labels: works for
+        active references (plastron/<stem>.jpg, carapace/<stem>.jpg), Old
+        References, Other Plastrons / Other Carapaces, legacy loose_images, and
+        additional_images. Storage is always a manifest.json living next to
+        the file in question.
+
+        Path safety: validates that ``image_path`` resolves to a real file
+        under ``turtle_dir``. Anything else is rejected so a malformed
+        request can't write a manifest outside the turtle's directory.
+        """
+        turtle_dir = self._get_turtle_folder(turtle_id, sheet_name)
+        if not turtle_dir or not os.path.isdir(turtle_dir):
+            return False, "Turtle folder not found"
+        if not image_path:
+            return False, "Image path required"
+        try:
+            real_turtle_dir = os.path.realpath(turtle_dir)
+            real_image = os.path.realpath(image_path)
+        except OSError:
+            return False, "Invalid path"
+        if not os.path.isfile(real_image):
+            return False, "Image not found"
+        try:
+            if os.path.commonpath([real_image, real_turtle_dir]) != real_turtle_dir:
+                return False, "Image is not inside the turtle folder"
+        except ValueError:
+            return False, "Image is not inside the turtle folder"
+        parent_dir = os.path.dirname(real_image)
+        filename = os.path.basename(real_image)
+        set_labels_for_file(parent_dir, filename, labels)
+        return True, None
 
     def update_turtle_additional_image_labels(self, turtle_id, filename, sheet_name, labels):
         """Set labels on one manifest entry (additional_images)."""
@@ -2441,62 +2719,127 @@ class TurtleManager:
 
     def search_additional_images_by_label(self, query):
         """
-        Scan all turtle additional_images manifests for entries whose labels match query (substring, case-insensitive).
-        Excludes Review_Queue. Returns list of dicts with turtle_id, sheet_name (folder path), path, filename, type, labels, timestamp.
+        Scan every per-directory manifest under each turtle for entries whose
+        labels match ``query`` (substring, case-insensitive). Returns hits from
+        active plastron / carapace, their Old References and Other archives,
+        legacy ``loose_images`` / ``ref_data``, AND ``additional_images``.
+        Excludes ``Review_Queue/``, ``benchmarks/``, and any ``Deleted/``
+        subtree. Pre-fix this only walked ``additional_images`` so plastron
+        and carapace tags were silently invisible to the Sheets browser tag
+        search.
+
+        Each match: ``{ turtle_id, sheet_name, path, filename, type, labels,
+        timestamp }``. ``sheet_name`` is the relative path from base_dir to
+        the turtle dir with forward slashes (e.g. ``Kansas/North Topeka/F004``)
+        — the frontend's first segment is the location filter, the trailing
+        turtle id matches the row's biology / primary id. ``type`` is derived
+        from where the manifest lives (``plastron`` / ``plastron_old_ref`` /
+        ``plastron_other`` / ``carapace`` / ``carapace_old_ref`` /
+        ``carapace_other`` / ``loose_legacy``); for ``additional_images``
+        manifests it falls back to the entry's own ``type`` field
+        (``microhabitat`` / ``condition`` / etc.).
         """
         q = (query or '').strip()
         if not q:
             return []
-        matches = []
+
         skip_top = {'Review_Queue', 'benchmarks'}
+        # Names that mark "this manifest is inside a turtle's data area".
+        # The turtle dir is one path component above the first such name we
+        # encounter walking down from base_dir.
+        turtle_area_names = {
+            'plastron', 'carapace', 'ref_data',
+            'additional_images', 'loose_images',
+        }
+
+        def derive_type(rel_dir_parts):
+            """Photo-type label inferred from manifest location.
+            Returns ``None`` for additional_images so the entry's own ``type``
+            wins (preserves microhabitat / condition / etc. distinctions)."""
+            if not rel_dir_parts:
+                return 'other'
+            head = rel_dir_parts[0]
+            sub = rel_dir_parts[1] if len(rel_dir_parts) > 1 else None
+            if head == 'plastron':
+                if sub == 'Old References':
+                    return 'plastron_old_ref'
+                if sub == 'Other Plastrons':
+                    return 'plastron_other'
+                return 'plastron'
+            if head == 'carapace':
+                if sub == 'Old References':
+                    return 'carapace_old_ref'
+                if sub == 'Other Carapaces':
+                    return 'carapace_other'
+                return 'carapace'
+            if head == 'ref_data':
+                return 'plastron'  # legacy active reference layout
+            if head == 'loose_images':
+                return 'loose_legacy'
+            if head == 'additional_images':
+                return None
+            return 'other'
+
+        matches = []
         for root, dirs, files in os.walk(self.base_dir):
-            if os.path.basename(root) != 'additional_images':
-                continue
-            rel = os.path.relpath(root, self.base_dir)
-            first = rel.split(os.sep)[0] if rel else ''
-            if first in skip_top:
-                continue
-            turtle_dir = os.path.dirname(root)
-            turtle_id = os.path.basename(turtle_dir)
-            sheet_name = os.path.relpath(turtle_dir, self.base_dir)
+            rel = '' if root == self.base_dir else os.path.relpath(root, self.base_dir)
+            parts = rel.split(os.sep) if rel else []
 
-            def scan_manifest_in(dir_path):
-                manifest_path = os.path.join(dir_path, 'manifest.json')
-                if not os.path.isfile(manifest_path):
-                    return
-                try:
-                    with open(manifest_path, 'r') as f:
-                        manifest = json.load(f)
-                except (json.JSONDecodeError, OSError):
-                    return
-                if not isinstance(manifest, list):
-                    return
-                for entry in manifest:
-                    fn = entry.get('filename')
-                    if not fn:
-                        continue
-                    labels = entry.get('labels')
-                    if not label_query_matches(labels, q):
-                        continue
-                    p = os.path.join(dir_path, fn)
-                    if not os.path.isfile(p):
-                        continue
-                    kind = normalize_additional_type(entry.get('type'))
-                    matches.append({
-                        'turtle_id': turtle_id,
-                        'sheet_name': sheet_name.replace(os.sep, '/'),
-                        'path': p,
-                        'filename': fn,
-                        'type': kind,
-                        'labels': normalize_label_list(labels),
-                        'timestamp': entry.get('timestamp'),
-                    })
+            # Prune top-level Review_Queue / benchmarks and any Deleted/ subtree.
+            if parts and parts[0] in skip_top:
+                dirs[:] = []
+                continue
+            if 'Deleted' in parts:
+                dirs[:] = []
+                continue
 
-            scan_manifest_in(root)
-            for item in sorted(os.listdir(root)):
-                sub = os.path.join(root, item)
-                if os.path.isdir(sub):
-                    scan_manifest_in(sub)
+            if 'manifest.json' not in files:
+                continue
+
+            # Locate the first turtle-area marker; the turtle dir is its parent.
+            area_idx = None
+            for i, part in enumerate(parts):
+                if part in turtle_area_names:
+                    area_idx = i
+                    break
+            if area_idx is None or area_idx == 0:
+                continue
+
+            turtle_id = parts[area_idx - 1]
+            sheet_name = os.sep.join(parts[:area_idx]).replace(os.sep, '/')
+            derived = derive_type(parts[area_idx:])
+
+            manifest_path = os.path.join(root, 'manifest.json')
+            try:
+                with open(manifest_path, 'r', encoding='utf-8') as f:
+                    manifest = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                continue
+            if not isinstance(manifest, list):
+                continue
+
+            for entry in manifest:
+                if not isinstance(entry, dict):
+                    continue
+                fn = entry.get('filename')
+                if not fn:
+                    continue
+                labels = entry.get('labels')
+                if not label_query_matches(labels, q):
+                    continue
+                p = os.path.join(root, fn)
+                if not os.path.isfile(p):
+                    continue
+                kind = derived if derived is not None else normalize_additional_type(entry.get('type'))
+                matches.append({
+                    'turtle_id': turtle_id,
+                    'sheet_name': sheet_name,
+                    'path': p,
+                    'filename': fn,
+                    'type': kind,
+                    'labels': normalize_label_list(labels),
+                    'timestamp': entry.get('timestamp'),
+                })
 
         matches.sort(key=lambda m: (m.get('sheet_name') or '', m.get('turtle_id') or '', m.get('filename') or ''))
         return matches

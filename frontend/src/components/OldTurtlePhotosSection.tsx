@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
-import { Paper, Stack, Group, Text, Select, Image, Modal, Box, Badge, ActionIcon } from '@mantine/core';
-import { IconTrash, IconDownload, IconRestore } from '@tabler/icons-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Paper, Stack, Group, Text, Select, Image, Modal, Box, Badge, ActionIcon, TagsInput, Button } from '@mantine/core';
+import { IconTrash, IconDownload, IconRestore, IconDeviceFloppy } from '@tabler/icons-react';
 import { getImageUrl, getTurtleImageDownloadUrl } from '../services/api';
 import type {
   TurtleDeletedImage,
@@ -29,6 +29,11 @@ interface OldTurtlePhotosSectionProps {
   onDelete?: (photo: HistoryPhotoExternal) => void;
   /** Callback when the user clicks restore on a photo in the deleted view. */
   onRestore?: (photo: TurtleDeletedImage) => void;
+  /** Callback to persist tag edits made in the lightbox. Parent calls the
+   *  backend (PATCH /api/turtles/images/labels) and refreshes the turtle's
+   *  images so the new labels appear under the thumbnails. The TagsInput
+   *  editor in the lightbox is hidden when this prop is omitted. */
+  onLabelsChange?: (path: string, labels: string[]) => Promise<void>;
 }
 
 /** Subset of HistoryPhoto exposed to the delete callback. Kept minimal so the
@@ -79,8 +84,19 @@ interface HistoryPhoto {
   label: string;
   /** Stable category key for filtering (e.g. 'microhabitat', 'plastron_other'). */
   category: string;
+  /** Free-form tags from the additional-images manifest (e.g. 'burned',
+   *  'injury'). Only present on additional photos today; loose photos and
+   *  active references don't carry tags. */
+  labels?: string[];
   exifDate?: string | null;
   uploadDate?: string | null;
+  /** Epoch ms — finer-grained than uploadDate; used as the sort tiebreaker
+   *  so multiple uploads on the same day order by actual time. Also used
+   *  as the cache-bust ``v`` on active-reference image URLs. */
+  uploadTs?: number | null;
+  /** True for the active plastron / carapace reference. Path stays stable
+   *  across replacements, so URLs need uploadTs as a cache-bust. */
+  isActiveRef?: boolean;
 }
 
 export function OldTurtlePhotosSection({
@@ -92,10 +108,43 @@ export function OldTurtlePhotosSection({
   deleted,
   onDelete,
   onRestore,
+  onLabelsChange,
 }: OldTurtlePhotosSectionProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(historyDates[0] ?? null);
   const [selectedCategory, setSelectedCategory] = useState<string>(CAT_ALL);
   const [lightboxPath, setLightboxPath] = useState<string | null>(null);
+  const [editingTags, setEditingTags] = useState<string[]>([]);
+  const [savingTags, setSavingTags] = useState(false);
+
+  // Re-seed the tag editor whenever the lightbox opens on a different photo,
+  // and whenever upstream data refreshes (e.g. after a successful save).
+  // Looks up the current entry in additional/loose/primary streams so live
+  // photos and the active references all use the same source of truth.
+  useEffect(() => {
+    if (!lightboxPath) {
+      setEditingTags([]);
+      return;
+    }
+    const fromAdditional = additional.find((a) => a.path === lightboxPath)?.labels;
+    if (fromAdditional !== undefined) {
+      setEditingTags(fromAdditional ?? []);
+      return;
+    }
+    const fromLoose = loose.find((l) => l.path === lightboxPath)?.labels;
+    if (fromLoose !== undefined) {
+      setEditingTags(fromLoose ?? []);
+      return;
+    }
+    if (primaryInfo?.path === lightboxPath) {
+      setEditingTags(primaryInfo.labels ?? []);
+      return;
+    }
+    if (primaryCarapaceInfo?.path === lightboxPath) {
+      setEditingTags(primaryCarapaceInfo.labels ?? []);
+      return;
+    }
+    setEditingTags([]);
+  }, [lightboxPath, additional, loose, primaryInfo, primaryCarapaceInfo]);
 
   // Collect every photo once with a stable category key. Keeps filter and
   // sort logic uniform across the two dropdowns and guards against ever
@@ -107,8 +156,11 @@ export function OldTurtlePhotosSection({
         path: primaryInfo.path,
         label: 'Plastron (active)',
         category: CAT_REFERENCE,
+        labels: primaryInfo.labels,
         exifDate: primaryInfo.exif_date,
         uploadDate: primaryInfo.upload_date,
+        uploadTs: primaryInfo.upload_ts,
+        isActiveRef: true,
       });
     }
     if (primaryCarapaceInfo) {
@@ -116,8 +168,11 @@ export function OldTurtlePhotosSection({
         path: primaryCarapaceInfo.path,
         label: 'Carapace (active)',
         category: CAT_REFERENCE,
+        labels: primaryCarapaceInfo.labels,
         exifDate: primaryCarapaceInfo.exif_date,
         uploadDate: primaryCarapaceInfo.upload_date,
+        uploadTs: primaryCarapaceInfo.upload_ts,
+        isActiveRef: true,
       });
     }
     for (const a of additional) {
@@ -125,8 +180,10 @@ export function OldTurtlePhotosSection({
         path: a.path,
         label: a.type || 'additional',
         category: a.type || 'additional',
+        labels: a.labels,
         exifDate: a.exif_date,
         uploadDate: a.upload_date,
+        uploadTs: a.upload_ts,
       });
     }
     for (const l of loose) {
@@ -134,8 +191,10 @@ export function OldTurtlePhotosSection({
         path: l.path,
         label: LOOSE_SOURCE_LABELS[l.source] ?? l.source,
         category: l.source,
+        labels: l.labels,
         exifDate: l.exif_date,
         uploadDate: l.upload_date,
+        uploadTs: l.upload_ts,
       });
     }
     // De-dupe by path so primary and loose pointing at the same file don't double-render.
@@ -206,14 +265,27 @@ export function OldTurtlePhotosSection({
     // Step 1: narrow by date mode.
     let byDate: HistoryPhoto[];
     if (DATE_ALL_VALUES.has(selectedDate)) {
-      const field: 'exifDate' | 'uploadDate' =
-        selectedDate === DATE_ALL_EXIF_DESC || selectedDate === DATE_ALL_EXIF_ASC
-          ? 'exifDate'
-          : 'uploadDate';
+      const useTs = selectedDate === DATE_ALL_UPLOAD_DESC || selectedDate === DATE_ALL_UPLOAD_ASC;
+      const dateField: 'exifDate' | 'uploadDate' = useTs ? 'uploadDate' : 'exifDate';
       const ascending = selectedDate === DATE_ALL_EXIF_ASC || selectedDate === DATE_ALL_UPLOAD_ASC;
       byDate = [...allPhotos].sort((a, b) => {
-        const av = (a[field] || '').slice(0, 10);
-        const bv = (b[field] || '').slice(0, 10);
+        // In upload modes prefer the ms-resolution upload_ts as the primary
+        // key — multiple uploads on the same day used to all tie on the
+        // YYYY-MM-DD slice and fall back to array build order, which made
+        // the active plastron+carapace+microhabitat+condition always sit
+        // above 9 plastron archives uploaded seconds earlier.
+        if (useTs) {
+          const at = a.uploadTs;
+          const bt = b.uploadTs;
+          if (typeof at === 'number' && typeof bt === 'number' && at !== bt) {
+            return ascending ? at - bt : bt - at;
+          }
+          if (typeof at === 'number' && typeof bt !== 'number') return -1;
+          if (typeof at !== 'number' && typeof bt === 'number') return 1;
+          // Both missing or equal → fall through to date-string compare.
+        }
+        const av = (a[dateField] || '').slice(0, 10);
+        const bv = (b[dateField] || '').slice(0, 10);
         if (av === bv) return 0;
         if (!av) return 1;  // missing values always to the bottom
         if (!bv) return -1;
@@ -383,11 +455,26 @@ export function OldTurtlePhotosSection({
                     }}
                     onClick={() => setLightboxPath(p.path)}
                   >
-                    <Image src={getImageUrl(p.path)} alt={p.label} w={96} h={96} fit='cover' />
+                    <Image
+                      src={getImageUrl(p.path, p.isActiveRef ? p.uploadTs : null)}
+                      alt={p.label}
+                      w={96}
+                      h={96}
+                      fit='cover'
+                    />
                   </Box>
                   <Badge size='xs' variant='light'>
                     {p.label}
                   </Badge>
+                  {p.labels && p.labels.length > 0 && (
+                    <Group gap={4} justify='center' wrap='wrap'>
+                      {p.labels.map((tag) => (
+                        <Badge key={tag} size='xs' variant='outline' color='gray'>
+                          {tag}
+                        </Badge>
+                      ))}
+                    </Group>
+                  )}
                   {subtitle && (
                     <Text size='10px' c='dimmed' ta='center' lh={1.2}>
                       {subtitle}
@@ -431,12 +518,51 @@ export function OldTurtlePhotosSection({
         centered
       >
         {lightboxPath && (
-          <Image
-            src={getImageUrl(lightboxPath)}
-            alt='Full size'
-            fit='contain'
-            style={{ maxHeight: '80vh' }}
-          />
+          <Stack gap='sm'>
+            <Image
+              src={getImageUrl(
+                lightboxPath,
+                primaryInfo?.path === lightboxPath
+                  ? primaryInfo.upload_ts
+                  : primaryCarapaceInfo?.path === lightboxPath
+                    ? primaryCarapaceInfo.upload_ts
+                    : null,
+              )}
+              alt='Full size'
+              fit='contain'
+              style={{ maxHeight: '70vh' }}
+            />
+            {onLabelsChange && (
+              <Stack gap='xs'>
+                <Text size='sm' fw={500}>Tags</Text>
+                <TagsInput
+                  value={editingTags}
+                  onChange={setEditingTags}
+                  placeholder='Add a tag and press Enter'
+                  clearable
+                  disabled={savingTags}
+                />
+                <Group justify='flex-end'>
+                  <Button
+                    size='xs'
+                    leftSection={<IconDeviceFloppy size={14} />}
+                    loading={savingTags}
+                    onClick={async () => {
+                      if (!lightboxPath) return;
+                      setSavingTags(true);
+                      try {
+                        await onLabelsChange(lightboxPath, editingTags);
+                      } finally {
+                        setSavingTags(false);
+                      }
+                    }}
+                  >
+                    Save tags
+                  </Button>
+                </Group>
+              </Stack>
+            )}
+          </Stack>
         )}
       </Modal>
     </Paper>
