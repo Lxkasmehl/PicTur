@@ -10,6 +10,7 @@ import {
   Grid,
   Group,
   Image,
+  Loader,
   Menu,
   Modal,
   Paper,
@@ -127,6 +128,8 @@ export function SheetsBrowserTab() {
   const ctx = useAdminTurtleRecordsContext();
   const [turtleImages, setTurtleImages] = useState<TurtleImagesResponse | null>(null);
   const [primaryImages, setPrimaryImages] = useState<Record<string, string | null>>({});
+  /** True while `getTurtlePrimariesBatch` is in flight for the current filter list (distinct from “no plastron”). */
+  const [primaryImagesLoading, setPrimaryImagesLoading] = useState(false);
   const [listMode, setListMode] = useState<'records' | 'tags'>('records');
   const [tagQuery, setTagQuery] = useState('');
   const [photoTypeFilter, setPhotoTypeFilter] = useState<string | null>('');
@@ -171,6 +174,7 @@ export function SheetsBrowserTab() {
   useEffect(() => {
     if (filteredTurtles.length === 0) {
       setPrimaryImages({});
+      setPrimaryImagesLoading(false);
       return;
     }
     const rows = filteredTurtles
@@ -182,10 +186,15 @@ export function SheetsBrowserTab() {
       .filter((r) => r.turtle_id);
     if (rows.length === 0) {
       setPrimaryImages({});
+      setPrimaryImagesLoading(false);
       return;
     }
+    let cancelled = false;
+    setPrimaryImagesLoading(true);
+    setPrimaryImages({});
     getTurtlePrimariesBatch(rows.map((r) => ({ turtle_id: r.turtle_id, sheet_name: r.sheet_name })))
       .then((res) => {
+        if (cancelled) return;
         const map: Record<string, string | null> = {};
         res.images.forEach((img, i) => {
           const key = rows[i]?.key;
@@ -193,7 +202,15 @@ export function SheetsBrowserTab() {
         });
         setPrimaryImages(map);
       })
-      .catch(() => setPrimaryImages({}));
+      .catch(() => {
+        if (!cancelled) setPrimaryImages({});
+      })
+      .finally(() => {
+        if (!cancelled) setPrimaryImagesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [filteredTurtles]);
 
   const additionalGroups = useMemo(() => {
@@ -487,7 +504,11 @@ export function SheetsBrowserTab() {
                               minHeight: 84,
                             }}
                           >
-                            {primaryImages[turtleKey(turtle)] ? (
+                            {primaryImagesLoading ? (
+                              <Center w='100%' h='100%' style={{ minHeight: 84 }}>
+                                <Loader size='sm' color='gray' aria-label='Loading plastron preview' />
+                              </Center>
+                            ) : primaryImages[turtleKey(turtle)] ? (
                               <Image
                                 src={getImageUrl(primaryImages[turtleKey(turtle)]!, { maxDim: 240 })}
                                 alt='Plastron'

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.22] - 2026-04-29 — Sheets browser plastron thumbnail loading state
+
+### Changed
+
+- **Sheets browser** (records list): While primary plastron paths are loading from **`getTurtlePrimariesBatch`**, each row shows a **spinner** in the thumbnail slot instead of the empty photo placeholder. When loading finishes, the slot shows either the **preview image** or the **placeholder** (no identifier plastron on disk), so loading vs. missing image is unambiguous. Stale thumbnails from a previous filter are cleared when a new batch starts.
+
 ## [1.2.21] - 2026-04-29 — Image previews, Flask HTTP errors, proxy routing docs
 
 ### Added
@@ -359,7 +365,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.21...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v1.2.22...HEAD
+[1.2.22]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.22
 [1.2.21]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.21
 [1.2.20]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.20
 [1.2.19]: https://github.com/Lxkasmehl/PicTur/releases/tag/v1.2.19
