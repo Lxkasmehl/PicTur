@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`GET /api/images`**: Optional **`max_dim`** query parameter (32–2048, longest edge in pixels) returns a server-generated JPEG preview when the original is larger; transparent/palette images flattened to RGB; HEIF/HEIC supported via existing Pillow registration.
+- **`getImageUrl`** (`frontend/src/services/api/turtle.ts`): Optional **`GetImageUrlOptions.maxDim`** appends **`max_dim`** for downscaled URLs (clamped to the same range as the API).
+
 ### Fixed
 
 - **Flask** (`backend/app.py`): Handle **`HTTPException`** (404, 405, etc.) before the generic **`Exception`** handler so client errors keep the correct status and JSON **`error`** body instead of being treated as **500**.
@@ -14,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **`.env.docker.example`**: Clarify reverse-proxy routing — send **`/api/auth`**, **`/api/admin`**, **`/api/contact`**, **`/api/feedback`** (and auth-backend **`/api/health`**) to the Node auth service; route remaining **`/api/*`** to Flask — with longest/specific paths first so contact and feedback are not handled by Flask by mistake.
+- **Admin UI** (additional images, Review Queue, Sheets browser): Image **`src`** uses scaled previews where sizes are bounded (e.g. thumbnails vs. lightbox still uses full **`getImageUrl`** where wired); **`loading="lazy"`** and **`decoding="async"`** on those **`<Image>`** elements.
 
 ## [1.2.20] - 2026-04-29 — Footer & contact, GitHub feedback, extended turtle photos
 

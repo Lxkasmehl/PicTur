@@ -79,6 +79,7 @@ export type {
   TurtleImageAdditional,
   TurtleImagesResponse,
   TurtleAdditionalLabelSearchMatch,
+  GetImageUrlOptions,
 } from './api/turtle';
 
 export {

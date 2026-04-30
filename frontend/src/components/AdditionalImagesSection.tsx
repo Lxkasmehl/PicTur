@@ -466,11 +466,13 @@ export function AdditionalImagesSection({
                                 onClick={() => openLightboxServer(img.imagePath)}
                               >
                                 <Image
-                                  src={getImageUrl(img.imagePath)}
+                                  src={getImageUrl(img.imagePath, { maxDim: 160 })}
                                   alt={img.filename}
                                   w={80}
                                   h={80}
                                   fit="cover"
+                                  loading="lazy"
+                                  decoding="async"
                                 />
                               </Box>
                               <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>

@@ -489,9 +489,11 @@ export function SheetsBrowserTab() {
                           >
                             {primaryImages[turtleKey(turtle)] ? (
                               <Image
-                                src={getImageUrl(primaryImages[turtleKey(turtle)]!)}
+                                src={getImageUrl(primaryImages[turtleKey(turtle)]!, { maxDim: 240 })}
                                 alt='Plastron'
                                 fit='contain'
+                                loading='lazy'
+                                decoding='async'
                                 style={{ width: '100%', height: 'auto', display: 'block' }}
                               />
                             ) : (
@@ -599,7 +601,8 @@ export function SheetsBrowserTab() {
                             <ScrollArea type='scroll' scrollbars='x' offsetScrollbars>
                               <Group gap='md' wrap='nowrap' pb='xs' align='flex-start'>
                                 {group.map((m) => {
-                                  const src = getImageUrl(m.path);
+                                  const previewSrc = getImageUrl(m.path, { maxDim: 360 });
+                                  const fullSrc = getImageUrl(m.path);
                                   const oneActive = selectedMatchPath === m.path;
                                   return (
                                     <Box
@@ -634,15 +637,17 @@ export function SheetsBrowserTab() {
                                             }}
                                             onClick={() => {
                                               setSelectedMatchPath(m.path);
-                                              setTagSearchLightbox(src);
+                                              setTagSearchLightbox(fullSrc);
                                             }}
                                           >
                                             <Image
-                                              src={src}
+                                              src={previewSrc}
                                               alt={m.filename}
                                               h='100%'
                                               w='100%'
                                               fit='cover'
+                                              loading='lazy'
+                                              decoding='async'
                                             />
                                           </Box>
                                           <ActionIcon
@@ -656,7 +661,7 @@ export function SheetsBrowserTab() {
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               setSelectedMatchPath(m.path);
-                                              setTagSearchLightbox(src);
+                                              setTagSearchLightbox(fullSrc);
                                             }}
                                           >
                                             <IconZoomIn size={14} />
@@ -747,9 +752,11 @@ export function SheetsBrowserTab() {
                     >
                       {turtleImages?.primary ? (
                         <Image
-                          src={getImageUrl(turtleImages.primary)}
+                          src={getImageUrl(turtleImages.primary, { maxDim: 320 })}
                           alt='Identifier plastron'
                           fit='contain'
+                          loading='lazy'
+                          decoding='async'
                           style={{ width: '100%', height: 'auto', display: 'block' }}
                         />
                       ) : (

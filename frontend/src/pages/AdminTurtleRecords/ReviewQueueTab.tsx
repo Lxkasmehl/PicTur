@@ -176,9 +176,11 @@ export function ReviewQueueTab() {
                   </Text>
                   {selectedItem.uploaded_image && (
                     <Image
-                      src={getImageUrl(selectedItem.uploaded_image)}
+                      src={getImageUrl(selectedItem.uploaded_image, { maxDim: 2048 })}
                       alt='Uploaded photo'
                       radius='md'
+                      loading='lazy'
+                      decoding='async'
                       style={{
                         maxHeight: '320px',
                         objectFit: 'contain',
@@ -255,9 +257,11 @@ export function ReviewQueueTab() {
                         <Stack gap={6}>
                           {candidate.image_path ? (
                             <Image
-                              src={getImageUrl(candidate.image_path)}
+                              src={getImageUrl(candidate.image_path, { maxDim: 560 })}
                               alt={`Match ${candidate.rank}`}
                               radius='sm'
+                              loading='lazy'
+                              decoding='async'
                               style={{
                                 height: 200,
                                 objectFit: 'cover',
@@ -554,9 +558,11 @@ export function ReviewQueueTab() {
                         </Group>
                         {item.uploaded_image && (
                           <Image
-                            src={getImageUrl(item.uploaded_image)}
+                            src={getImageUrl(item.uploaded_image, { maxDim: 400 })}
                             alt='Uploaded'
                             radius='md'
+                            loading='lazy'
+                            decoding='async'
                             style={{ maxHeight: 180, objectFit: 'contain' }}
                           />
                         )}

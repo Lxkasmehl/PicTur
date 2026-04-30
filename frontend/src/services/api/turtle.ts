@@ -399,13 +399,23 @@ export const clearReleaseFlag = async (
   }
 };
 
+/** Optional downscaled preview from ``GET /api/images?path=…&max_dim=…`` (server-side JPEG). */
+export interface GetImageUrlOptions {
+  maxDim?: number;
+}
+
 // Get image URL helper
-export const getImageUrl = (imagePath: string): string => {
+export const getImageUrl = (imagePath: string, options?: GetImageUrlOptions): string => {
   if (imagePath.startsWith('http')) {
     return imagePath;
   }
   const encodedPath = encodeURIComponent(imagePath);
-  return `${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?path=${encodedPath}`;
+  const base = `${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?path=${encodedPath}`;
+  if (options?.maxDim != null && Number.isFinite(options.maxDim) && options.maxDim > 0) {
+    const dim = Math.min(2048, Math.max(32, Math.round(options.maxDim)));
+    return `${base}&max_dim=${dim}`;
+  }
+  return base;
 };
 
 // Turtle images (Admin only) – primary plastron, additional (microhabitat/condition), loose
