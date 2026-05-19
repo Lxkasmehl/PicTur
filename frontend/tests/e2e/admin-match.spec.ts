@@ -57,7 +57,7 @@ test.describe('Admin Turtle Match', () => {
     await expect(helperText).toContainText('All locations');
   });
 
-  test('After upload: match page shows header and Back button', async ({ page }) => {
+  test('After upload: match page shows header and Back to upload button', async ({ page }) => {
     test.setTimeout(60_000);
     await loginAsAdmin(page);
 
@@ -74,10 +74,10 @@ test.describe('Admin Turtle Match', () => {
     await expect(page.getByRole('heading', { name: /Turtle Match Review/ })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByRole('button', { name: 'Back' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Back to upload' })).toBeVisible();
   });
 
-  test('Back button navigates to home', async ({ page }) => {
+  test('Back to upload button navigates to home', async ({ page }) => {
     test.setTimeout(60_000);
     await loginAsAdmin(page);
 
@@ -94,7 +94,7 @@ test.describe('Admin Turtle Match', () => {
     await expect(page.getByRole('heading', { name: /Turtle Match Review/ })).toBeVisible({
       timeout: 15_000,
     });
-    await page.getByRole('button', { name: 'Back' }).click();
+    await page.getByRole('button', { name: 'Back to upload' }).click();
     await expect(page).toHaveURL('/');
   });
 
