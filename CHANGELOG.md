@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **View Old Turtle Photos default filters**: the date/sort dropdown now opens on "All photos — newest upload first" instead of the first history date; the category dropdown continues to default to "All categories".
+
 ## [2.0.7] - 2026-05-16 — Sheets-Browser Null filter count + list-flash fix
 
 ### Fixed

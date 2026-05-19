@@ -111,7 +111,7 @@ export function OldTurtlePhotosSection({
   onRestore,
   onLabelsChange,
 }: OldTurtlePhotosSectionProps) {
-  const [selectedDate, setSelectedDate] = useState<string | null>(historyDates[0] ?? null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(DATE_ALL_UPLOAD_DESC);
   const [selectedCategory, setSelectedCategory] = useState<string>(CAT_ALL);
   const [lightboxPath, setLightboxPath] = useState<string | null>(null);
   const [editingTags, setEditingTags] = useState<string[]>([]);
