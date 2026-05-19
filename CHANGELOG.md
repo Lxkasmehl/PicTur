@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Turtle Match review flow**: match candidates stay in a compact list while browsing; selecting one opens the comparison panel (upload vs. that match) plus detail/form below, with smooth scroll to the compare section. Removed the sticky top compare card that consumed too much space on phones.
 - **Review Queue match flow**: same browse-then-compare pattern as Turtle Match — uploaded photo when nothing is selected, side-by-side compare only after picking a candidate, list remains available for switching matches.
+- **View Old Turtle Photos default filters**: the date/sort dropdown now opens on "All photos — newest upload first" instead of the first history date; the category dropdown continues to default to "All categories".
+- **Admin Turtle Match navigation**: Removed the header "Back" button next to the page title when a match is selected. The match grid shows a single **Back to upload** control below the header; the detail view only shows **Back to matches**, so reviewers are less likely to leave the flow for the homepage by mistake.
+- **Admin Turtle Match structure**: Refactored the ~1400-line `AdminTurtleMatchPage` into a thin page wrapper, `useAdminTurtleMatch` (state and API handlers), and focused components under `frontend/src/pages/AdminTurtleMatch/` (`MatchGridView`, `MatchDetailView`, `MatchCandidateCard`, `CreateNewTurtleModal`, etc.). Behavior (cross-check, community matches, reference replacement, new-turtle modal) is unchanged.
+
+### Fixed
+
+- **Admin Turtle Match E2E**: Playwright tests now target the **Back to upload** button label instead of the old generic **Back** control.
 
 ## [2.0.7] - 2026-05-16 — Sheets-Browser Null filter count + list-flash fix
 
