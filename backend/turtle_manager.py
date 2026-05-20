@@ -2034,12 +2034,8 @@ class TurtleManager:
                                 os.makedirs(archive_dir, exist_ok=True)
                                 op_ts = int(time.time() * 1000)
                                 old_pt_path = dest_pt
-                                old_img_path = None
-                                for old_ext in ['.jpg', '.jpeg', '.png']:
-                                    possible = os.path.join(dest_subdir, f"{target_ref_stem}{old_ext}")
-                                    if os.path.exists(possible):
-                                        old_img_path = possible
-                                        break
+                                # Case-insensitive: existing carapace ref may be .JPG on Linux.
+                                old_img_path = _find_image_in_dir(dest_subdir, target_ref_stem)
                                 staged_master = os.path.join(dest_subdir, f"{target_ref_stem}_staged_{op_ts}{ext}")
                                 staged_pt = os.path.join(dest_subdir, f"{target_ref_stem}_staged_{op_ts}.pt")
                                 shutil.copy2(src_img, staged_master)
