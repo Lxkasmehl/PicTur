@@ -9,11 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Upload image optimization**: Photos are resized/compressed in the browser before upload (max 2048 px edge, JPEG ~82%) so smartphone originals and microhabitat shots no longer hit size limits. Server enforces an 8 MB per-file cap, 12 MB request body limit, ingest downscaling for bypassed clients, and per-IP rate limits (community vs admin) on all multipart image endpoints.
+- **Upload image optimization**: Photos are resized/compressed in the browser before upload (max 2048 px edge, JPEG ~82%) so smartphone originals and microhabitat shots no longer hit size limits. Server enforces an 8 MB per-file cap, ~96 MB multipart body cap (up to 12 optimized files plus form overhead), ingest downscaling for bypassed clients, and per-IP rate limits (community vs admin) on all multipart image endpoints.
 
 ### Changed
 
 - **Upload UX copy**: Homepage dropzone accepts up to 25 MB from the device and explains that photos are optimized automatically.
+
+### Fixed
+
+- **Client upload EXIF dates**: Browser resize/compress re-encode now copies EXIF from the original JPEG (including `DateTimeOriginal`) into the optimized file so turtle history/timeline ordering no longer falls back to upload time for compressed photos.
 
 ## [2.0.8] - 2026-05-20 — Admin side-by-side match compare + Turtle Match / Review Queue UX
 

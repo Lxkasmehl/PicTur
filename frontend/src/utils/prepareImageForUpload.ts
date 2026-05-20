@@ -1,3 +1,4 @@
+import piexif, { type ExifDict } from 'piexifjs';
 import {
   MAX_RAW_FILE_BYTES,
   MAX_UPLOAD_BYTES,
@@ -26,6 +27,64 @@ function canDecodeInBrowser(file: File): boolean {
   return typeOk || COMPRESSIBLE_EXT.has(ext);
 }
 
+function isJpegFile(file: File): boolean {
+  const type = file.type.toLowerCase();
+  if (type === 'image/jpeg' || type === 'image/jpg') return true;
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  return ext === 'jpg' || ext === 'jpeg';
+}
+
+function arrayBufferToBinaryString(buf: ArrayBuffer): string {
+  const u8 = new Uint8Array(buf);
+  const chunk = 0x8000;
+  let out = '';
+  for (let i = 0; i < u8.length; i += chunk) {
+    out += String.fromCharCode(...u8.subarray(i, i + chunk));
+  }
+  return out;
+}
+
+function binaryStringToArrayBuffer(binary: string): ArrayBuffer {
+  const len = binary.length;
+  const out = new Uint8Array(len);
+  for (let i = 0; i < len; i++) out[i] = binary.charCodeAt(i);
+  return out.buffer;
+}
+
+/** Read EXIF from original JPEG bytes (before canvas strips it). */
+async function readExifFromJpegFile(file: File): Promise<ExifDict | null> {
+  if (!isJpegFile(file)) return null;
+  try {
+    const buf = await file.arrayBuffer();
+    return piexif.load(arrayBufferToBinaryString(buf));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Canvas draw applies orientation; reset tag so backend exif_transpose does not rotate again.
+ */
+function exifForCanvasOutput(exifObj: ExifDict): ExifDict {
+  const copy = JSON.parse(JSON.stringify(exifObj)) as ExifDict;
+  if (copy['0th']) {
+    copy['0th'][piexif.ImageIFD.Orientation] = 1;
+  }
+  return copy;
+}
+
+async function injectExifIntoJpegBlob(blob: Blob, sourceExif: ExifDict | null): Promise<Blob> {
+  if (!sourceExif) return blob;
+  try {
+    const jpegBinary = arrayBufferToBinaryString(await blob.arrayBuffer());
+    const exifBytes = piexif.dump(exifForCanvasOutput(sourceExif));
+    const withExif = piexif.insert(exifBytes, jpegBinary);
+    return new Blob([binaryStringToArrayBuffer(withExif)], { type: 'image/jpeg' });
+  } catch {
+    return blob;
+  }
+}
+
 function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -46,15 +105,17 @@ function canvasToJpegFile(
   canvas: HTMLCanvasElement,
   name: string,
   quality: number,
+  sourceExif: ExifDict | null,
 ): Promise<File> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
-      (blob) => {
+      async (blob) => {
         if (!blob) {
           reject(new Error('encode_failed'));
           return;
         }
-        resolve(new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() }));
+        const withExif = await injectExifIntoJpegBlob(blob, sourceExif);
+        resolve(new File([withExif], name, { type: 'image/jpeg', lastModified: Date.now() }));
       },
       'image/jpeg',
       quality,
@@ -114,13 +175,15 @@ export async function prepareImageForUpload(file: File): Promise<File> {
   }
   ctx.drawImage(img, 0, 0, dstW, dstH);
 
-  let out = await canvasToJpegFile(canvas, outputName(file.name), UPLOAD_JPEG_QUALITY);
+  const sourceExif = await readExifFromJpegFile(file);
+
+  let out = await canvasToJpegFile(canvas, outputName(file.name), UPLOAD_JPEG_QUALITY, sourceExif);
 
   if (out.size > MAX_UPLOAD_BYTES) {
-    out = await canvasToJpegFile(canvas, outputName(file.name), 0.72);
+    out = await canvasToJpegFile(canvas, outputName(file.name), 0.72, sourceExif);
   }
   if (out.size > MAX_UPLOAD_BYTES) {
-    out = await canvasToJpegFile(canvas, outputName(file.name), 0.58);
+    out = await canvasToJpegFile(canvas, outputName(file.name), 0.58, sourceExif);
   }
   if (out.size > MAX_UPLOAD_BYTES) {
     throw new Error('Image is still too large after optimization. Try a smaller photo.');

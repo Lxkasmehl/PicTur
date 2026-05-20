@@ -62,8 +62,14 @@ UPLOAD_FOLDER = tempfile.gettempdir()
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif'}
 # Hard cap per file after client optimization; blocks bypassed huge uploads.
 MAX_FILE_SIZE = 8 * 1024 * 1024  # 8MB
+# Max image parts in one multipart request (main + extras, or batch additional upload).
+MAX_MULTIPART_IMAGE_PARTS = 12
+# Room for boundaries, field names, labels, GPS flags (not image bytes).
+_MULTIPART_FORM_OVERHEAD_BYTES = 512 * 1024
 # Reject entire HTTP body before buffering (DoS guard).
-MAX_CONTENT_LENGTH = 12 * 1024 * 1024  # 12MB
+MAX_CONTENT_LENGTH = (
+    MAX_FILE_SIZE * MAX_MULTIPART_IMAGE_PARTS + _MULTIPART_FORM_OVERHEAD_BYTES
+)
 # Server-side downscale if a client skips optimization.
 INGEST_MAX_DIMENSION = 2560
 INGEST_MAX_FILE_BYTES = 3 * 1024 * 1024
