@@ -43,8 +43,20 @@ def test_admin_has_higher_cap(monkeypatch):
     assert upload_rate_limit_ok(req, 'admin') is False
 
 
-def test_uses_forwarded_for_first_hop():
-    req = _mock_request(forwarded='198.51.100.2, 10.0.0.1')
+def test_ignores_forwarded_without_trusted_proxy(monkeypatch):
+    monkeypatch.setattr('config.TRUSTED_PROXY_COUNT', 0)
+    req = _mock_request(ip='203.0.113.1', forwarded='198.51.100.2, 10.0.0.1')
+    assert upload_rate_limit_ok(req, 'community') is True
+    with _lock:
+        assert '203.0.113.1' in _buckets
+        assert '198.51.100.2' not in _buckets
+
+
+def test_uses_trusted_forwarded_hop(monkeypatch):
+    monkeypatch.setattr('config.TRUSTED_PROXY_COUNT', 1)
+    # Proxy appends the connection IP after any client-supplied chain.
+    req = _mock_request(ip='10.0.0.1', forwarded='198.51.100.99, 198.51.100.2')
     assert upload_rate_limit_ok(req, 'community') is True
     with _lock:
         assert '198.51.100.2' in _buckets
+        assert '198.51.100.99' not in _buckets

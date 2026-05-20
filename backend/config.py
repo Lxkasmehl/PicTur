@@ -80,6 +80,9 @@ JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production'
 # Auth service URL (required for staff/admin routes). E.g. http://localhost:3001/api
 AUTH_URL = os.environ.get('AUTH_URL', '').rstrip('/')
 
+# Reverse proxies in front of the API (each appends to X-Forwarded-For). 0 = trust none.
+TRUSTED_PROXY_COUNT = max(0, int(os.environ.get('TRUSTED_PROXY_COUNT', '0')))
+
 if JWT_SECRET == 'your-secret-key-change-in-production':
     try:
         print("⚠️  WARNING: Using default JWT_SECRET. This should match auth-backend JWT_SECRET!")

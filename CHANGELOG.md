@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Upload rate-limit client IP**: Per-IP throttles use `remote_addr` by default; with `TRUSTED_PROXY_COUNT` set, `ProxyFix` and the limiter take the proxy-appended `X-Forwarded-For` hop (not the spoofable leftmost value).
 - **Client upload EXIF dates**: Browser resize/compress re-encode now copies EXIF from the original JPEG (including `DateTimeOriginal`) into the optimized file so turtle history/timeline ordering no longer falls back to upload time for compressed photos.
 
 ## [2.0.8] - 2026-05-20 — Admin side-by-side match compare + Turtle Match / Review Queue UX

@@ -4,6 +4,8 @@ import os
 import time
 from threading import Lock
 
+from werkzeug.http import parse_list_header
+
 # 15-minute window; separate caps for anonymous vs staff/admin.
 _WINDOW_SEC = int(os.environ.get('UPLOAD_RATE_WINDOW_SEC', '900'))
 _MAX_COMMUNITY = int(os.environ.get('UPLOAD_RATE_MAX_COMMUNITY', '40'))
@@ -13,10 +15,23 @@ _buckets: dict[str, list[float]] = {}
 _lock = Lock()
 
 
+def _trusted_proxy_count() -> int:
+    try:
+        from config import TRUSTED_PROXY_COUNT
+        return TRUSTED_PROXY_COUNT
+    except ImportError:
+        return max(0, int(os.environ.get('TRUSTED_PROXY_COUNT', '0')))
+
+
 def client_ip(request) -> str:
-    forwarded = request.headers.get('X-Forwarded-For', '')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
+    """Client IP for rate limiting; matches werkzeug ProxyFix x_for semantics."""
+    trusted = _trusted_proxy_count()
+    if trusted:
+        forwarded = request.headers.get('X-Forwarded-For', '')
+        if forwarded:
+            values = parse_list_header(forwarded)
+            if len(values) >= trusted:
+                return values[-trusted]
     return request.remote_addr or '127.0.0.1'
 
 
