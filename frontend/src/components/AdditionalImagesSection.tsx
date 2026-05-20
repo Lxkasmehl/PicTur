@@ -20,7 +20,7 @@ import {
 } from '@tabler/icons-react';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { getImageUrl } from '../services/api';
-import { validateFile } from '../utils/fileValidation';
+import { acceptUploadFile } from '../utils/uploadFilePipeline';
 import {
   uploadReviewPacketAdditionalImages,
   removeReviewPacketAdditionalImage,
@@ -354,43 +354,39 @@ export function AdditionalImagesSection({
   // per row before the explicit Upload click.
   const handleAdd = (type: AdditionalPhotoKind, files: FileList | null) => {
     if (!files?.length) return;
-    if (onStagePhoto) {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const validation = validateFile(file);
-        if (validation.isValid) {
-          onStagePhoto(type, file);
-        } else if (validation.error) {
-          notifications.show({ title: 'Invalid file', message: validation.error, color: 'red' });
-        }
-      }
-      return;
-    }
-    addFilesToStaging(type, files);
+    void addFilesFromInput(type, files, Boolean(onStagePhoto));
   };
 
-  const addFilesToStaging = (type: AdditionalPhotoKind, files: FileList | null) => {
-    if (!files?.length) return;
-    const next: StagedRow[] = [];
+  const addFilesFromInput = async (
+    type: AdditionalPhotoKind,
+    files: FileList,
+    stageOnly: boolean,
+  ) => {
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const validation = validateFile(file);
-      if (!validation.isValid) {
-        if (validation.error) {
-          notifications.show({ title: 'Invalid file', message: validation.error, color: 'red' });
+      const accepted = await acceptUploadFile(files[i]);
+      if (!accepted.isValid || !accepted.file) {
+        if (accepted.error) {
+          notifications.show({ title: 'Invalid file', message: accepted.error, color: 'red' });
         }
         continue;
       }
-      const previewUrl = URL.createObjectURL(file);
-      next.push({
-        id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`,
-        file,
-        previewUrl,
-        type,
-        labels: [],
-      });
+      const prepared = accepted.file;
+      if (stageOnly && onStagePhoto) {
+        onStagePhoto(type, prepared);
+        continue;
+      }
+      const previewUrl = URL.createObjectURL(prepared);
+      setStaged((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`,
+          file: prepared,
+          previewUrl,
+          type,
+          labels: [],
+        },
+      ]);
     }
-    if (next.length) setStaged((prev) => [...prev, ...next]);
   };
 
   const removeStagedRow = (id: string) => {

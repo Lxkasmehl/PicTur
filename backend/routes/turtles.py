@@ -10,7 +10,8 @@ from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from auth import require_admin
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
-from image_utils import normalize_to_jpeg
+from image_utils import process_uploaded_image
+from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
 from services import manager_service
 from turtle_manager import _extract_exif_date
 from additional_image_labels import (
@@ -635,6 +636,8 @@ def register_turtle_routes(app):
         Form: file_0, type_0, labels_0, ... (type normalized server-side),
         optional sheet_name. When the folder is missing, sheet_name creates data/<location>/<turtle_id>/ .
         """
+        if not upload_rate_limit_ok(request, 'admin'):
+            return upload_rate_limit_response()
         if not manager_service.manager_ready.wait(timeout=5):
             return jsonify({'error': 'TurtleManager is still initializing'}), 503
         if manager_service.manager is None:
@@ -676,7 +679,7 @@ def register_turtle_routes(app):
                 )
                 f.save(temp_path)
                 # HEIC/HEIF → JPEG (no-op for other formats)
-                temp_path = normalize_to_jpeg(temp_path)
+                temp_path = process_uploaded_image(temp_path)
                 orig_base = os.path.basename(orig_safe) if orig_safe else f'upload{ext}'
                 item = {
                     'path': temp_path,
@@ -720,6 +723,8 @@ def register_turtle_routes(app):
         Form: turtle_id (required), photo_type ('plastron'|'carapace'), file, sheet_name (optional).
         Archives the old reference to {photo_type}/Old References/ and updates VRAM cache.
         """
+        if not upload_rate_limit_ok(request, 'admin'):
+            return upload_rate_limit_response()
         if not manager_service.manager_ready.wait(timeout=5):
             return jsonify({'error': 'TurtleManager is still initializing'}), 503
         if manager_service.manager is None:
@@ -752,6 +757,7 @@ def register_turtle_routes(app):
             f"replace_{turtle_id}_{photo_type}_{int(time.time() * 1000)}{ext}".replace(os.sep, '_'),
         )
         f.save(temp_path)
+        temp_path = process_uploaded_image(temp_path)
         try:
             success, msg = manager_service.manager.replace_turtle_reference(
                 turtle_id, temp_path, photo_type=photo_type, sheet_name=sheet_name,
@@ -779,6 +785,8 @@ def register_turtle_routes(app):
         set_if_missing: fails if ref_data already has an identifier for this turtle_id.
         replace: archives the previous master image to loose_images when present, then sets the new one.
         """
+        if not upload_rate_limit_ok(request, 'admin'):
+            return upload_rate_limit_response()
         if not manager_service.manager_ready.wait(timeout=5):
             return jsonify({'error': 'TurtleManager is still initializing'}), 503
         if manager_service.manager is None:
@@ -815,7 +823,7 @@ def register_turtle_routes(app):
         )
         try:
             f.save(temp_path)
-            temp_path = normalize_to_jpeg(temp_path)
+            temp_path = process_uploaded_image(temp_path)
             ok, msg = manager_service.manager.set_identifier_plastron_from_path(
                 turtle_id, temp_path, sheet_name, mode, primary_id=primary_id,
             )

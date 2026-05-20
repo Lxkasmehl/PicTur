@@ -60,7 +60,13 @@ if 'PORT' not in os.environ:
 # Configuration constants
 UPLOAD_FOLDER = tempfile.gettempdir()
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif'}
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+# Hard cap per file after client optimization; blocks bypassed huge uploads.
+MAX_FILE_SIZE = 8 * 1024 * 1024  # 8MB
+# Reject entire HTTP body before buffering (DoS guard).
+MAX_CONTENT_LENGTH = 12 * 1024 * 1024  # 12MB
+# Server-side downscale if a client skips optimization.
+INGEST_MAX_DIMENSION = 2560
+INGEST_MAX_FILE_BYTES = 3 * 1024 * 1024
 
 # JWT Configuration - must match auth-backend JWT_SECRET
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')

@@ -4,6 +4,7 @@
 
 import { getToken, removeToken, TURTLE_API_BASE_URL } from './config';
 import type { TurtleSheetsData } from './sheets';
+import { prepareImageForUpload } from '../../utils/prepareImageForUpload';
 
 export interface TurtleMatch {
   turtle_id: string;
@@ -161,8 +162,18 @@ export const uploadTurtlePhoto = async (
   /** Optional: microhabitat or condition photos (community upload, same request) */
   extraFiles?: UploadExtraFile[],
 ): Promise<UploadPhotoResponse> => {
+  const preparedMain = await prepareImageForUpload(file);
+  const preparedExtras = extraFiles?.length
+    ? await Promise.all(
+        extraFiles.map(async (ef) => ({
+          ...ef,
+          file: await prepareImageForUpload(ef.file),
+        })),
+      )
+    : undefined;
+
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', preparedMain);
 
   if (location) {
     formData.append('state', location.state);
@@ -185,8 +196,8 @@ export const uploadTurtlePhoto = async (
       formData.append('digital_flag_source', flagOptions.digitalFlag.source);
     }
   }
-  if (extraFiles?.length) {
-    extraFiles.forEach((ef, i) => {
+  if (preparedExtras?.length) {
+    preparedExtras.forEach((ef, i) => {
       formData.append(`extra_${ef.type}_${i}`, ef.file);
       if (ef.labels?.length) {
         formData.append(`extra_labels_${i}`, ef.labels.join(', '));
@@ -258,8 +269,11 @@ export const uploadReviewPacketAdditionalImages = async (
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const prepared = await Promise.all(
+    files.map(async (f) => ({ ...f, file: await prepareImageForUpload(f.file) })),
+  );
   const formData = new FormData();
-  files.forEach((f, i) => {
+  prepared.forEach((f, i) => {
     formData.append(`file_${i}`, f.file);
     formData.append(`type_${i}`, f.type);
     if (f.labels?.length) {
@@ -763,10 +777,11 @@ export const uploadTurtleReplaceReference = async (
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const prepared = await prepareImageForUpload(file);
   const formData = new FormData();
   formData.append('turtle_id', turtleId);
   formData.append('photo_type', photoType);
-  formData.append('file', file);
+  formData.append('file', prepared);
   if (sheetName) formData.append('sheet_name', sheetName);
   if (primaryId) formData.append('primary_id', primaryId);
   if (opts?.createIfMissing) formData.append('create_if_missing', 'true');
@@ -794,9 +809,10 @@ export const uploadTurtleIdentifierPlastron = async (
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const prepared = await prepareImageForUpload(file);
   const formData = new FormData();
   formData.append('turtle_id', turtleId);
-  formData.append('file', file);
+  formData.append('file', prepared);
   formData.append('mode', mode);
   if (sheetName) formData.append('sheet_name', sheetName);
   if (primaryId) formData.append('primary_id', primaryId);
@@ -831,12 +847,15 @@ export const uploadTurtleAdditionalImages = async (
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const prepared = await Promise.all(
+    files.map(async (f) => ({ ...f, file: await prepareImageForUpload(f.file) })),
+  );
   const formData = new FormData();
   formData.append('turtle_id', turtleId);
   if (sheetName) formData.append('sheet_name', sheetName);
   if (primaryId) formData.append('primary_id', primaryId);
   if (opts?.bioId) formData.append('bio_id', opts.bioId);
-  files.forEach((f, i) => {
+  prepared.forEach((f, i) => {
     formData.append(`file_${i}`, f.file);
     formData.append(`type_${i}`, f.type);
     if (f.labels?.length) {

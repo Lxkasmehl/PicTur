@@ -39,7 +39,10 @@ from routes.general_locations import register_general_location_routes
 from routes.admin_backup import register_admin_backup_routes
 
 # Create Flask app
+from config import MAX_CONTENT_LENGTH
+
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 CORS(app, resources={r"/api/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})
 
 # Add after_request handler to ensure CORS headers are always set

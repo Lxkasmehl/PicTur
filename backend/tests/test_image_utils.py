@@ -19,7 +19,7 @@ import os
 import pytest
 from PIL import Image
 
-from image_utils import HEIC_EXTENSIONS, normalize_to_jpeg
+from image_utils import HEIC_EXTENSIONS, normalize_to_jpeg, process_uploaded_image
 
 
 # ---------- Passthrough cases (no re-encoding) ----------
@@ -156,6 +156,14 @@ def test_multiple_exif_tags_preserved(tmp_path):
         assert out.get(36867) == '2024:07:12 14:30:00'
         assert out.get(272) == 'TestCamera'
         assert out.get(271) == 'TestMake'
+
+
+def test_process_uploaded_image_shrinks_oversized_jpeg(tmp_path):
+    path = tmp_path / 'big.jpg'
+    Image.new('RGB', (4000, 3000)).save(str(path), 'JPEG', quality=95)
+    result = process_uploaded_image(str(path))
+    with Image.open(result) as im:
+        assert max(im.size) <= 2560
 
 
 # ---------- Module exports ----------
