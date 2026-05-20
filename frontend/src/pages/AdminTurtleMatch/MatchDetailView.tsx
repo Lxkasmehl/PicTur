@@ -6,16 +6,17 @@ import {
   Divider,
   Grid,
   Group,
-  Image,
   Loader,
   Paper,
   Stack,
   Text,
 } from '@mantine/core';
 import { IconAlertTriangle, IconArrowLeft, IconCheck, IconPlus } from '@tabler/icons-react';
+import { useEffect, useRef } from 'react';
 import { getImageUrl } from '../../services/api';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
+import { TurtleImageComparePair } from '../../components/TurtleImageComparePair';
 import { candidateSummaryKey, dataPathHintFromMatchLocation } from './utils';
 import { useAdminTurtleMatchContext } from './AdminTurtleMatchContext';
 
@@ -48,6 +49,14 @@ export function MatchDetailView() {
     refreshPacketItem,
     refreshSelectedMatchImages,
   } = useAdminTurtleMatchContext();
+
+  const compareSectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      compareSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [selectedMatch]);
 
   if (!matchData || !selectedMatch || !selectedMatchData) return null;
 
@@ -87,7 +96,7 @@ export function MatchDetailView() {
         </div>
       )}
 
-      <Paper shadow='sm' p='md' radius='md' withBorder>
+      <Paper ref={compareSectionRef} shadow='sm' p='md' radius='md' withBorder>
         <Stack gap='sm'>
           <Group justify='space-between'>
             <Button
@@ -103,86 +112,35 @@ export function MatchDetailView() {
           </Group>
           <Divider />
 
-          <Grid gutter='md'>
-            <Grid.Col span={{ base: 12, sm: 6 }}>
-              <Text size='sm' c='dimmed' mb={4}>
-                Uploaded Photo
-              </Text>
-              <Image
-                src={
-                  matchData.uploaded_image_path
-                    ? getImageUrl(matchData.uploaded_image_path)
-                    : ''
-                }
-                alt='Uploaded photo'
-                radius='md'
-                style={{
-                  maxHeight: 'min(400px, 50vh)',
-                  objectFit: 'contain',
-                  width: '100%',
-                }}
-              />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 6 }}>
-              <Text size='sm' c='dimmed' mb={4}>
-                Match: {selectedMatch}
-              </Text>
-              {selectedMatchData.file_path && (
-                <Image
-                  src={getImageUrl(selectedMatchData.file_path)}
-                  alt={`Match ${selectedMatch}`}
-                  radius='md'
-                  style={{
-                    maxHeight: 'min(400px, 50vh)',
-                    objectFit: 'contain',
-                    width: '100%',
-                  }}
-                />
-              )}
-            </Grid.Col>
-          </Grid>
+          <TurtleImageComparePair
+            leftLabel='Uploaded Photo'
+            leftSrc={
+              matchData.uploaded_image_path
+                ? getImageUrl(matchData.uploaded_image_path)
+                : ''
+            }
+            rightLabel={`Match: ${selectedMatch}`}
+            rightSrc={
+              selectedMatchData.file_path
+                ? getImageUrl(selectedMatchData.file_path)
+                : null
+            }
+          />
 
           {uploadedCarapace && (
             <>
               <Divider variant='dashed' />
-              <Grid gutter='md'>
-                <Grid.Col span={{ base: 12, sm: 6 }}>
-                  <Text size='sm' c='dimmed' mb={4}>
-                    Uploaded Carapace
+              <TurtleImageComparePair
+                leftLabel='Uploaded Carapace'
+                leftSrc={getImageUrl(uploadedCarapace.image_path)}
+                rightLabel={`Match Carapace: ${selectedMatch}`}
+                rightSrc={matchCarapacePath ? getImageUrl(matchCarapacePath) : null}
+                rightPlaceholder={
+                  <Text size='xs' c='dimmed' mt='sm'>
+                    No carapace reference on file for this turtle.
                   </Text>
-                  <Image
-                    src={getImageUrl(uploadedCarapace.image_path)}
-                    alt='Uploaded carapace'
-                    radius='md'
-                    style={{
-                      maxHeight: 'min(400px, 50vh)',
-                      objectFit: 'contain',
-                      width: '100%',
-                    }}
-                  />
-                </Grid.Col>
-                <Grid.Col span={{ base: 12, sm: 6 }}>
-                  <Text size='sm' c='dimmed' mb={4}>
-                    Match Carapace: {selectedMatch}
-                  </Text>
-                  {matchCarapacePath ? (
-                    <Image
-                      src={getImageUrl(matchCarapacePath)}
-                      alt={`Match carapace ${selectedMatch}`}
-                      radius='md'
-                      style={{
-                        maxHeight: 'min(400px, 50vh)',
-                        objectFit: 'contain',
-                        width: '100%',
-                      }}
-                    />
-                  ) : (
-                    <Text size='xs' c='dimmed' mt='sm'>
-                      No carapace reference on file for this turtle.
-                    </Text>
-                  )}
-                </Grid.Col>
-              </Grid>
+                }
+              />
             </>
           )}
 
