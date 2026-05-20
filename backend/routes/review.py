@@ -495,15 +495,14 @@ def register_review_routes(app):
         # Save candidate images to disk
         for rank, match in enumerate(results, start=1):
             pt_path = match.get('file_path', '') or ''
-            if pt_path and pt_path.endswith('.pt'):
-                base_path = pt_path[:-3]
-                for ext in ['.jpg', '.jpeg', '.png']:
-                    if os.path.exists(base_path + ext):
-                        turtle_id = match.get('site_id', 'Unknown')
-                        conf_int = int(round(match.get('confidence', 0.0) * 100))
-                        cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
-                        shutil.copy2(base_path + ext, os.path.join(candidates_dir, cand_filename))
-                        break
+            # Case-insensitive sibling lookup (handles .JPG/.JPEG/.PNG on Linux).
+            src_img = find_image_for_pt(pt_path)
+            if src_img != pt_path and os.path.exists(src_img):
+                ext = os.path.splitext(src_img)[1]
+                turtle_id = match.get('site_id', 'Unknown')
+                conf_int = int(round(match.get('confidence', 0.0) * 100))
+                cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
+                shutil.copy2(src_img, os.path.join(candidates_dir, cand_filename))
 
         # Return the updated packet
         item = format_review_packet_item(packet_dir, request_id)
