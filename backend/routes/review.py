@@ -16,6 +16,7 @@ from services.manager_service import get_sheets_service, get_community_sheets_se
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from image_utils import normalize_to_jpeg
 from turtle_manager import canonical_new_turtle_folder_id  # re-exported for callers/tests
+from routes.upload import find_image_for_pt  # case-insensitive .pt→image sibling lookup
 from general_locations_catalog import (
     get_sheet_default,
     resolve_general_location_from_sheet_and_value,
@@ -414,13 +415,10 @@ def register_review_routes(app):
         formatted = []
         for match in results:
             pt_path = match.get('file_path', '') or ''
-            image_path = pt_path
-            if pt_path.endswith('.pt'):
-                base = pt_path[:-3]
-                for ext in ['.jpg', '.jpeg', '.png']:
-                    if os.path.exists(base + ext):
-                        image_path = base + ext
-                        break
+            # Resolve .pt → sibling image case-insensitively (Linux prod is
+            # case-sensitive; carapace refs are often .JPG). Returns pt_path
+            # unchanged when no sibling image is found.
+            image_path = find_image_for_pt(pt_path)
             formatted.append({
                 'turtle_id': match.get('site_id', 'Unknown'),
                 'location': match.get('location', 'Unknown'),

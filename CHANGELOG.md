@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Carapace cross-check thumbnails blank on case-mismatched extensions**: the cross-check results grid showed matched turtles but rendered blank reference images whenever the carapace reference was stored with an uppercase extension (e.g. `F128.JPG`). `cross_check_review_packet` (`routes/review.py`) rebuilt the display path from the `.pt` using a lowercase-only `['.jpg','.jpeg','.png']` probe, which misses `.JPG/.JPEG/.PNG` on the case-sensitive Linux production filesystem and fell back to the (unservable) `.pt` path. It now resolves the sibling image with the case-insensitive `find_image_for_pt` helper. No image re-encoding. (#212)
 - **Admin Turtle Match E2E**: Playwright tests now target the **Back to upload** button label instead of the old generic **Back** control.
 
 ## [2.0.7] - 2026-05-16 — Sheets-Browser Null filter count + list-flash fix
