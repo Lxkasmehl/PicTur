@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.8] - 2026-05-20 — Admin side-by-side match compare + Turtle Match / Review Queue UX
+
 ### Added
 
 - **Admin match photo comparison (`TurtleImageComparePair`)**: shared upload-vs-match panel for Turtle Match and Review Queue. On narrow viewports, portrait shells render side-by-side; landscape shells stack with a short hint to rotate the device for a side-by-side view. Supporting layout helpers live in `SideBySideCompare` / `sideBySideCompareConstants` (constants split out for React Fast Refresh).
@@ -482,7 +484,10 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.5...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.8...HEAD
+[2.0.8]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.7...v2.0.8
+[2.0.7]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.6...v2.0.7
+[2.0.6]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.5...v2.0.6
 [2.0.5]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.4...v2.0.5
 [2.0.4]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.2...v2.0.3
