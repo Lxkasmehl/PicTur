@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.9] - 2026-05-22 — Upload image optimization + server ingest limits
+
 ### Added
 
 - **Upload image optimization**: Photos are resized/compressed in the browser before upload (max 2048 px edge, JPEG ~82%) so smartphone originals and microhabitat shots no longer hit size limits. Server enforces an 8 MB per-file cap, ~96 MB multipart body cap (up to 12 optimized files plus form overhead), ingest downscaling for bypassed clients, and per-IP rate limits (community vs admin) on all multipart image endpoints.
@@ -498,7 +500,8 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.8...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.9...HEAD
+[2.0.9]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.8...v2.0.9
 [2.0.8]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.7...v2.0.8
 [2.0.7]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.6...v2.0.7
 [2.0.6]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.5...v2.0.6
