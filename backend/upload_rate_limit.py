@@ -35,6 +35,16 @@ def client_ip(request) -> str:
     return request.remote_addr or '127.0.0.1'
 
 
+def _policy_tier(role: str) -> str:
+    if role in ('staff', 'admin'):
+        return 'privileged'
+    return 'community'
+
+
+def _bucket_key(ip: str, role: str) -> str:
+    return f'{ip}:{_policy_tier(role)}'
+
+
 def _max_hits_for_role(role: str) -> int:
     if role in ('staff', 'admin'):
         return _MAX_PRIVILEGED
@@ -43,17 +53,18 @@ def _max_hits_for_role(role: str) -> int:
 
 def upload_rate_limit_ok(request, role: str = 'community') -> bool:
     ip = client_ip(request)
+    key = _bucket_key(ip, role)
     now = time.time()
     window_start = now - _WINDOW_SEC
     max_hits = _max_hits_for_role(role)
 
     with _lock:
-        hits = [t for t in _buckets.get(ip, []) if t > window_start]
+        hits = [t for t in _buckets.get(key, []) if t > window_start]
         if len(hits) >= max_hits:
-            _buckets[ip] = hits
+            _buckets[key] = hits
             return False
         hits.append(now)
-        _buckets[ip] = hits
+        _buckets[key] = hits
     return True
 
 

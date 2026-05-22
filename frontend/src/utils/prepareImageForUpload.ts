@@ -16,6 +16,17 @@ const COMPRESSIBLE_TYPES = new Set([
 ]);
 const COMPRESSIBLE_EXT = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif']);
 
+/** Files already optimized by prepareImageForUpload (e.g. via acceptUploadFile). */
+const preparedUploadFiles = new WeakSet<File>();
+
+export function isUploadFilePrepared(file: File): boolean {
+  return preparedUploadFiles.has(file);
+}
+
+function markUploadFilePrepared(file: File): void {
+  preparedUploadFiles.add(file);
+}
+
 function outputName(originalName: string): string {
   const base = originalName.replace(/\.[^.]+$/, '') || 'upload';
   return `${base}.jpg`;
@@ -129,6 +140,10 @@ function canvasToJpegFile(
  * HEIC/HEIF is passed through when the browser cannot decode it (server normalizes).
  */
 export async function prepareImageForUpload(file: File): Promise<File> {
+  if (preparedUploadFiles.has(file)) {
+    return file;
+  }
+
   if (file.size > MAX_RAW_FILE_BYTES) {
     throw new Error(
       `File is too large (${(MAX_RAW_FILE_BYTES / 1024 / 1024).toFixed(0)} MB max from device).`,
@@ -137,6 +152,7 @@ export async function prepareImageForUpload(file: File): Promise<File> {
 
   if (!canDecodeInBrowser(file)) {
     if (file.size <= MAX_UPLOAD_BYTES) {
+      markUploadFilePrepared(file);
       return file;
     }
     throw new Error(
@@ -148,9 +164,11 @@ export async function prepareImageForUpload(file: File): Promise<File> {
     try {
       const img = await loadImageFromFile(file);
       if (Math.max(img.naturalWidth, img.naturalHeight) <= UPLOAD_MAX_DIMENSION) {
+        markUploadFilePrepared(file);
         return file;
       }
     } catch {
+      markUploadFilePrepared(file);
       return file;
     }
   }
@@ -189,6 +207,7 @@ export async function prepareImageForUpload(file: File): Promise<File> {
     throw new Error('Image is still too large after optimization. Try a smaller photo.');
   }
 
+  markUploadFilePrepared(out);
   return out;
 }
 
