@@ -14,7 +14,8 @@ from auth import require_admin
 from services import manager_service
 from services.manager_service import get_sheets_service, get_community_sheets_service
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
-from image_utils import normalize_to_jpeg
+from image_utils import process_uploaded_image
+from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
 from turtle_manager import canonical_new_turtle_folder_id  # re-exported for callers/tests
 from general_locations_catalog import (
     get_sheet_default,
@@ -250,6 +251,8 @@ def register_review_routes(app):
     @require_admin
     def add_review_packet_additional_images(request_id):
         """Add additional images to an existing review packet (Admin only)."""
+        if not upload_rate_limit_ok(request, 'admin'):
+            return upload_rate_limit_response()
         if not manager_service.manager_ready.wait(timeout=30):
             return jsonify({'error': 'TurtleManager is still initializing.'}), 503
         if manager_service.manager is None:
@@ -277,7 +280,7 @@ def register_review_routes(app):
                 temp_path = os.path.join(UPLOAD_FOLDER, f"review_extra_{request_id}_{idx}_{int(time.time())}{ext}")
                 f.save(temp_path)
                 # HEIC/HEIF → JPEG (no-op for other formats)
-                temp_path = normalize_to_jpeg(temp_path)
+                temp_path = process_uploaded_image(temp_path)
                 item = {
                     'path': temp_path,
                     'type': typ,

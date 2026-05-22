@@ -15,7 +15,8 @@ from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from auth import optional_auth, check_auth_revocation
-from image_utils import normalize_to_jpeg
+from image_utils import process_uploaded_image
+from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
 from services import manager_service
 from additional_image_labels import normalize_additional_type, parse_labels_from_form
 
@@ -55,7 +56,7 @@ def _collect_extra_upload_files(request, request_id):
         ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
         extra_temp = os.path.join(UPLOAD_FOLDER, f"extra_{request_id}_{typ}_{int(time.time())}{ext}")
         f.save(extra_temp)
-        extra_temp = normalize_to_jpeg(extra_temp)
+        extra_temp = process_uploaded_image(extra_temp)
         item = {
             'path': extra_temp,
             'type': typ,
@@ -129,6 +130,9 @@ def register_upload_routes(app):
                 user_role = 'community'
                 user_email = 'anonymous'
 
+            if not upload_rate_limit_ok(request, user_role):
+                return upload_rate_limit_response()
+
             file = request.files['file']
             state = request.form.get('state', '')
             location = request.form.get('location', '')
@@ -154,13 +158,13 @@ def register_upload_routes(app):
             file.seek(0)
 
             if file_size > MAX_FILE_SIZE:
-                return jsonify({'error': 'File too large (max 5MB)'}), 400
+                return jsonify({'error': 'File too large (max 8MB)'}), 400
 
             filename = secure_filename(file.filename)
             temp_path = os.path.join(UPLOAD_FOLDER, filename)
             file.save(temp_path)
             # HEIC/HEIF → JPEG so SuperPoint + frontend can handle it
-            temp_path = normalize_to_jpeg(temp_path)
+            temp_path = process_uploaded_image(temp_path)
             filename = os.path.basename(temp_path)
 
             if not os.path.exists(temp_path):

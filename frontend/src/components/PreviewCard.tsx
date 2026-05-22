@@ -38,7 +38,7 @@ import { useState, useEffect, useRef, type DragEvent } from 'react';
 import type { FileWithPath } from '@mantine/dropzone';
 import type { LocationHint, UploadExtraFile } from '../services/api';
 import { MapPicker } from './MapPicker';
-import { validateFile } from '../utils/fileValidation';
+import { acceptUploadFile } from '../utils/uploadFilePipeline';
 import { notifications } from '@mantine/notifications';
 import {
   ADDITIONAL_PHOTO_KIND_OPTIONS,
@@ -108,23 +108,23 @@ export function PreviewCard({
   const [activeDropKind, setActiveDropKind] = useState<AdditionalPhotoKind | null>(null);
   const isMobile = useMediaQuery('(max-width: 576px)');
 
-  const addExtraFilesByType = (type: AdditionalPhotoKind, list: FileList | null) => {
+  const addExtraFilesByType = async (type: AdditionalPhotoKind, list: FileList | null) => {
     if (!setExtraFiles || !list?.length) return;
     const valid: UploadExtraFile[] = [];
     for (let i = 0; i < list.length; i++) {
       const file = list[i];
-      const validation = validateFile(file);
-      if (validation.isValid) {
+      const accepted = await acceptUploadFile(file);
+      if (accepted.isValid && accepted.file) {
         valid.push({
           type,
-          file,
+          file: accepted.file,
           labels: [],
           localId: crypto.randomUUID(),
         });
-      } else if (validation.error) {
+      } else if (accepted.error) {
         notifications.show({
           title: 'Invalid file',
-          message: validation.error,
+          message: accepted.error,
           color: 'red',
         });
       }
@@ -136,7 +136,7 @@ export function PreviewCard({
     event.preventDefault();
     event.stopPropagation();
     setActiveDropKind(null);
-    addExtraFilesByType(type, event.dataTransfer.files);
+    void addExtraFilesByType(type, event.dataTransfer.files);
   };
 
   const prevStillAtLocation = useRef<'yes' | 'no' | null>(null);
@@ -255,7 +255,7 @@ export function PreviewCard({
                         multiple
                         hidden
                         onChange={(e) => {
-                          addExtraFilesByType(kindOpt.value as AdditionalPhotoKind, e.target.files);
+                          void addExtraFilesByType(kindOpt.value as AdditionalPhotoKind, e.target.files);
                           e.target.value = '';
                         }}
                       />

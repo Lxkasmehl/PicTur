@@ -6,17 +6,14 @@ Requires BACKEND_URL and AUTH_URL (see tests/conftest.py).
 
 from io import BytesIO
 
-
-def _dummy_png_bytes() -> bytes:
-    # Minimal PNG header + payload; sufficient for upload-path validation.
-    return b"\x89PNG\r\n\x1a\n" + b"\x00" * 512
+from tests.image_fixtures import valid_png_bytes
 
 
 def test_admin_upload_response_uses_score_confidence(client):
     response = client.post(
         "/api/upload",
         data={
-            "file": ("match-api-test.png", BytesIO(_dummy_png_bytes())),
+            "file": ("match-api-test.png", BytesIO(valid_png_bytes())),
         },
     )
 

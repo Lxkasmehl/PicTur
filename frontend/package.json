@@ -25,6 +25,7 @@
     "@tabler/icons-react": "^3.35.0",
     "@tailwindcss/vite": "^4.1.14",
     "leaflet": "^1.9.4",
+    "piexifjs": "^1.0.6",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-redux": "^9.2.0",
