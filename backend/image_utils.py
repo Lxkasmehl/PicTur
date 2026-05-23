@@ -45,6 +45,33 @@ class UploadImageError(Exception):
         super().__init__(message)
 
 
+_DECODE_ERROR_HINTS = (
+    'cannot identify',
+    'broken',
+    'truncated',
+    'decoding',
+    'invalid',
+    'not enough data',
+    'bad checksum',
+    'encoder error',
+    'image file is truncated',
+)
+
+
+def _is_image_decode_error(exc: BaseException) -> bool:
+    """True when the failure is bad image bytes, not server filesystem I/O."""
+    if isinstance(exc, UnidentifiedImageError):
+        return True
+    if isinstance(exc, ValueError):
+        return True
+    if isinstance(exc, OSError):
+        if exc.errno not in (None, 0):
+            return False
+        msg = str(exc).lower()
+        return any(hint in msg for hint in _DECODE_ERROR_HINTS)
+    return False
+
+
 def detect_image_format(path: str) -> str | None:
     """Best-effort format from magic bytes (not extension)."""
     try:
@@ -123,7 +150,7 @@ def _save_ingest_jpeg(im: Image.Image, path: str, *, quality: int = 88) -> str:
 
 def _open_image_tolerant(path: str) -> Image.Image:
     """Open with EXIF transpose; retry without transpose or with truncated load."""
-    last_exc: Exception | None = None
+    last_decode_exc: Exception | None = None
     for attempt in ('transpose', 'raw', 'truncated'):
         try:
             if attempt == 'truncated':
@@ -134,8 +161,10 @@ def _open_image_tolerant(path: str) -> Image.Image:
                     return ImageOps.exif_transpose(im.copy())
                 return im.copy()
         except Exception as exc:
-            last_exc = exc
-    raise last_exc or UnidentifiedImageError(f'cannot identify image file {path!r}')
+            if not _is_image_decode_error(exc):
+                raise
+            last_decode_exc = exc
+    raise last_decode_exc or UnidentifiedImageError(f'cannot identify image file {path!r}')
 
 
 def _repair_to_jpeg(path: str, original_exc: Exception | None = None) -> str:
@@ -150,7 +179,11 @@ def _repair_to_jpeg(path: str, original_exc: Exception | None = None) -> str:
 
     try:
         im = _open_image_tolerant(path)
+    except UploadImageError:
+        raise
     except Exception as exc:
+        if not _is_image_decode_error(exc):
+            raise
         logger.warning('upload repair open failed path=%s detected=%s: %s', path, detected, exc)
         raise UploadImageError(
             'decode_failed',
@@ -204,6 +237,8 @@ def _resize_ingest_if_needed(path):
                 pass
         return dest
     except Exception as exc:
+        if not _is_image_decode_error(exc):
+            raise
         logger.warning('upload resize failed path=%s: %s', path, exc)
         return _repair_to_jpeg(path, exc)
 
@@ -219,6 +254,8 @@ def process_uploaded_image(src_path):
     except UploadImageError:
         raise
     except Exception as exc:
+        if not _is_image_decode_error(exc):
+            raise
         logger.warning('upload ingest primary failed path=%s: %s', src_path, exc)
         repaired = _repair_to_jpeg(src_path, exc)
         return _resize_ingest_if_needed(repaired)

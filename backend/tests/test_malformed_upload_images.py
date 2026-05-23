@@ -1,6 +1,7 @@
 """Ingest tests for Word/email exports and other problematic uploads."""
 
 import os
+from unittest import mock
 
 import pytest
 from PIL import Image
@@ -76,3 +77,21 @@ def test_non_image_bytes_rejected(tmp_path):
     with pytest.raises(UploadImageError) as exc:
         process_uploaded_image(str(path))
     assert exc.value.code == 'invalid_image'
+
+
+def test_filesystem_open_error_propagates(tmp_path):
+    path = tmp_path / 'ok.jpg'
+    write_valid_jpeg(str(path))
+    with mock.patch('image_utils.Image.open', side_effect=OSError(5, 'Input/output error')):
+        with pytest.raises(OSError) as exc:
+            process_uploaded_image(str(path))
+    assert exc.value.errno == 5
+
+
+def test_filesystem_save_error_propagates(tmp_path):
+    path = tmp_path / 'big.jpg'
+    Image.new('RGB', (4000, 3000)).save(str(path), 'JPEG', quality=95)
+    with mock.patch('image_utils.Image.Image.save', side_effect=OSError(28, 'No space left on device')):
+        with pytest.raises(OSError) as exc:
+            process_uploaded_image(str(path))
+    assert exc.value.errno == 28
