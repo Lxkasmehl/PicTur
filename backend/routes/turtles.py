@@ -3,8 +3,6 @@ Turtle data endpoints (e.g. list images for a turtle folder)
 """
 
 import os
-import re
-import json
 import time
 from flask import request, jsonify
 from werkzeug.utils import secure_filename
@@ -12,101 +10,24 @@ from auth import require_admin
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from image_utils import UploadImageError
 from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
-from upload_validation import ingest_saved_upload, log_upload_rejection, upload_error_response
+from upload_validation import ingest_saved_upload, upload_error_response
 from services import manager_service
-from turtle_manager import _extract_exif_date
 from additional_image_labels import (
-    normalize_additional_type,
     normalize_label_list,
-    parse_labels_from_form,
     parse_additional_type_filter,
-    read_labels_for_file,
 )
-
-
-# Matches a millisecond-epoch timestamp at the start of a loose-photo filename,
-# e.g. "plastron_1712345678901_source.jpg" or "carapace_1712345678901_foo.jpg".
-_LOOSE_TS_RE = re.compile(r'^(?:plastron|carapace)_(\d{10,13})_')
-# Archived_Master_<ms>.jpg or Archived_Carapace_<ms>.jpg (with optional _YYYY-MM-DD suffix)
-_ARCHIVED_TS_RE = re.compile(r'^Archived_(?:Master|Carapace)_(\d{10,13})')
-# Obs_<unix_seconds>_original.jpg
-_OBS_TS_RE = re.compile(r'^Obs_(\d{10,13})_')
-# Embedded YYYY-MM-DD anywhere in filename (the upload-date stamp added by the manager)
-_FILENAME_DATE_RE = re.compile(r'(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)')
-_IMAGE_EXTS = ('.jpg', '.jpeg', '.png', '.gif', '.webp')
-
-
-def _dir_has_image(dir_path):
-    """True if ``dir_path`` or any descendant contains an image file. Scoped to a
-    single turtle folder (shallow), so the walk is cheap -- used to tell an
-    'empty' turtle folder apart from one that has only non-reference photos."""
-    if not dir_path or not os.path.isdir(dir_path):
-        return False
-    try:
-        for _root, _dirs, files in os.walk(dir_path):
-            if any(f.lower().endswith(_IMAGE_EXTS) for f in files):
-                return True
-    except OSError:
-        return False
-    return False
-
-
-def _extract_upload_date_from_filename(filename, fallback_path=None):
-    """Parse the system's upload date (YYYY-MM-DD) from a loose-photo filename.
-
-    Order: explicit YYYY-MM-DD stamp → ms timestamp prefix → file mtime fallback.
-    """
-    m = _FILENAME_DATE_RE.search(filename)
-    if m:
-        return m.group(1)
-    for rx in (_LOOSE_TS_RE, _ARCHIVED_TS_RE, _OBS_TS_RE):
-        m = rx.search(filename)
-        if m:
-            raw = m.group(1)
-            try:
-                ts = int(raw)
-                if ts > 1_000_000_000_000:
-                    ts = ts / 1000
-                return time.strftime('%Y-%m-%d', time.localtime(ts))
-            except (ValueError, OSError):
-                pass
-    if fallback_path and os.path.exists(fallback_path):
-        try:
-            # Local time — the scratchpad's "today" is built from the admin's
-            # wall clock (frontend uses new Date()), so UTC would slip a day
-            # for anyone west of Greenwich during evening hours.
-            return time.strftime('%Y-%m-%d', time.localtime(os.path.getmtime(fallback_path)))
-        except OSError:
-            pass
-    return None
-
-
-def _extract_upload_ts_from_filename(filename, fallback_path=None):
-    """Epoch ms when this file was placed/last modified.
-
-    Sibling of ``_extract_upload_date_from_filename`` for callers that need
-    finer-than-day granularity — used by the Old Photos sort comparator (so
-    multiple uploads on the same day don't tie and fall back to array order)
-    and as a cache-bust version for active-reference image URLs (which keep
-    the same path across replacements). Prefers the embedded ms timestamp
-    baked into archive / loose / observation filenames; falls back to mtime.
-    """
-    for rx in (_LOOSE_TS_RE, _ARCHIVED_TS_RE, _OBS_TS_RE):
-        m = rx.search(filename)
-        if m:
-            try:
-                ts = int(m.group(1))
-                if ts < 1_000_000_000_000:  # seconds → ms
-                    ts *= 1000
-                return ts
-            except ValueError:
-                pass
-    if fallback_path and os.path.exists(fallback_path):
-        try:
-            return int(os.path.getmtime(fallback_path) * 1000)
-        except OSError:
-            pass
-    return None
+from additional_image_upload import (
+    additional_upload_success_json,
+    cleanup_temp_upload_paths,
+    collect_indexed_additional_uploads,
+    no_valid_files_json,
+)
+from turtle_folder_images import (
+    IMAGE_EXTENSIONS,
+    build_turtle_images_payload,
+    dir_has_image,
+    extract_upload_ts_from_filename,
+)
 
 
 def register_turtle_routes(app):
@@ -165,197 +86,7 @@ def register_turtle_routes(app):
                 'history_dates': [],
             })
 
-        def _build_primary_info(path):
-            if not path:
-                return None
-            exif = _extract_exif_date(path)
-            upload = _extract_upload_date_from_filename(
-                os.path.basename(path), fallback_path=path
-            )
-            upload_ts = _extract_upload_ts_from_filename(
-                os.path.basename(path), fallback_path=path
-            )
-            labels = read_labels_for_file(os.path.dirname(path), os.path.basename(path))
-            info = {
-                'path': path,
-                'timestamp': exif or upload,
-                'exif_date': exif,
-                'upload_date': upload,
-                'upload_ts': upload_ts,
-            }
-            if labels:
-                info['labels'] = labels
-            return info
-
-        # --- PRIMARY PLASTRON ---
-        primary_path = None
-        for ref_folder in ('plastron', 'ref_data'):
-            ref_dir = os.path.join(turtle_dir, ref_folder)
-            if os.path.isdir(ref_dir):
-                for f in sorted(os.listdir(ref_dir)):
-                    if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                        primary_path = os.path.join(ref_dir, f)
-                        break
-                if primary_path:
-                    break
-        primary_info = _build_primary_info(primary_path)
-
-        # --- PRIMARY CARAPACE ---
-        primary_carapace_path = None
-        carapace_dir = os.path.join(turtle_dir, 'carapace')
-        if os.path.isdir(carapace_dir):
-            for f in sorted(os.listdir(carapace_dir)):
-                if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                    primary_carapace_path = os.path.join(carapace_dir, f)
-                    break
-        primary_carapace_info = _build_primary_info(primary_carapace_path)
-
-        # --- ADDITIONAL IMAGES ---
-        additional = []
-        additional_dir = os.path.join(turtle_dir, 'additional_images')
-
-        def parse_manifest_or_folder(target_dir):
-            results = []
-            manifest_path = os.path.join(target_dir, 'manifest.json')
-            processed_files = set()
-            # Folder-level upload date from "additional_images/YYYY-MM-DD/"
-            folder_date_match = _FILENAME_DATE_RE.search(os.path.basename(target_dir))
-            folder_upload_date = folder_date_match.group(1) if folder_date_match else None
-
-            if os.path.isfile(manifest_path):
-                try:
-                    with open(manifest_path, 'r') as f:
-                        manifest = json.load(f)
-                    for entry in manifest:
-                        fn = entry.get('filename')
-                        kind = entry.get('type', 'other')
-                        if fn:
-                            p = os.path.join(target_dir, fn)
-                            if os.path.isfile(p):
-                                # EXIF first, then manifest timestamp/folder date as the upload fallback
-                                exif_date = entry.get('exif_date') or _extract_exif_date(p)
-                                manifest_ts = entry.get('timestamp')
-                                upload_date = (manifest_ts[:10] if isinstance(manifest_ts, str) and len(manifest_ts) >= 10 else None) or folder_upload_date
-                                upload_ts = _extract_upload_ts_from_filename(fn, fallback_path=p)
-                                row = {
-                                    'path': p,
-                                    'type': kind,
-                                    # 'timestamp' is the display-preferred date (EXIF when available)
-                                    'timestamp': exif_date or upload_date,
-                                    'exif_date': exif_date,
-                                    'upload_date': upload_date,
-                                    'upload_ts': upload_ts,
-                                    'uploaded_by': entry.get('uploaded_by'),
-                                }
-                                lbs = entry.get('labels')
-                                if lbs:
-                                    row['labels'] = normalize_label_list(lbs)
-                                results.append(row)
-                                processed_files.add(fn)
-                except (json.JSONDecodeError, OSError):
-                    pass
-
-            if os.path.isdir(target_dir):
-                for f in sorted(os.listdir(target_dir)):
-                    if f != 'manifest.json' and f not in processed_files and f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                        full = os.path.join(target_dir, f)
-                        exif_date = _extract_exif_date(full)
-                        upload_date = _extract_upload_date_from_filename(f, fallback_path=full) or folder_upload_date
-                        upload_ts = _extract_upload_ts_from_filename(f, fallback_path=full)
-                        results.append({
-                            'path': full,
-                            'type': 'other',
-                            'labels': [],
-                            'timestamp': exif_date or upload_date,
-                            'exif_date': exif_date,
-                            'upload_date': upload_date,
-                            'upload_ts': upload_ts,
-                            'uploaded_by': None,
-                        })
-            return results
-
-        if os.path.isdir(additional_dir):
-            additional.extend(parse_manifest_or_folder(additional_dir))
-            for item in sorted(os.listdir(additional_dir)):
-                item_path = os.path.join(additional_dir, item)
-                if os.path.isdir(item_path):
-                    additional.extend(parse_manifest_or_folder(item_path))
-
-        # --- LOOSE / HISTORICAL IMAGES ---
-        # Each loose entry is structured: { path, source, timestamp (YYYY-MM-DD or null) }
-        loose = []
-        loose_folders = [
-            ('plastron/Other Plastrons', 'plastron_other'),
-            ('plastron/Old References', 'plastron_old_ref'),
-            ('carapace/Other Carapaces', 'carapace_other'),
-            ('carapace/Old References', 'carapace_old_ref'),
-            ('loose_images', 'loose_legacy'),
-        ]
-        for folder_rel, source_tag in loose_folders:
-            ld = os.path.join(turtle_dir, folder_rel)
-            if not os.path.isdir(ld):
-                continue
-            for f in sorted(os.listdir(ld)):
-                if not f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                    continue
-                full = os.path.join(ld, f)
-                exif_date = _extract_exif_date(full)
-                upload_date = _extract_upload_date_from_filename(f, fallback_path=full)
-                upload_ts = _extract_upload_ts_from_filename(f, fallback_path=full)
-                labels = read_labels_for_file(ld, f)
-                entry = {
-                    'path': full,
-                    'source': source_tag,
-                    # Display-preferred date: EXIF when available, else upload
-                    'timestamp': exif_date or upload_date,
-                    'exif_date': exif_date,
-                    'upload_date': upload_date,
-                    'upload_ts': upload_ts,
-                }
-                if labels:
-                    entry['labels'] = labels
-                loose.append(entry)
-
-        # --- HISTORY DATES: unique sorted dates across additional + loose ---
-        # Prefers EXIF date (when the photo was taken) over upload date. Falls back to
-        # the folder-name date for legacy additional_images/YYYY-MM-DD/ uploads.
-        date_set = set()
-        for a in additional:
-            best = a.get('exif_date') or a.get('upload_date') or a.get('timestamp')
-            if isinstance(best, str) and len(best) >= 10:
-                date_set.add(best[:10])
-            else:
-                m = re.search(r'additional_images[/\\](\d{4}-\d{2}-\d{2})[/\\]', a.get('path', ''))
-                if m:
-                    date_set.add(m.group(1))
-        for l in loose:
-            best = l.get('exif_date') or l.get('upload_date') or l.get('timestamp')
-            if isinstance(best, str) and len(best) >= 10:
-                date_set.add(best[:10])
-        for info in (primary_info, primary_carapace_info):
-            if info:
-                best = info.get('exif_date') or info.get('upload_date') or info.get('timestamp')
-                if isinstance(best, str) and len(best) >= 10:
-                    date_set.add(best[:10])
-        history_dates = sorted(date_set, reverse=True)
-
-        # Soft-deleted images: scanned from {turtle_dir}/Deleted/ via TurtleManager.
-        deleted = []
-        try:
-            deleted = manager.list_deleted_turtle_images(turtle_id, sheet_name)
-        except Exception as e:
-            print(f"Warning: could not list deleted images for {turtle_id}: {e}")
-
-        return jsonify({
-            'primary': primary_path,
-            'primary_carapace': primary_carapace_path,
-            'primary_info': primary_info,
-            'primary_carapace_info': primary_carapace_info,
-            'additional': additional,
-            'loose': loose,
-            'history_dates': history_dates,
-            'deleted': deleted,
-        })
+        return jsonify(build_turtle_images_payload(turtle_dir, manager, turtle_id, sheet_name))
 
     @app.route('/api/turtles/images/search-labels', methods=['GET'])
     @require_admin
@@ -503,7 +234,7 @@ def register_turtle_routes(app):
                     if primary_path:
                         break
             primary_ts = (
-                _extract_upload_ts_from_filename(
+                extract_upload_ts_from_filename(
                     os.path.basename(primary_path), fallback_path=primary_path
                 )
                 if primary_path else None
@@ -517,7 +248,7 @@ def register_turtle_routes(app):
                 if os.path.isdir(car_dir):
                     try:
                         has_carapace = any(
-                            f.lower().endswith(_IMAGE_EXTS) for f in os.listdir(car_dir)
+                            f.lower().endswith(IMAGE_EXTENSIONS) for f in os.listdir(car_dir)
                         )
                     except OSError:
                         has_carapace = False
@@ -526,7 +257,7 @@ def register_turtle_routes(app):
                 else:
                     # No plastron + no carapace reference -- only now pay for a
                     # (cheap, single-turtle) scan to tell empty from has-other-photos.
-                    folder_status = 'has_images' if _dir_has_image(turtle_dir) else 'empty_folder'
+                    folder_status = 'has_images' if dir_has_image(turtle_dir) else 'empty_folder'
             results.append({
                 'turtle_id': tid,
                 'sheet_name': sheet,
@@ -655,113 +386,26 @@ def register_turtle_routes(app):
         if not turtle_id:
             return jsonify({'error': 'turtle_id required'}), 400
         files_with_types = []
-        rejections = []
         try:
-            for key in list(request.files.keys()):
-                if not key.startswith('file_'):
-                    continue
-                f = request.files[key]
-                if not f or not f.filename:
-                    continue
-                idx = key.replace('file_', '')
-                typ = normalize_additional_type(request.form.get(f'type_{idx}'))
-                lbs = parse_labels_from_form(request.form, idx)
-                if not allowed_file(f.filename):
-                    msg = 'Invalid file type. Allowed: JPEG, PNG, GIF, WEBP, HEIC.'
-                    rejections.append({
-                        'filename': f.filename,
-                        'code': 'invalid_extension',
-                        'error': msg,
-                    })
-                    log_upload_rejection(
-                        context='turtles/additional',
-                        path=None,
-                        code='invalid_extension',
-                        message=msg,
-                        filename=f.filename,
-                    )
-                    continue
-                f.seek(0, os.SEEK_END)
-                size = f.tell()
-                f.seek(0)
-                if size > MAX_FILE_SIZE:
-                    msg = 'File too large (max 8MB after optimization).'
-                    rejections.append({
-                        'filename': f.filename,
-                        'code': 'file_too_large',
-                        'error': msg,
-                    })
-                    log_upload_rejection(
-                        context='turtles/additional',
-                        path=None,
-                        code='file_too_large',
-                        message=msg,
-                        filename=f.filename,
-                    )
-                    continue
-                orig_safe = secure_filename(f.filename) or ''
-                ext = os.path.splitext(orig_safe)[1] or '.jpg'
-                temp_path = os.path.join(
+            files_with_types, rejections = collect_indexed_additional_uploads(
+                request,
+                context='turtles/additional',
+                temp_path_for_index=lambda idx, ext: os.path.join(
                     UPLOAD_FOLDER,
                     f"turtle_extra_{turtle_id}_{idx}_{int(time.time())}{ext}".replace(os.sep, '_'),
-                )
-                f.save(temp_path)
-                try:
-                    temp_path = ingest_saved_upload(
-                        temp_path,
-                        context='turtles/additional',
-                        filename=f.filename,
-                    )
-                except UploadImageError as img_err:
-                    rejections.append({
-                        'filename': f.filename,
-                        'code': img_err.code,
-                        'error': img_err.message,
-                    })
-                    if os.path.isfile(temp_path):
-                        try:
-                            os.remove(temp_path)
-                        except OSError:
-                            pass
-                    continue
-                orig_base = os.path.basename(orig_safe) if orig_safe else f'upload{ext}'
-                item = {
-                    'path': temp_path,
-                    'type': typ,
-                    'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-                    'original_filename': orig_base,
-                }
-                if lbs:
-                    item['labels'] = lbs
-                files_with_types.append(item)
+                ),
+            )
             if not files_with_types:
-                primary = rejections[0] if rejections else None
-                return jsonify({
-                    'error': primary['error'] if primary else 'No valid image files provided',
-                    'code': primary['code'] if primary else 'no_valid_files',
-                    'rejections': rejections,
-                }), 400
+                return jsonify(no_valid_files_json(rejections)), 400
             success, msg = manager_service.manager.add_additional_images_to_turtle(
                 turtle_id, files_with_types, sheet_name, primary_id=primary_id, bio_id=bio_id,
             )
-            for item in files_with_types:
-                p = item.get('path')
-                if p and os.path.isfile(p):
-                    try:
-                        os.remove(p)
-                    except OSError:
-                        pass
+            cleanup_temp_upload_paths(files_with_types)
             if not success:
                 return jsonify({'error': msg or 'Failed to add images'}), 400
-            return jsonify({'success': True, 'message': f'Added {len(files_with_types)} image(s).'})
+            return jsonify(additional_upload_success_json(files_with_types, rejections))
         except Exception as e:
-            for item in files_with_types:
-                p = item.get('path')
-                if p and os.path.isfile(p):
-                    try:
-                        os.remove(p)
-                    except OSError:
-                        pass
+            cleanup_temp_upload_paths(files_with_types)
             return jsonify({'error': str(e)}), 500
 
     @app.route('/api/turtles/replace-reference', methods=['POST'])

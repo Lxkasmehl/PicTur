@@ -8,7 +8,7 @@ import os
 import pytest
 from io import BytesIO
 
-from tests.image_fixtures import valid_jpeg_bytes
+from tests.image_fixtures import valid_jpeg_bytes, word_paste_fake_png_bytes
 
 # From fixture data: backend/tests/fixture-data/Kansas/Topeka/T42
 TURTLE_WITH_IMAGES = {
@@ -174,6 +174,43 @@ def test_post_turtle_additional_no_valid_files(client, turtle_with_images):
     assert r.status_code == 400
     data = r.json()
     assert "error" in data
+
+
+def test_post_turtle_additional_partial_batch_returns_rejections(client, turtle_with_images):
+    """Mixed batch: valid files are added and decode failures are reported in rejections[]."""
+    tid = turtle_with_images["turtle_id"]
+    loc = turtle_with_images["location"]
+    r0 = client.get(f"/api/turtles/images?turtle_id={tid}&sheet_name={loc}")
+    assert r0.status_code == 200
+    before_paths = {os.path.basename(a.get("path", "")) for a in r0.json()["additional"]}
+
+    r = client.post(
+        "/api/turtles/images/additional",
+        data={
+            "turtle_id": tid,
+            "sheet_name": loc,
+            "file_0": ("word_fake.png", BytesIO(word_paste_fake_png_bytes())),
+            "type_0": "condition",
+            "file_1": ("partial_ok.jpg", BytesIO(valid_jpeg_bytes())),
+            "type_1": "microhabitat",
+        },
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("success") is True
+    assert "Added 1 image(s)" in data.get("message", "")
+    rejections = data.get("rejections") or []
+    assert len(rejections) == 1
+    assert rejections[0]["filename"] == "word_fake.png"
+    assert rejections[0]["code"] in ("decode_failed", "invalid_image")
+    assert rejections[0]["error"]
+
+    r2 = client.get(f"/api/turtles/images?turtle_id={tid}&sheet_name={loc}")
+    assert r2.status_code == 200
+    after_paths = {os.path.basename(a.get("path", "")) for a in r2.json()["additional"]}
+    new_paths = after_paths - before_paths
+    assert len(new_paths) == 1
+    assert any("partial_ok" in p for p in new_paths)
 
 
 def test_post_turtle_additional_success(client, turtle_with_images):
