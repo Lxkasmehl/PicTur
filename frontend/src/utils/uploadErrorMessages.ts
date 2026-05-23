@@ -38,13 +38,19 @@ export function userFacingUploadError(code?: string, fallback?: string): string 
   return 'Could not use this photo. Re-save as JPEG or PNG, or take a screenshot.';
 }
 
-export function parseUploadApiErrorBody(body: unknown): ParsedUploadApiError {
+export function parseUploadApiErrorBody(
+  body: unknown,
+  endpointFallback?: string,
+): ParsedUploadApiError {
   if (!body || typeof body !== 'object') {
-    return { message: userFacingUploadError() };
+    return { message: endpointFallback ?? userFacingUploadError() };
   }
   const record = body as Record<string, unknown>;
   const code = typeof record.code === 'string' ? record.code : undefined;
   const rawError = typeof record.error === 'string' ? record.error : undefined;
+  if (!code && !rawError) {
+    return { message: endpointFallback ?? userFacingUploadError() };
+  }
   return {
     code,
     message: userFacingUploadError(code, rawError),
