@@ -72,4 +72,5 @@ def upload_rate_limit_response():
     from flask import jsonify
     return jsonify({
         'error': 'Too many uploads in a short time. Please wait a few minutes and try again.',
+        'code': 'rate_limited',
     }), 429

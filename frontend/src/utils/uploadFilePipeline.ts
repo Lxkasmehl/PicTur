@@ -1,5 +1,5 @@
 import { validateFile } from './fileValidation';
-import { prepareImageForUpload } from './prepareImageForUpload';
+import { formatPrepareUploadError, prepareImageForUpload } from './prepareImageForUpload';
 
 export interface AcceptUploadFileResult {
   isValid: boolean;
@@ -17,7 +17,6 @@ export async function acceptUploadFile(file: File): Promise<AcceptUploadFileResu
     }
     return { isValid: true, file: prepared };
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Could not prepare image for upload';
-    return { isValid: false, error: message };
+    return { isValid: false, error: formatPrepareUploadError(e) };
   }
 }

@@ -29,6 +29,7 @@ import {
 } from '@tabler/icons-react';
 import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { MAX_RAW_FILE_BYTES } from '../utils/uploadConstants';
+import { dropzoneRejectionMessage } from '../utils/uploadErrorMessages';
 import { useUser } from '../hooks/useUser';
 import { usePhotoUpload } from '../hooks/usePhotoUpload';
 import { isStaffRole } from '../services/api/auth';
@@ -398,19 +399,18 @@ export default function HomePage() {
 
   const handleReject = (rejectedFiles: FileRejection[]): void => {
     const rejection = rejectedFiles[0];
-    let message = 'File could not be accepted';
-
-    if (rejection.errors[0]?.code === 'file-too-large') {
-      message = `File is too large. Maximum from device: ${(MAX_RAW_FILE_BYTES / 1024 / 1024).toFixed(0)} MB`;
-    } else if (rejection.errors[0]?.code === 'file-invalid-type') {
-      message = 'Invalid file type. Allowed: PNG, JPG, JPEG, GIF, WEBP, HEIC';
-    }
+    const maxRawMb = Math.round(MAX_RAW_FILE_BYTES / 1024 / 1024);
+    const parts = rejection.errors.map((err) =>
+      dropzoneRejectionMessage(err.code, { maxRawMb }),
+    );
+    const message = [...new Set(parts)].join(' ');
 
     notifications.show({
       title: 'Upload Rejected',
-      message,
-      color: 'orange',
+      message: message || 'File could not be accepted',
+      color: 'red',
       icon: <IconAlertCircle size={18} />,
+      autoClose: 8000,
     });
   };
 
