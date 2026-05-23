@@ -17,6 +17,12 @@ const COMPRESSIBLE_TYPES = new Set([
 ]);
 const COMPRESSIBLE_EXT = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif']);
 
+/**
+ * Thrown when <img> decode fails and createImageBitmap is unavailable.
+ * prepareImageForUpload passes the file through for backend repair.
+ */
+const CLIENT_DECODE_UNAVAILABLE = 'client_decode_unavailable';
+
 /** Files already optimized by prepareImageForUpload (e.g. via acceptUploadFile). */
 const preparedUploadFiles = new WeakSet<File>();
 
@@ -115,9 +121,6 @@ async function loadViaImageElement(file: File): Promise<HTMLImageElement> {
 
 /** createImageBitmap often decodes PNG/JPEG variants that <img> rejects (e.g. some Word exports). */
 async function loadViaImageBitmap(file: File): Promise<HTMLImageElement> {
-  if (typeof createImageBitmap !== 'function') {
-    throw new Error('decode_failed');
-  }
   const bitmap = await createImageBitmap(file);
   try {
     const canvas = document.createElement('canvas');
@@ -146,8 +149,27 @@ async function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   try {
     return await loadViaImageElement(file);
   } catch {
+    if (typeof createImageBitmap !== 'function') {
+      throw new Error(CLIENT_DECODE_UNAVAILABLE);
+    }
     return loadViaImageBitmap(file);
   }
+}
+
+function passThroughForServerDecode(file: File): File {
+  markUploadFilePrepared(file);
+  return file;
+}
+
+function tryPassThroughOnClientDecodeFailure(e: unknown, file: File): File | null {
+  if (
+    e instanceof Error &&
+    e.message === CLIENT_DECODE_UNAVAILABLE &&
+    file.size <= MAX_UPLOAD_BYTES
+  ) {
+    return passThroughForServerDecode(file);
+  }
+  return null;
 }
 
 function canvasToJpegFile(
@@ -239,12 +261,20 @@ export async function prepareImageForUpload(file: File): Promise<File> {
         markUploadFilePrepared(file);
         return file;
       }
-    } catch {
+    } catch (e) {
+      const passthrough = tryPassThroughOnClientDecodeFailure(e, file);
+      if (passthrough) return passthrough;
       // Fall through — re-encode corrupt/small Word/email exports instead of passing them through.
     }
   }
 
-  return reencodeToJpegFile(file);
+  try {
+    return await reencodeToJpegFile(file);
+  } catch (e) {
+    const passthrough = tryPassThroughOnClientDecodeFailure(e, file);
+    if (passthrough) return passthrough;
+    throw e;
+  }
 }
 
 export async function prepareImagesForUpload(files: File[]): Promise<File[]> {
