@@ -26,13 +26,10 @@ export function userFacingUploadError(code?: string, fallback?: string): string 
   if (code && CODE_MESSAGES[code]) {
     return CODE_MESSAGES[code];
   }
+  if (fallback && CODE_MESSAGES[fallback]) {
+    return CODE_MESSAGES[fallback];
+  }
   if (fallback) {
-    if (fallback === 'decode_failed') {
-      return CODE_MESSAGES.decode_failed;
-    }
-    if (fallback === 'encode_failed') {
-      return CODE_MESSAGES.encode_failed;
-    }
     return fallback;
   }
   return 'Could not use this photo. Re-save as JPEG or PNG, or take a screenshot.';

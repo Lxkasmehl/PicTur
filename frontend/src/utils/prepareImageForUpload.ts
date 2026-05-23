@@ -235,7 +235,8 @@ async function reencodeToJpegFile(file: File): Promise<File> {
 /**
  * Resize and re-encode photos before upload so smartphone originals (often 5–15 MB)
  * fit server limits without raising the attack surface.
- * HEIC/HEIF is passed through when the browser cannot decode it (server normalizes).
+ * HEIC/HEIF is passed through when the browser cannot decode it (server normalizes),
+ * unless the file exceeds MAX_UPLOAD_BYTES (size error, not invalid type).
  */
 export async function prepareImageForUpload(file: File): Promise<File> {
   if (preparedUploadFiles.has(file)) {
@@ -251,7 +252,7 @@ export async function prepareImageForUpload(file: File): Promise<File> {
       markUploadFilePrepared(file);
       return file;
     }
-    throw new Error('invalid_extension');
+    throw new Error('file_too_large');
   }
 
   if (file.size <= UPLOAD_SKIP_COMPRESS_BELOW_BYTES) {
@@ -284,7 +285,7 @@ export async function prepareImagesForUpload(files: File[]): Promise<File[]> {
 /** Normalize thrown values from prepareImageForUpload for UI display. */
 export function formatPrepareUploadError(e: unknown): string {
   if (e instanceof Error) {
-    return userFacingUploadError(undefined, e.message);
+    return userFacingUploadError(e.message);
   }
   return userFacingUploadError();
 }
