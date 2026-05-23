@@ -107,6 +107,7 @@ export function usePhotoUpload({
           message: accepted.error || 'File could not be validated',
           color: 'red',
           icon: <IconAlertCircle size={18} />,
+          autoClose: 8000,
         });
         return;
       }

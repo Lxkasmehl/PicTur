@@ -6,6 +6,7 @@ import {
   UPLOAD_MAX_DIMENSION,
   UPLOAD_SKIP_COMPRESS_BELOW_BYTES,
 } from './uploadConstants';
+import { userFacingUploadError } from './uploadErrorMessages';
 
 const COMPRESSIBLE_TYPES = new Set([
   'image/jpeg',
@@ -96,7 +97,7 @@ async function injectExifIntoJpegBlob(blob: Blob, sourceExif: ExifDict | null): 
   }
 }
 
-function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+async function loadViaImageElement(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -110,6 +111,43 @@ function loadImageFromFile(file: File): Promise<HTMLImageElement> {
     };
     img.src = url;
   });
+}
+
+/** createImageBitmap often decodes PNG/JPEG variants that <img> rejects (e.g. some Word exports). */
+async function loadViaImageBitmap(file: File): Promise<HTMLImageElement> {
+  if (typeof createImageBitmap !== 'function') {
+    throw new Error('decode_failed');
+  }
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('decode_failed');
+    ctx.drawImage(bitmap, 0, 0);
+    const dataUrl = canvas.toDataURL('image/png');
+    return loadViaDataUrl(dataUrl);
+  } finally {
+    bitmap.close();
+  }
+}
+
+function loadViaDataUrl(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('decode_failed'));
+    img.src = dataUrl;
+  });
+}
+
+async function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  try {
+    return await loadViaImageElement(file);
+  } catch {
+    return loadViaImageBitmap(file);
+  }
 }
 
 function canvasToJpegFile(
@@ -134,50 +172,12 @@ function canvasToJpegFile(
   });
 }
 
-/**
- * Resize and re-encode photos before upload so smartphone originals (often 5–15 MB)
- * fit server limits without raising the attack surface.
- * HEIC/HEIF is passed through when the browser cannot decode it (server normalizes).
- */
-export async function prepareImageForUpload(file: File): Promise<File> {
-  if (preparedUploadFiles.has(file)) {
-    return file;
-  }
-
-  if (file.size > MAX_RAW_FILE_BYTES) {
-    throw new Error(
-      `File is too large (${(MAX_RAW_FILE_BYTES / 1024 / 1024).toFixed(0)} MB max from device).`,
-    );
-  }
-
-  if (!canDecodeInBrowser(file)) {
-    if (file.size <= MAX_UPLOAD_BYTES) {
-      markUploadFilePrepared(file);
-      return file;
-    }
-    throw new Error(
-      'This image format could not be optimized in the browser. Save as JPEG or PNG and try again.',
-    );
-  }
-
-  if (file.size <= UPLOAD_SKIP_COMPRESS_BELOW_BYTES) {
-    try {
-      const img = await loadImageFromFile(file);
-      if (Math.max(img.naturalWidth, img.naturalHeight) <= UPLOAD_MAX_DIMENSION) {
-        markUploadFilePrepared(file);
-        return file;
-      }
-    } catch {
-      markUploadFilePrepared(file);
-      return file;
-    }
-  }
-
+async function reencodeToJpegFile(file: File): Promise<File> {
   const img = await loadImageFromFile(file);
   const srcW = img.naturalWidth;
   const srcH = img.naturalHeight;
   if (!srcW || !srcH) {
-    throw new Error('Could not read image dimensions.');
+    throw new Error('decode_failed');
   }
 
   const scale = Math.min(1, UPLOAD_MAX_DIMENSION / Math.max(srcW, srcH));
@@ -189,12 +189,11 @@ export async function prepareImageForUpload(file: File): Promise<File> {
   canvas.height = dstH;
   const ctx = canvas.getContext('2d');
   if (!ctx) {
-    throw new Error('Could not prepare image for upload.');
+    throw new Error('encode_failed');
   }
   ctx.drawImage(img, 0, 0, dstW, dstH);
 
   const sourceExif = await readExifFromJpegFile(file);
-
   let out = await canvasToJpegFile(canvas, outputName(file.name), UPLOAD_JPEG_QUALITY, sourceExif);
 
   if (out.size > MAX_UPLOAD_BYTES) {
@@ -204,13 +203,58 @@ export async function prepareImageForUpload(file: File): Promise<File> {
     out = await canvasToJpegFile(canvas, outputName(file.name), 0.58, sourceExif);
   }
   if (out.size > MAX_UPLOAD_BYTES) {
-    throw new Error('Image is still too large after optimization. Try a smaller photo.');
+    throw new Error('file_too_large');
   }
 
   markUploadFilePrepared(out);
   return out;
 }
 
+/**
+ * Resize and re-encode photos before upload so smartphone originals (often 5–15 MB)
+ * fit server limits without raising the attack surface.
+ * HEIC/HEIF is passed through when the browser cannot decode it (server normalizes).
+ */
+export async function prepareImageForUpload(file: File): Promise<File> {
+  if (preparedUploadFiles.has(file)) {
+    return file;
+  }
+
+  if (file.size > MAX_RAW_FILE_BYTES) {
+    throw new Error('file_too_large');
+  }
+
+  if (!canDecodeInBrowser(file)) {
+    if (file.size <= MAX_UPLOAD_BYTES) {
+      markUploadFilePrepared(file);
+      return file;
+    }
+    throw new Error('invalid_extension');
+  }
+
+  if (file.size <= UPLOAD_SKIP_COMPRESS_BELOW_BYTES) {
+    try {
+      const img = await loadImageFromFile(file);
+      if (Math.max(img.naturalWidth, img.naturalHeight) <= UPLOAD_MAX_DIMENSION) {
+        markUploadFilePrepared(file);
+        return file;
+      }
+    } catch {
+      // Fall through — re-encode corrupt/small Word/email exports instead of passing them through.
+    }
+  }
+
+  return reencodeToJpegFile(file);
+}
+
 export async function prepareImagesForUpload(files: File[]): Promise<File[]> {
   return Promise.all(files.map((f) => prepareImageForUpload(f)));
+}
+
+/** Normalize thrown values from prepareImageForUpload for UI display. */
+export function formatPrepareUploadError(e: unknown): string {
+  if (e instanceof Error) {
+    return userFacingUploadError(undefined, e.message);
+  }
+  return userFacingUploadError();
 }

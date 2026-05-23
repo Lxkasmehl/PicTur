@@ -10,8 +10,9 @@ from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from auth import require_admin
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
-from image_utils import process_uploaded_image
+from image_utils import UploadImageError
 from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
+from upload_validation import ingest_saved_upload, log_upload_rejection, upload_error_response
 from services import manager_service
 from turtle_manager import _extract_exif_date
 from additional_image_labels import (
@@ -654,6 +655,7 @@ def register_turtle_routes(app):
         if not turtle_id:
             return jsonify({'error': 'turtle_id required'}), 400
         files_with_types = []
+        rejections = []
         try:
             for key in list(request.files.keys()):
                 if not key.startswith('file_'):
@@ -665,11 +667,37 @@ def register_turtle_routes(app):
                 typ = normalize_additional_type(request.form.get(f'type_{idx}'))
                 lbs = parse_labels_from_form(request.form, idx)
                 if not allowed_file(f.filename):
+                    msg = 'Invalid file type. Allowed: JPEG, PNG, GIF, WEBP, HEIC.'
+                    rejections.append({
+                        'filename': f.filename,
+                        'code': 'invalid_extension',
+                        'error': msg,
+                    })
+                    log_upload_rejection(
+                        context='turtles/additional',
+                        path=None,
+                        code='invalid_extension',
+                        message=msg,
+                        filename=f.filename,
+                    )
                     continue
                 f.seek(0, os.SEEK_END)
                 size = f.tell()
                 f.seek(0)
                 if size > MAX_FILE_SIZE:
+                    msg = 'File too large (max 8MB after optimization).'
+                    rejections.append({
+                        'filename': f.filename,
+                        'code': 'file_too_large',
+                        'error': msg,
+                    })
+                    log_upload_rejection(
+                        context='turtles/additional',
+                        path=None,
+                        code='file_too_large',
+                        message=msg,
+                        filename=f.filename,
+                    )
                     continue
                 orig_safe = secure_filename(f.filename) or ''
                 ext = os.path.splitext(orig_safe)[1] or '.jpg'
@@ -678,8 +706,24 @@ def register_turtle_routes(app):
                     f"turtle_extra_{turtle_id}_{idx}_{int(time.time())}{ext}".replace(os.sep, '_'),
                 )
                 f.save(temp_path)
-                # HEIC/HEIF → JPEG (no-op for other formats)
-                temp_path = process_uploaded_image(temp_path)
+                try:
+                    temp_path = ingest_saved_upload(
+                        temp_path,
+                        context='turtles/additional',
+                        filename=f.filename,
+                    )
+                except UploadImageError as img_err:
+                    rejections.append({
+                        'filename': f.filename,
+                        'code': img_err.code,
+                        'error': img_err.message,
+                    })
+                    if os.path.isfile(temp_path):
+                        try:
+                            os.remove(temp_path)
+                        except OSError:
+                            pass
+                    continue
                 orig_base = os.path.basename(orig_safe) if orig_safe else f'upload{ext}'
                 item = {
                     'path': temp_path,
@@ -691,7 +735,12 @@ def register_turtle_routes(app):
                     item['labels'] = lbs
                 files_with_types.append(item)
             if not files_with_types:
-                return jsonify({'error': 'No valid image files provided'}), 400
+                primary = rejections[0] if rejections else None
+                return jsonify({
+                    'error': primary['error'] if primary else 'No valid image files provided',
+                    'code': primary['code'] if primary else 'no_valid_files',
+                    'rejections': rejections,
+                }), 400
             success, msg = manager_service.manager.add_additional_images_to_turtle(
                 turtle_id, files_with_types, sheet_name, primary_id=primary_id, bio_id=bio_id,
             )
@@ -745,19 +794,35 @@ def register_turtle_routes(app):
             return jsonify({'error': "photo_type must be 'plastron' or 'carapace'"}), 400
         f = request.files.get('file')
         if not f or not f.filename or not allowed_file(f.filename):
-            return jsonify({'error': 'Valid image file required'}), 400
+            return jsonify({
+                'error': 'Valid image file required (JPEG, PNG, GIF, WEBP, HEIC).',
+                'code': 'invalid_extension',
+            }), 400
         f.seek(0, os.SEEK_END)
         size = f.tell()
         f.seek(0)
         if size > MAX_FILE_SIZE:
-            return jsonify({'error': f'File exceeds max size of {MAX_FILE_SIZE} bytes'}), 400
+            return jsonify({
+                'error': 'File too large (max 8MB after optimization).',
+                'code': 'file_too_large',
+            }), 400
         ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
         temp_path = os.path.join(
             UPLOAD_FOLDER,
             f"replace_{turtle_id}_{photo_type}_{int(time.time() * 1000)}{ext}".replace(os.sep, '_'),
         )
         f.save(temp_path)
-        temp_path = process_uploaded_image(temp_path)
+        try:
+            temp_path = ingest_saved_upload(
+                temp_path, context='turtles/replace-reference', filename=f.filename,
+            )
+        except UploadImageError as img_err:
+            if os.path.isfile(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+            return upload_error_response(img_err)
         try:
             success, msg = manager_service.manager.replace_turtle_reference(
                 turtle_id, temp_path, photo_type=photo_type, sheet_name=sheet_name,
@@ -808,12 +873,18 @@ def register_turtle_routes(app):
         if not f or not f.filename:
             return jsonify({'error': 'No file provided'}), 400
         if not allowed_file(f.filename):
-            return jsonify({'error': 'Invalid file type'}), 400
+            return jsonify({
+                'error': 'Invalid file type. Allowed: JPEG, PNG, GIF, WEBP, HEIC.',
+                'code': 'invalid_extension',
+            }), 400
         f.seek(0, os.SEEK_END)
         size = f.tell()
         f.seek(0)
         if size > MAX_FILE_SIZE:
-            return jsonify({'error': 'File too large'}), 400
+            return jsonify({
+                'error': 'File too large (max 8MB after optimization).',
+                'code': 'file_too_large',
+            }), 400
 
         orig_safe = secure_filename(f.filename) or ''
         ext = os.path.splitext(orig_safe)[1] or '.jpg'
@@ -823,7 +894,12 @@ def register_turtle_routes(app):
         )
         try:
             f.save(temp_path)
-            temp_path = process_uploaded_image(temp_path)
+            try:
+                temp_path = ingest_saved_upload(
+                    temp_path, context='turtles/identifier-plastron', filename=f.filename,
+                )
+            except UploadImageError as img_err:
+                return upload_error_response(img_err)
             ok, msg = manager_service.manager.set_identifier_plastron_from_path(
                 turtle_id, temp_path, sheet_name, mode, primary_id=primary_id,
             )

@@ -21,6 +21,7 @@ import {
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { getImageUrl } from '../services/api';
 import { acceptUploadFile } from '../utils/uploadFilePipeline';
+import { userFacingUploadError } from '../utils/uploadErrorMessages';
 import {
   uploadReviewPacketAdditionalImages,
   removeReviewPacketAdditionalImage,
@@ -365,9 +366,12 @@ export function AdditionalImagesSection({
     for (let i = 0; i < files.length; i++) {
       const accepted = await acceptUploadFile(files[i]);
       if (!accepted.isValid || !accepted.file) {
-        if (accepted.error) {
-          notifications.show({ title: 'Invalid file', message: accepted.error, color: 'red' });
-        }
+        notifications.show({
+          title: 'Invalid file',
+          message: accepted.error || userFacingUploadError(),
+          color: 'red',
+          autoClose: 8000,
+        });
         continue;
       }
       const prepared = accepted.file;

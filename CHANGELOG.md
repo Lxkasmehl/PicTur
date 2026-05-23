@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Upload rejection logging**: Server logs every upload rejection with context, filename, and error code (`upload_validation` + route handlers).
+- **Malformed upload tests**: `backend/tests/test_malformed_upload_images.py` covers Word/email-style fake PNGs, truncated PNGs, and corrupt JPEG metadata.
+
+### Fixed
+
+- **Silent upload failures for Word/email photos**: Browser prep no longer passes undecodable files through when optimization is skipped; uses `createImageBitmap` fallback and re-encodes to JPEG when `<img>` decode fails.
+- **Structured upload errors**: API responses include `code` (e.g. `decode_failed`, `rate_limited`, `invalid_extension`) with actionable messages; frontend maps codes to user-facing copy in notifications.
+- **Server-side image repair**: `process_uploaded_image` tolerates truncated PNG/JPEG, strips bad EXIF on save, and re-encodes problematic uploads instead of failing opaquely.
+- **Additional-image batch uploads**: Admin routes return the first rejection reason (and `rejections[]`) instead of silently skipping invalid parts.
+
 ## [2.0.9] - 2026-05-22 — Upload image optimization + server ingest limits
 
 ### Added

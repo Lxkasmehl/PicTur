@@ -5,6 +5,13 @@
 import { getToken, removeToken, TURTLE_API_BASE_URL } from './config';
 import type { TurtleSheetsData } from './sheets';
 import { prepareImageForUpload } from '../../utils/prepareImageForUpload';
+import { parseUploadApiErrorBody } from '../../utils/uploadErrorMessages';
+
+async function throwUploadHttpError(response: Response, fallback: string): Promise<never> {
+  const body = await response.json().catch(() => ({}));
+  const { message } = parseUploadApiErrorBody(body);
+  throw new Error(message || fallback);
+}
 
 export interface TurtleMatch {
   turtle_id: string;
@@ -223,11 +230,14 @@ export const uploadTurtlePhoto = async (
       removeToken();
       throw new Error('Authentication failed. Please try again.');
     }
-    const error = await response.json().catch(() => ({ error: 'Upload failed' }));
-    const message = error.error || 'Upload failed';
-    const details = error.details as string | undefined;
+    const body = await response.json().catch(() => ({}));
+    const { message, code } = parseUploadApiErrorBody(body);
+    const details = (body as { details?: string }).details;
     if (details && import.meta.env.DEV) {
       console.error('Upload error details:', details);
+    }
+    if (import.meta.env.DEV && code) {
+      console.error('Upload error code:', code);
     }
     throw new Error(message);
   }
@@ -285,8 +295,7 @@ export const uploadReviewPacketAdditionalImages = async (
     { method: 'POST', headers, body: formData },
   );
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: 'Upload failed' }));
-    throw new Error(err.error || 'Failed to add images');
+    await throwUploadHttpError(response, 'Failed to add images');
   }
   return await response.json();
 };
@@ -792,8 +801,7 @@ export const uploadTurtleReplaceReference = async (
     body: formData,
   });
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: 'Failed to replace reference' }));
-    throw new Error(err.error || 'Failed to replace reference');
+    await throwUploadHttpError(response, 'Failed to replace reference');
   }
   return await response.json();
 };
@@ -822,8 +830,7 @@ export const uploadTurtleIdentifierPlastron = async (
     body: formData,
   });
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: 'Failed to update identifier plastron' }));
-    throw new Error(err.error || 'Failed to update identifier plastron');
+    await throwUploadHttpError(response, 'Failed to update identifier plastron');
   }
   return await response.json();
 };
@@ -868,8 +875,7 @@ export const uploadTurtleAdditionalImages = async (
     body: formData,
   });
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: 'Failed to add images' }));
-    throw new Error(err.error || 'Failed to add images');
+    await throwUploadHttpError(response, 'Failed to add images');
   }
   return await response.json();
 };

@@ -14,8 +14,9 @@ from auth import require_admin
 from services import manager_service
 from services.manager_service import get_sheets_service, get_community_sheets_service
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
-from image_utils import process_uploaded_image
+from image_utils import UploadImageError
 from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
+from upload_validation import ingest_saved_upload, log_upload_rejection
 from turtle_manager import canonical_new_turtle_folder_id  # re-exported for callers/tests
 from general_locations_catalog import (
     get_sheet_default,
@@ -258,6 +259,7 @@ def register_review_routes(app):
         if manager_service.manager is None:
             return jsonify({'error': 'TurtleManager failed to initialize'}), 500
         files_with_types = []
+        rejections = []
         try:
             for key in list(request.files.keys()):
                 if not key.startswith('file_'):
@@ -269,18 +271,58 @@ def register_review_routes(app):
                 typ = normalize_additional_type(request.form.get(f'type_{idx}'))
                 lbs = parse_labels_from_form(request.form, idx)
                 if not allowed_file(f.filename):
+                    msg = 'Invalid file type. Allowed: JPEG, PNG, GIF, WEBP, HEIC.'
+                    rejections.append({
+                        'filename': f.filename,
+                        'code': 'invalid_extension',
+                        'error': msg,
+                    })
+                    log_upload_rejection(
+                        context='review/additional',
+                        path=None,
+                        code='invalid_extension',
+                        message=msg,
+                        filename=f.filename,
+                    )
                     continue
                 f.seek(0, os.SEEK_END)
                 size = f.tell()
                 f.seek(0)
                 if size > MAX_FILE_SIZE:
+                    msg = 'File too large (max 8MB after optimization).'
+                    rejections.append({
+                        'filename': f.filename,
+                        'code': 'file_too_large',
+                        'error': msg,
+                    })
+                    log_upload_rejection(
+                        context='review/additional',
+                        path=None,
+                        code='file_too_large',
+                        message=msg,
+                        filename=f.filename,
+                    )
                     continue
                 orig_safe = secure_filename(f.filename) or ''
                 ext = os.path.splitext(orig_safe)[1] or '.jpg'
                 temp_path = os.path.join(UPLOAD_FOLDER, f"review_extra_{request_id}_{idx}_{int(time.time())}{ext}")
                 f.save(temp_path)
-                # HEIC/HEIF → JPEG (no-op for other formats)
-                temp_path = process_uploaded_image(temp_path)
+                try:
+                    temp_path = ingest_saved_upload(
+                        temp_path, context='review/additional', filename=f.filename,
+                    )
+                except UploadImageError as img_err:
+                    rejections.append({
+                        'filename': f.filename,
+                        'code': img_err.code,
+                        'error': img_err.message,
+                    })
+                    if os.path.isfile(temp_path):
+                        try:
+                            os.remove(temp_path)
+                        except OSError:
+                            pass
+                    continue
                 item = {
                     'path': temp_path,
                     'type': typ,
@@ -291,7 +333,12 @@ def register_review_routes(app):
                     item['labels'] = lbs
                 files_with_types.append(item)
             if not files_with_types:
-                return jsonify({'error': 'No valid image files provided'}), 400
+                primary = rejections[0] if rejections else None
+                return jsonify({
+                    'error': primary['error'] if primary else 'No valid image files provided',
+                    'code': primary['code'] if primary else 'no_valid_files',
+                    'rejections': rejections,
+                }), 400
             success, msg = manager_service.manager.add_additional_images_to_packet(request_id, files_with_types)
             for item in files_with_types:
                 p = item.get('path')
