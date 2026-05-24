@@ -66,3 +66,13 @@ def test_resolve_general_location_from_sheet_and_value(isolated_catalog):
 
     with pytest.raises(ValueError):
         glc.resolve_general_location_from_sheet_and_value('Kansas', 'Not A Real Location')
+
+
+def test_catalog_file_lives_in_data_volume():
+    """The catalog must persist in the ``data/`` volume, not the code tree, so
+    General Locations an admin adds survive redeploys (the code tree is rebuilt and
+    git-reset on deploy). Guards against regressing the path back next to the module.
+    """
+    import os
+
+    assert os.path.basename(os.path.dirname(glc._CATALOG_FILE)) == 'data'
