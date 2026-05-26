@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.11] - 2026-05-23 — General Location persistence + folder-depth guardrail
+
+### Fixed
+
+- **General Locations persist across redeploys**: the catalog (`general_locations.json`) now lives in the persisted `data/` volume instead of the code tree, which was excluded from the backend image (`.dockerignore` `*.json`) and reset by `git reset --hard` on every deploy. General Locations an admin adds through the site (new states/sites) no longer disappear on the next deploy.
+
+### Changed
+
+- **Turtle folders are capped at `State/Location/<turtle>`**: uploads, ingest, and relocations can no longer create deeper `State/Location/Sub-site/<turtle>` (4-level) folders — a too-deep location is clamped to `State/Location` with a logged warning. Existing deeper folders are left untouched and remain matchable and findable.
+
 ## [2.0.10] - 2026-05-23 — Structured upload errors + malformed image repair
 
 ### Added

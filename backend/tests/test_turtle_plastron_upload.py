@@ -33,6 +33,32 @@ def test_resolve_creates_folder_with_sheet(mgr):
     assert os.path.isdir(os.path.join(d, "loose_images"))
 
 
+def test_resolve_sheet_upload_clamps_deep_location(mgr):
+    """A 3-segment sub-site location must NOT create a 4-level turtle folder."""
+    d = mgr.resolve_turtle_dir_for_sheet_upload("TNEW", "NebraskaCPBS/CPBS/East Geo 2")
+    expected = os.path.join(mgr.base_dir, "NebraskaCPBS", "CPBS", "TNEW")
+    assert os.path.normpath(d) == os.path.normpath(expected)
+    assert os.path.isdir(os.path.join(d, "ref_data"))
+    # The 4-level path must never be created.
+    assert not os.path.isdir(
+        os.path.join(mgr.base_dir, "NebraskaCPBS", "CPBS", "East Geo 2", "TNEW")
+    )
+
+
+def test_resolve_or_create_canonical_clamps_deep_location(mgr):
+    """Canonical new-turtle creation also stays at State/Location/<bio>_<primary>."""
+    turtle_dir, created, reason = mgr.resolve_or_create_canonical_turtle_dir(
+        "F500", "NebraskaCPBS/CPBS/East Geo 2", primary_id="T1771234500", bio_id="F500"
+    )
+    assert created is True and reason is None
+    expected = os.path.join(mgr.base_dir, "NebraskaCPBS", "CPBS", "F500_T1771234500")
+    assert os.path.normpath(turtle_dir) == os.path.normpath(expected)
+    assert os.path.isdir(os.path.join(turtle_dir, "plastron"))
+    assert not os.path.isdir(
+        os.path.join(mgr.base_dir, "NebraskaCPBS", "CPBS", "East Geo 2", "F500_T1771234500")
+    )
+
+
 def test_set_identifier_first_plastron(mgr, tmp_path):
     src = tmp_path / "in.jpg"
     src.write_bytes(b"\xff\xd8\xff fakejpeg")
