@@ -8,13 +8,7 @@ import os
 import pytest
 from io import BytesIO
 
-
-def _make_dummy_image(path, size=100):
-    """Write a minimal binary file that can be sent as image (e.g. JPEG)."""
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "wb") as f:
-        f.write(b"\xff\xd8\xff" + b"\x00" * (size - 3))
-    return path
+from tests.image_fixtures import write_valid_jpeg
 
 
 # Request ID from fixture data (backend/tests/fixture-data/Review_Queue/test_req_001)
@@ -99,7 +93,7 @@ def test_add_additional_images_success(client, review_packet_dir, tmp_path):
     """POST additional-images with file_0 and type_0 adds image to packet."""
     request_id, _ = review_packet_dir
     img_path = str(tmp_path / "micro.jpg")
-    _make_dummy_image(img_path)
+    write_valid_jpeg(img_path)
     with open(img_path, "rb") as f:
         file_data = f.read()
     r = client.post(
@@ -127,7 +121,7 @@ def test_add_additional_images_carapace_with_labels(client, review_packet_dir, t
     """POST with type carapace and labels_0; GET packet lists normalized labels."""
     request_id, _ = review_packet_dir
     img_path = str(tmp_path / "cap_labeled.jpg")
-    _make_dummy_image(img_path)
+    write_valid_jpeg(img_path)
     with open(img_path, "rb") as f:
         file_data = f.read()
     r = client.post(
@@ -156,7 +150,7 @@ def test_add_additional_images_right_side_type(client, review_packet_dir, tmp_pa
     """POST with new category (right-side) is accepted and persisted in packet manifest output."""
     request_id, _ = review_packet_dir
     img_path = str(tmp_path / "right_side.jpg")
-    _make_dummy_image(img_path)
+    write_valid_jpeg(img_path)
     with open(img_path, "rb") as f:
         file_data = f.read()
     r = client.post(
@@ -194,7 +188,7 @@ def test_remove_additional_image_success(client, review_packet_dir, tmp_path):
     """Add one image then DELETE by filename; packet then has no additional images."""
     request_id, _ = review_packet_dir
     img_path = str(tmp_path / "cond.jpg")
-    _make_dummy_image(img_path)
+    write_valid_jpeg(img_path)
     with open(img_path, "rb") as f:
         data = f.read()
     r = client.post(
@@ -226,8 +220,8 @@ def test_add_two_images_then_remove_both(client, review_packet_dir, tmp_path):
     request_id, _ = review_packet_dir
     micro_path = str(tmp_path / "micro.jpg")
     cond_path = str(tmp_path / "cond.jpg")
-    _make_dummy_image(micro_path)
-    _make_dummy_image(cond_path)
+    write_valid_jpeg(micro_path)
+    write_valid_jpeg(cond_path)
     with open(micro_path, "rb") as f:
         micro_data = f.read()
     with open(cond_path, "rb") as f:
@@ -288,7 +282,7 @@ def test_z_approve_merges_packet_additional_into_turtle(client, review_packet_di
     request_id, _ = review_packet_dir
     # Add one additional image to the packet
     img_path = str(tmp_path / "merge_test.jpg")
-    _make_dummy_image(img_path)
+    write_valid_jpeg(img_path)
     with open(img_path, "rb") as f:
         img_data = f.read()
     r = client.post(

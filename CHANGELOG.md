@@ -7,8 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.11] - 2026-05-23 — General Location persistence + folder-depth guardrail
+
+### Fixed
+
+- **General Locations persist across redeploys**: the catalog (`general_locations.json`) now lives in the persisted `data/` volume instead of the code tree, which was excluded from the backend image (`.dockerignore` `*.json`) and reset by `git reset --hard` on every deploy. General Locations an admin adds through the site (new states/sites) no longer disappear on the next deploy.
+
 ### Changed
 
+- **Turtle folders are capped at `State/Location/<turtle>`**: uploads, ingest, and relocations can no longer create deeper `State/Location/Sub-site/<turtle>` (4-level) folders — a too-deep location is clamped to `State/Location` with a logged warning. Existing deeper folders are left untouched and remain matchable and findable.
+
+## [2.0.10] - 2026-05-23 — Structured upload errors + malformed image repair
+
+### Added
+
+- **Upload rejection logging**: Server logs every upload rejection with context, filename, and error code (`upload_validation` + route handlers).
+- **Malformed upload tests**: `backend/tests/test_malformed_upload_images.py` covers Word/email-style fake PNGs, truncated PNGs, and corrupt JPEG metadata.
+
+### Fixed
+
+- **Silent upload failures for Word/email photos**: Browser prep no longer passes undecodable files through when optimization is skipped; uses `createImageBitmap` fallback and re-encodes to JPEG when `<img>` decode fails.
+- **Structured upload errors**: API responses include `code` (e.g. `decode_failed`, `rate_limited`, `invalid_extension`) with actionable messages; frontend maps codes to user-facing copy in notifications.
+- **Server-side image repair**: `process_uploaded_image` tolerates truncated PNG/JPEG, strips bad EXIF on save, and re-encodes problematic uploads instead of failing opaquely.
+- **Additional-image batch uploads**: Admin routes return the first rejection reason (and `rejections[]`) instead of silently skipping invalid parts.
+- **Oversized undecodable HEIC uploads**: Client reports a clear file-size error when HEIC cannot be decoded and exceeds the limit, instead of a generic decode failure.
+- **Review API JSON import**: Restored missing `json` import that broke review endpoints after the upload-route refactor.
+- **createImageBitmap unavailable**: When the browser lacks `createImageBitmap`, the original file is sent to the server for repair instead of failing client-side.
+- **Ingest I/O vs decode errors**: Server disk/read failures during ingest are no longer misreported as client-side `decode_failed` errors.
+
+## [2.0.9] - 2026-05-22 — Upload image optimization + server ingest limits
+
+### Added
+
+- **Upload image optimization**: Photos are resized/compressed in the browser before upload (max 2048 px edge, JPEG ~82%) so smartphone originals and microhabitat shots no longer hit size limits. Server enforces an 8 MB per-file cap, ~96 MB multipart body cap (up to 12 optimized files plus form overhead), ingest downscaling for bypassed clients, and per-IP rate limits (community vs admin) on all multipart image endpoints.
+
+### Changed
+
+- **Upload UX copy**: Homepage dropzone accepts up to 25 MB from the device and explains that photos are optimized automatically.
+
+### Fixed
+
+- **Double JPEG encode on upload**: API upload helpers no longer recompress files already optimized at selection time (`acceptUploadFile`), avoiding extra quality loss and duplicate client work on large turtle photos.
+- **Upload rate-limit client IP**: Per-IP throttles use `remote_addr` by default; with `TRUSTED_PROXY_COUNT` set, `ProxyFix` and the limiter take the proxy-appended `X-Forwarded-For` hop (not the spoofable leftmost value).
+- **Client upload EXIF dates**: Browser resize/compress re-encode now copies EXIF from the original JPEG (including `DateTimeOriginal`) into the optimized file so turtle history/timeline ordering no longer falls back to upload time for compressed photos.
+
+## [2.0.8] - 2026-05-20 — Admin side-by-side match compare + Turtle Match / Review Queue UX
+
+### Added
+
+- **Admin match photo comparison (`TurtleImageComparePair`)**: shared upload-vs-match panel for Turtle Match and Review Queue. On narrow viewports, portrait shells render side-by-side; landscape shells stack with a short hint to rotate the device for a side-by-side view. Supporting layout helpers live in `SideBySideCompare` / `sideBySideCompareConstants` (constants split out for React Fast Refresh).
+
+### Changed
+
+- **Turtle Match review flow**: match candidates stay in a compact list while browsing; selecting one opens the comparison panel (upload vs. that match) plus detail/form below, with smooth scroll to the compare section. Removed the sticky top compare card that consumed too much space on phones.
+- **Review Queue match flow**: same browse-then-compare pattern as Turtle Match — uploaded photo when nothing is selected, side-by-side compare only after picking a candidate, list remains available for switching matches.
 - **View Old Turtle Photos default filters**: the date/sort dropdown now opens on "All photos — newest upload first" instead of the first history date; the category dropdown continues to default to "All categories".
 - **Admin Turtle Match navigation**: Removed the header "Back" button next to the page title when a match is selected. The match grid shows a single **Back to upload** control below the header; the detail view only shows **Back to matches**, so reviewers are less likely to leave the flow for the homepage by mistake.
 - **Admin Turtle Match structure**: Refactored the ~1400-line `AdminTurtleMatchPage` into a thin page wrapper, `useAdminTurtleMatch` (state and API handlers), and focused components under `frontend/src/pages/AdminTurtleMatch/` (`MatchGridView`, `MatchDetailView`, `MatchCandidateCard`, `CreateNewTurtleModal`, etc.). Behavior (cross-check, community matches, reference replacement, new-turtle modal) is unchanged.
@@ -479,7 +531,12 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.5...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.10...HEAD
+[2.0.10]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.9...v2.0.10
+[2.0.9]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.8...v2.0.9
+[2.0.8]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.7...v2.0.8
+[2.0.7]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.6...v2.0.7
+[2.0.6]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.5...v2.0.6
 [2.0.5]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.4...v2.0.5
 [2.0.4]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.2...v2.0.3

@@ -28,7 +28,8 @@ import {
   IconStarFilled,
 } from '@tabler/icons-react';
 import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
-import { validateFile } from '../utils/fileValidation';
+import { MAX_RAW_FILE_BYTES } from '../utils/uploadConstants';
+import { dropzoneRejectionMessage } from '../utils/uploadErrorMessages';
 import { useUser } from '../hooks/useUser';
 import { usePhotoUpload } from '../hooks/usePhotoUpload';
 import { isStaffRole } from '../services/api/auth';
@@ -392,39 +393,24 @@ export default function HomePage() {
 
   const handleDropWithValidation = (acceptedFiles: FileWithPath[]): void => {
     if (acceptedFiles.length > 0) {
-      const file = acceptedFiles[0];
-
-      // Validation
-      const validation = validateFile(file);
-      if (!validation.isValid) {
-        notifications.show({
-          title: 'Invalid File',
-          message: validation.error || 'File could not be validated',
-          color: 'red',
-          icon: <IconAlertCircle size={18} />,
-        });
-        return;
-      }
-
-      handleDrop(acceptedFiles);
+      void handleDrop(acceptedFiles);
     }
   };
 
   const handleReject = (rejectedFiles: FileRejection[]): void => {
     const rejection = rejectedFiles[0];
-    let message = 'File could not be accepted';
-
-    if (rejection.errors[0]?.code === 'file-too-large') {
-      message = 'File is too large. Maximum: 5MB';
-    } else if (rejection.errors[0]?.code === 'file-invalid-type') {
-      message = 'Invalid file type. Allowed: PNG, JPG, JPEG, GIF, WEBP, HEIC';
-    }
+    const maxRawMb = Math.round(MAX_RAW_FILE_BYTES / 1024 / 1024);
+    const parts = rejection.errors.map((err) =>
+      dropzoneRejectionMessage(err.code, { maxRawMb }),
+    );
+    const message = [...new Set(parts)].join(' ');
 
     notifications.show({
       title: 'Upload Rejected',
-      message,
-      color: 'orange',
+      message: message || 'File could not be accepted',
+      color: 'red',
       icon: <IconAlertCircle size={18} />,
+      autoClose: 8000,
     });
   };
 
@@ -618,14 +604,14 @@ export default function HomePage() {
                 Upload Photo
               </Button>
               <Text size='sm' c='dimmed' ta='center' mt='xs'>
-                Supported formats: PNG, JPG, JPEG, GIF, WEBP, HEIC (max. 5MB)
+                Photos are optimized automatically (up to 25 MB from your device)
               </Text>
             </Stack>
           ) : (
             <Dropzone
               onDrop={handleDropWithValidation}
               onReject={handleReject}
-              maxSize={5 * 1024 * 1024} // 5MB
+              maxSize={MAX_RAW_FILE_BYTES}
               accept={{
                 'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.heif'],
               }}
@@ -660,7 +646,7 @@ export default function HomePage() {
                     ta='center'
                     style={{ display: 'block' }}
                   >
-                    Supported formats: PNG, JPG, JPEG, GIF, WEBP, HEIC (max. 5MB)
+                    Photos are optimized automatically (up to 25 MB from your device)
                   </Text>
                 </div>
               </Group>

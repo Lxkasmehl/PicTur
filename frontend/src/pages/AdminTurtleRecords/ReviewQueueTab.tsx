@@ -18,10 +18,10 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   IconAlertCircle,
-  IconArrowLeft,
   IconCheck,
   IconList,
   IconMapPin,
@@ -36,8 +36,11 @@ import { MapDisplay } from '../../components/MapDisplay';
 import { DeleteQueueItemModal } from './DeleteQueueItemModal';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
 import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
+import { TurtleImageComparePair } from '../../components/TurtleImageComparePair';
 
 export function ReviewQueueTab() {
+  const compareSectionRef = useRef<HTMLDivElement>(null);
+  const isMobile = useMediaQuery('(max-width: 576px)');
   const ctx = useAdminTurtleRecordsContext();
   const [selectedCandidateTurtleImages, setSelectedCandidateTurtleImages] = useState<TurtleImagesResponse | null>(null);
   const [crossCheckResults, setCrossCheckResults] = useState<Array<{ turtle_id: string; location: string; confidence: number; score: number; image_path: string }> | null>(null);
@@ -173,6 +176,16 @@ export function ReviewQueueTab() {
       .catch(() => setSelectedCandidateTurtleImages(null));
   }, [selectedCandidate, selectedItem?.request_id, fullSheetName]);
 
+  const isCarapacePrimaryReview = selectedItem?.photo_type === 'carapace';
+
+  const handleCandidateClick = (turtleId: string) => {
+    if (!selectedItem) return;
+    onItemSelect(selectedItem, turtleId);
+    window.requestAnimationFrame(() => {
+      compareSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   if (queueLoading) {
     return (
       <Center py='xl'>
@@ -238,7 +251,7 @@ export function ReviewQueueTab() {
             </Button>
           </Group>
 
-          {loadingTurtleData && (
+          {loadingTurtleData && selectedCandidate && (
             <div
               style={{
                 position: 'absolute',
@@ -262,27 +275,6 @@ export function ReviewQueueTab() {
               </Stack>
             </div>
           )}
-
-          {/* Uploaded photo — full width */}
-          <Paper shadow='sm' p='md' radius='md' withBorder>
-            <Stack gap='sm'>
-              <Text fw={500} size='lg'>
-                Uploaded Photo
-              </Text>
-              {selectedItem.uploaded_image && (
-                <Image
-                  src={getImageUrl(selectedItem.uploaded_image)}
-                  alt='Uploaded photo'
-                  radius='md'
-                  style={{
-                    maxHeight: 'min(500px, 60vh)',
-                    objectFit: 'contain',
-                    width: '100%',
-                  }}
-                />
-              )}
-            </Stack>
-          </Paper>
 
           {/* Matching control: proceed / cross-check / delete (unclassified) or status (already matched) */}
           {selectedItem.photo_type === 'unclassified' ? (
@@ -432,12 +424,26 @@ export function ReviewQueueTab() {
             </Paper>
           )}
 
-          {/* Matches — side-by-side when cross-check results exist.
-               Hidden once the admin picks a candidate; the comparison Paper
-               below replaces this view, mirroring AdminTurtleMatchPage's
-               drill-in pattern. The Back button on that panel restores the
-               grid by clearing selectedCandidate via onItemSelect. */}
-          {!selectedCandidate && (
+          {!selectedCandidate && selectedItem.uploaded_image && (
+            <Paper shadow='sm' p='md' radius='md' withBorder>
+              <Stack gap='sm'>
+                <Text fw={500} size='lg'>
+                  Uploaded Photo
+                </Text>
+                <Image
+                  src={getImageUrl(selectedItem.uploaded_image)}
+                  alt='Uploaded photo'
+                  radius='md'
+                  style={{
+                    maxHeight: 'min(500px, 60vh)',
+                    objectFit: 'contain',
+                    width: '100%',
+                  }}
+                />
+              </Stack>
+            </Paper>
+          )}
+
           <Paper shadow='sm' p='md' radius='md' withBorder>
             <Grid gutter='lg'>
               <Grid.Col span={crossCheckResults && crossCheckResults.length > 0 ? { base: 12, md: 6 } : 12}>
@@ -451,7 +457,7 @@ export function ReviewQueueTab() {
                 </Group>
 
                 <Text size='sm' c='dimmed' mb='md'>
-                  Select a match to view details
+                  Select a match to compare with your upload and view details.
                 </Text>
 
                 {selectedItem.match_search_pending === true ? (
@@ -486,97 +492,73 @@ export function ReviewQueueTab() {
                     </Text>
                   </Stack>
                 ) : (
-                  <SimpleGrid
-                    cols={crossCheckResults && crossCheckResults.length > 0 ? { base: 1, xs: 2 } : { base: 1, xs: 2, md: 3, lg: 5 }}
-                    spacing='md'
-                  >
-                    {selectedItem.candidates.map((candidate) => (
-                      <Card
-                        key={candidate.turtle_id}
-                        shadow='sm'
-                        padding='sm'
-                        radius='md'
-                        withBorder
-                        style={{
-                          cursor: 'pointer',
-                          border:
-                            selectedCandidate === candidate.turtle_id
-                              ? '2px solid #228be6'
-                              : '1px solid #dee2e6',
-                          backgroundColor:
-                            selectedCandidate === candidate.turtle_id
-                              ? '#e7f5ff'
-                              : 'white',
-                          transition: 'transform 0.1s, box-shadow 0.1s',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = 'translateY(-2px)';
-                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = '';
-                          e.currentTarget.style.boxShadow = '';
-                        }}
-                        onClick={() => onItemSelect(selectedItem, candidate.turtle_id)}
-                      >
-                        {candidate.image_path ? (
-                          <Image
-                            src={getImageUrl(candidate.image_path)}
-                            alt={`Match ${candidate.rank}`}
-                            radius='md'
-                            style={{
-                              aspectRatio: '1',
-                              objectFit: 'cover',
-                              width: '100%',
-                            }}
-                            mb='sm'
-                          />
-                        ) : (
-                          <Center
-                            style={{
-                              aspectRatio: '1',
-                              backgroundColor: '#f8f9fa',
-                              borderRadius: 'var(--mantine-radius-md)',
-                            }}
-                            mb='sm'
-                          >
-                            <IconPhoto size={48} stroke={1.5} style={{ opacity: 0.3 }} />
-                          </Center>
-                        )}
-
-                        <Group justify='space-between' mb={4}>
-                          <Badge color='blue' size='sm' variant='filled'>
-                            #{candidate.rank}
-                          </Badge>
-                          <Badge color='gray' size='sm' variant='light'>
-                            {candidate.confidence}%
-                          </Badge>
-                        </Group>
-                        <Text
-                          fw={500}
-                          size='sm'
-                          truncate
-                          title={
-                            candidateNames[candidate.turtle_id] || candidate.turtle_id
-                          }
+                  <Stack gap='xs'>
+                    {selectedItem.candidates.map((candidate) => {
+                      const isActive = selectedCandidate === candidate.turtle_id;
+                      return (
+                        <Card
+                          key={candidate.turtle_id}
+                          shadow='sm'
+                          padding='sm'
+                          radius='md'
+                          withBorder
+                          style={{
+                            cursor: 'pointer',
+                            border: isActive ? '2px solid #228be6' : '1px solid #dee2e6',
+                            backgroundColor: isActive ? '#e7f5ff' : undefined,
+                          }}
+                          onClick={() => handleCandidateClick(candidate.turtle_id)}
                         >
-                          {candidateNames[candidate.turtle_id] || candidate.turtle_id}
-                        </Text>
-                        <Text size='xs' c='dimmed' truncate>
-                          ID:{' '}
-                          {candidateOriginalIds[candidate.turtle_id] ??
-                            candidate.turtle_id}
-                        </Text>
-                        {selectedCandidate === candidate.turtle_id && (
-                          <IconCheck
-                            size={18}
-                            color='#228be6'
-                            style={{ alignSelf: 'center', marginTop: 4 }}
-                          />
-                        )}
-                      </Card>
-                    ))}
-                  </SimpleGrid>
+                          <Group wrap='nowrap' align='flex-start' gap='sm'>
+                            {candidate.image_path ? (
+                              <Image
+                                src={getImageUrl(candidate.image_path)}
+                                alt={`Match ${candidate.rank}`}
+                                radius='md'
+                                w={isMobile ? 72 : 96}
+                                h={isMobile ? 72 : 96}
+                                fit='cover'
+                                style={{ flexShrink: 0 }}
+                              />
+                            ) : (
+                              <Center
+                                w={isMobile ? 72 : 96}
+                                h={isMobile ? 72 : 96}
+                                style={{
+                                  flexShrink: 0,
+                                  backgroundColor: '#f8f9fa',
+                                  borderRadius: 'var(--mantine-radius-md)',
+                                }}
+                              >
+                                <IconPhoto size={28} stroke={1.5} style={{ opacity: 0.3 }} />
+                              </Center>
+                            )}
+                            <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
+                              <Group justify='space-between' wrap='nowrap' gap='xs'>
+                                <Badge color='blue' size='sm' variant='filled'>
+                                  #{candidate.rank}
+                                </Badge>
+                                <Badge color='gray' size='sm' variant='light'>
+                                  {candidate.confidence}%
+                                </Badge>
+                              </Group>
+                              <Text fw={500} size='sm' truncate>
+                                {candidateNames[candidate.turtle_id] || candidate.turtle_id}
+                              </Text>
+                              <Text size='xs' c='dimmed' truncate>
+                                ID:{' '}
+                                {candidateOriginalIds[candidate.turtle_id] ??
+                                  candidate.turtle_id}
+                              </Text>
+                            </Stack>
+                            {isActive && (
+                              <IconCheck size={18} color='#228be6' style={{ flexShrink: 0 }} />
+                            )}
+                          </Group>
+                        </Card>
+                      );
+                    })}
+                  </Stack>
                 )}
               </Grid.Col>
 
@@ -661,22 +643,15 @@ export function ReviewQueueTab() {
               )}
             </Grid>
           </Paper>
-          )}
 
           {selectedCandidate && (() => {
-            // Mirror the side-by-side compare panel from AdminTurtleMatchPage:
-            // when an admin picks a candidate, hide the matches grid and show
-            // uploaded primary vs match primary plus (when both exist)
-            // uploaded cross vs match cross. Back button clears
-            // selectedCandidate to restore the grid.
-            const isCarapacePrimary = selectedItem.photo_type === 'carapace';
-            const primaryLabel = isCarapacePrimary ? 'Carapace' : 'Plastron';
-            const crossLabel = isCarapacePrimary ? 'Plastron' : 'Carapace';
-            const crossType = isCarapacePrimary ? 'plastron' : 'carapace';
-            const matchPrimary = isCarapacePrimary
+            const primaryLabel = isCarapacePrimaryReview ? 'Carapace' : 'Plastron';
+            const crossLabel = isCarapacePrimaryReview ? 'Plastron' : 'Carapace';
+            const crossType = isCarapacePrimaryReview ? 'plastron' : 'carapace';
+            const matchPrimary = isCarapacePrimaryReview
               ? selectedCandidateTurtleImages?.primary_carapace_info
               : selectedCandidateTurtleImages?.primary_info;
-            const matchCross = isCarapacePrimary
+            const matchCross = isCarapacePrimaryReview
               ? selectedCandidateTurtleImages?.primary_info
               : selectedCandidateTurtleImages?.primary_carapace_info;
             const uploadedCross = selectedItem.additional_images?.find(
@@ -685,13 +660,15 @@ export function ReviewQueueTab() {
             const rank =
               selectedItem.candidates.findIndex((c) => c.turtle_id === selectedCandidate) + 1;
             const candidateName = candidateNames[selectedCandidate] || selectedCandidate;
+            const fallbackMatchPath = selectedItem.candidates.find(
+              (c) => c.turtle_id === selectedCandidate,
+            )?.image_path;
             return (
-              <Paper shadow='sm' p='md' radius='md' withBorder>
+              <Paper ref={compareSectionRef} shadow='sm' p='md' radius='md' withBorder>
                 <Stack gap='sm'>
                   <Group justify='space-between' wrap='wrap' gap='xs'>
                     <Button
                       variant='subtle'
-                      leftSection={<IconArrowLeft size={16} />}
                       size='sm'
                       onClick={() => onItemSelect(selectedItem)}
                     >
@@ -707,93 +684,48 @@ export function ReviewQueueTab() {
                   <Text fw={600} size='md'>
                     Compare with: {candidateName}
                   </Text>
-                  <Grid gutter='md'>
-                    <Grid.Col span={{ base: 12, sm: 6 }}>
-                      <Text size='sm' c='dimmed' mb={4}>
-                        Uploaded {primaryLabel}
+                  <TurtleImageComparePair
+                    leftLabel={`Uploaded ${primaryLabel}`}
+                    leftSrc={
+                      selectedItem.uploaded_image
+                        ? getImageUrl(selectedItem.uploaded_image)
+                        : ''
+                    }
+                    rightLabel={`Match ${primaryLabel}: ${selectedCandidate}`}
+                    rightSrc={
+                      matchPrimary?.path
+                        ? getImageUrl(matchPrimary.path, matchPrimary.upload_ts ?? null)
+                        : fallbackMatchPath
+                          ? getImageUrl(fallbackMatchPath)
+                          : null
+                    }
+                    rightPlaceholder={
+                      <Text size='xs' c='dimmed' mt='sm'>
+                        No {primaryLabel.toLowerCase()} reference on file for this turtle.
                       </Text>
-                      {selectedItem.uploaded_image ? (
-                        <Image
-                          src={getImageUrl(selectedItem.uploaded_image)}
-                          alt={`Uploaded ${primaryLabel.toLowerCase()}`}
-                          radius='md'
-                          style={{
-                            maxHeight: 'min(400px, 50vh)',
-                            objectFit: 'contain',
-                            width: '100%',
-                          }}
-                        />
-                      ) : (
-                        <Text size='xs' c='dimmed' mt='sm'>
-                          No uploaded {primaryLabel.toLowerCase()} on this packet.
-                        </Text>
-                      )}
-                    </Grid.Col>
-                    <Grid.Col span={{ base: 12, sm: 6 }}>
-                      <Text size='sm' c='dimmed' mb={4}>
-                        Match {primaryLabel}: {selectedCandidate}
-                      </Text>
-                      {matchPrimary?.path ? (
-                        <Image
-                          src={getImageUrl(matchPrimary.path, matchPrimary.upload_ts ?? null)}
-                          alt={`Match ${primaryLabel.toLowerCase()} ${selectedCandidate}`}
-                          radius='md'
-                          style={{
-                            maxHeight: 'min(400px, 50vh)',
-                            objectFit: 'contain',
-                            width: '100%',
-                          }}
-                        />
-                      ) : (
-                        <Text size='xs' c='dimmed' mt='sm'>
-                          No {primaryLabel.toLowerCase()} reference on file for this turtle.
-                        </Text>
-                      )}
-                    </Grid.Col>
-                  </Grid>
+                    }
+                  />
                   {uploadedCross && (
                     <>
                       <Divider variant='dashed' />
-                      <Grid gutter='md'>
-                        <Grid.Col span={{ base: 12, sm: 6 }}>
-                          <Text size='sm' c='dimmed' mb={4}>
-                            Uploaded {crossLabel}
+                      <TurtleImageComparePair
+                        leftLabel={`Uploaded ${crossLabel}`}
+                        leftSrc={getImageUrl(uploadedCross.image_path)}
+                        rightLabel={`Match ${crossLabel}: ${selectedCandidate}`}
+                        rightSrc={
+                          matchCross?.path
+                            ? getImageUrl(matchCross.path, {
+                                version: matchCross.upload_ts ?? null,
+                                maxDim: 560,
+                              })
+                            : null
+                        }
+                        rightPlaceholder={
+                          <Text size='xs' c='dimmed' mt='sm'>
+                            No {crossLabel.toLowerCase()} reference on file for this turtle.
                           </Text>
-                          <Image
-                            src={getImageUrl(uploadedCross.image_path)}
-                            alt={`Uploaded ${crossLabel.toLowerCase()}`}
-                            radius='md'
-                            style={{
-                              maxHeight: 'min(400px, 50vh)',
-                              objectFit: 'contain',
-                              width: '100%',
-                            }}
-                          />
-                        </Grid.Col>
-                        <Grid.Col span={{ base: 12, sm: 6 }}>
-                          <Text size='sm' c='dimmed' mb={4}>
-                            Match {crossLabel}: {selectedCandidate}
-                          </Text>
-                          {matchCross?.path ? (
-                            <Image
-                              src={getImageUrl(matchCross.path, { version: matchCross.upload_ts ?? null, maxDim: 560 })}
-                              alt={`Match ${crossLabel.toLowerCase()} ${selectedCandidate}`}
-                              radius='md'
-                              loading='lazy'
-                              decoding='async'
-                              style={{
-                                maxHeight: 'min(400px, 50vh)',
-                                objectFit: 'contain',
-                                width: '100%',
-                              }}
-                            />
-                          ) : (
-                            <Text size='xs' c='dimmed' mt='sm'>
-                              No {crossLabel.toLowerCase()} reference on file for this turtle.
-                            </Text>
-                          )}
-                        </Grid.Col>
-                      </Grid>
+                        }
+                      />
                     </>
                   )}
                 </Stack>

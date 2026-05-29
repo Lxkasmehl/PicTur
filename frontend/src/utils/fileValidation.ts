@@ -1,9 +1,11 @@
 /**
  * File validation for photo uploads (size, type).
- * Used before sending files to the real backend API.
+ * Used after client-side optimization and before sending to the API.
  */
 
-const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+import { MAX_UPLOAD_BYTES } from './uploadConstants';
+
+const MAX_SIZE = MAX_UPLOAD_BYTES;
 const VALID_TYPES = [
   'image/jpeg',
   'image/jpg',

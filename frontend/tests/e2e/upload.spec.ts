@@ -109,19 +109,25 @@ test.describe('Photo Upload', () => {
     const rightSideButton = additionalSection.locator('label:has-text("Right side")').first();
     await expect(rightSideButton).toBeVisible({ timeout: 5000 });
 
-    const dataTransfer = await page.evaluateHandle(() => {
-      const dt = new DataTransfer();
-      const file = new File([new Uint8Array([255, 216, 255, 224, 0, 16])], 'dnd-right-side.jpg', {
-        type: 'image/jpeg',
-      });
-      dt.items.add(file);
-      return dt;
-    });
+    const dndFileName = 'dnd-right-side.png';
+    const dataTransfer = await page.evaluateHandle(
+      ({ buffer, name, mimeType }) => {
+        const dt = new DataTransfer();
+        const file = new File([new Uint8Array(buffer)], name, { type: mimeType });
+        dt.items.add(file);
+        return dt;
+      },
+      {
+        buffer: [...getTestImageBuffer()],
+        name: dndFileName,
+        mimeType: 'image/png',
+      },
+    );
 
     await rightSideButton.dispatchEvent('dragenter', { dataTransfer });
     await rightSideButton.dispatchEvent('dragover', { dataTransfer });
     await rightSideButton.dispatchEvent('drop', { dataTransfer });
 
-    await expect(additionalSection.getByText('dnd-right-side.jpg')).toBeVisible({ timeout: 5000 });
+    await expect(additionalSection.getByText(dndFileName)).toBeVisible({ timeout: 5000 });
   });
 });

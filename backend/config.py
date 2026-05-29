@@ -60,13 +60,28 @@ if 'PORT' not in os.environ:
 # Configuration constants
 UPLOAD_FOLDER = tempfile.gettempdir()
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif'}
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+# Hard cap per file after client optimization; blocks bypassed huge uploads.
+MAX_FILE_SIZE = 8 * 1024 * 1024  # 8MB
+# Max image parts in one multipart request (main + extras, or batch additional upload).
+MAX_MULTIPART_IMAGE_PARTS = 12
+# Room for boundaries, field names, labels, GPS flags (not image bytes).
+_MULTIPART_FORM_OVERHEAD_BYTES = 512 * 1024
+# Reject entire HTTP body before buffering (DoS guard).
+MAX_CONTENT_LENGTH = (
+    MAX_FILE_SIZE * MAX_MULTIPART_IMAGE_PARTS + _MULTIPART_FORM_OVERHEAD_BYTES
+)
+# Server-side downscale if a client skips optimization.
+INGEST_MAX_DIMENSION = 2560
+INGEST_MAX_FILE_BYTES = 3 * 1024 * 1024
 
 # JWT Configuration - must match auth-backend JWT_SECRET
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
 
 # Auth service URL (required for staff/admin routes). E.g. http://localhost:3001/api
 AUTH_URL = os.environ.get('AUTH_URL', '').rstrip('/')
+
+# Reverse proxies in front of the API (each appends to X-Forwarded-For). 0 = trust none.
+TRUSTED_PROXY_COUNT = max(0, int(os.environ.get('TRUSTED_PROXY_COUNT', '0')))
 
 if JWT_SECRET == 'your-secret-key-change-in-production':
     try:

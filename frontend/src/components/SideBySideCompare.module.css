@@ -1,0 +1,54 @@
+/* Turtle shell pair comparison — layout adapts to image shape on phones. */
+.compareCol {
+  min-width: 0;
+}
+
+.compareRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--mantine-spacing-md);
+  align-items: start;
+}
+
+.compareRowStacked {
+  grid-template-columns: 1fr;
+  gap: var(--mantine-spacing-xs);
+}
+
+.compareImage {
+  max-height: min(400px, 50vh);
+  object-fit: contain;
+  width: 100%;
+}
+
+.compareImageTall {
+  max-height: min(500px, 60vh);
+  object-fit: contain;
+  width: 100%;
+}
+
+.compareImageStacked {
+  max-height: min(280px, 42vh);
+}
+
+@media (max-width: 576px) {
+  .compareRow:not(.compareRowStacked) {
+    gap: var(--mantine-spacing-xs);
+  }
+
+  .compareRow:not(.compareRowStacked) .compareImage,
+  .compareRow:not(.compareRowStacked) .compareImageTall {
+    max-height: min(240px, 38vh);
+  }
+
+  .compareRowStacked .compareImage,
+  .compareRowStacked .compareImageTall,
+  .compareImageStacked {
+    max-height: min(200px, 32vh);
+  }
+
+  .compareLabel {
+    font-size: var(--mantine-font-size-xs);
+    line-height: 1.3;
+  }
+}

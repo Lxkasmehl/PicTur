@@ -15,7 +15,9 @@ from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from auth import optional_auth, check_auth_revocation
-from image_utils import normalize_to_jpeg
+from image_utils import UploadImageError
+from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
+from upload_validation import ingest_saved_upload, log_upload_rejection, upload_error_response
 from services import manager_service
 from additional_image_labels import normalize_additional_type, parse_labels_from_form
 
@@ -39,6 +41,13 @@ def _collect_extra_upload_files(request, request_id):
         if not f or not f.filename:
             continue
         if not allowed_file(f.filename):
+            log_upload_rejection(
+                context='extra_upload',
+                path=None,
+                code='invalid_extension',
+                message='Invalid file type for extra upload',
+                filename=f.filename,
+            )
             continue
         idx = int(m.group(2))
         typ_raw = m.group(1)
@@ -49,13 +58,29 @@ def _collect_extra_upload_files(request, request_id):
         size = f.tell()
         f.seek(0)
         if size > MAX_FILE_SIZE:
+            log_upload_rejection(
+                context='extra_upload',
+                path=None,
+                code='file_too_large',
+                message=f'Extra file exceeds {MAX_FILE_SIZE} bytes',
+                filename=f.filename,
+            )
             continue
         typ = normalize_additional_type(typ_raw)
         lbs = parse_labels_from_form(request.form, str(idx), key_prefix='extra_labels')
         ext = os.path.splitext(secure_filename(f.filename))[1] or '.jpg'
         extra_temp = os.path.join(UPLOAD_FOLDER, f"extra_{request_id}_{typ}_{int(time.time())}{ext}")
         f.save(extra_temp)
-        extra_temp = normalize_to_jpeg(extra_temp)
+        try:
+            extra_temp = ingest_saved_upload(
+                extra_temp, context='extra_upload', filename=f.filename,
+            )
+        except UploadImageError:
+            try:
+                os.remove(extra_temp)
+            except OSError:
+                pass
+            continue
         item = {
             'path': extra_temp,
             'type': typ,
@@ -129,6 +154,9 @@ def register_upload_routes(app):
                 user_role = 'community'
                 user_email = 'anonymous'
 
+            if not upload_rate_limit_ok(request, user_role):
+                return upload_rate_limit_response()
+
             file = request.files['file']
             state = request.form.get('state', '')
             location = request.form.get('location', '')
@@ -147,20 +175,49 @@ def register_upload_routes(app):
                 return jsonify({'error': 'No file selected'}), 400
 
             if not allowed_file(file.filename):
-                return jsonify({'error': 'Invalid file type'}), 400
+                log_upload_rejection(
+                    context='api/upload',
+                    path=None,
+                    code='invalid_extension',
+                    message='Invalid file type',
+                    filename=file.filename,
+                )
+                return jsonify({
+                    'error': 'Invalid file type. Allowed: JPEG, PNG, GIF, WEBP, HEIC.',
+                    'code': 'invalid_extension',
+                }), 400
 
             file.seek(0, os.SEEK_END)
             file_size = file.tell()
             file.seek(0)
 
             if file_size > MAX_FILE_SIZE:
-                return jsonify({'error': 'File too large (max 5MB)'}), 400
+                log_upload_rejection(
+                    context='api/upload',
+                    path=None,
+                    code='file_too_large',
+                    message=f'File exceeds {MAX_FILE_SIZE} bytes',
+                    filename=file.filename,
+                )
+                return jsonify({
+                    'error': 'File too large (max 8MB after optimization).',
+                    'code': 'file_too_large',
+                }), 400
 
             filename = secure_filename(file.filename)
             temp_path = os.path.join(UPLOAD_FOLDER, filename)
             file.save(temp_path)
-            # HEIC/HEIF → JPEG so SuperPoint + frontend can handle it
-            temp_path = normalize_to_jpeg(temp_path)
+            try:
+                temp_path = ingest_saved_upload(
+                    temp_path, context='api/upload', filename=file.filename,
+                )
+            except UploadImageError as img_err:
+                if os.path.isfile(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except OSError:
+                        pass
+                return upload_error_response(img_err)
             filename = os.path.basename(temp_path)
 
             if not os.path.exists(temp_path):
@@ -395,5 +452,6 @@ def register_upload_routes(app):
             sys.stderr.flush()
             return jsonify({
                 'error': f'Processing failed: {str(e)}',
-                'details': error_trace if app.debug else None
+                'code': 'processing_failed',
+                'details': error_trace if app.debug else None,
             }), 500

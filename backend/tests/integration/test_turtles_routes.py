@@ -8,6 +8,8 @@ import os
 import pytest
 from io import BytesIO
 
+from tests.image_fixtures import valid_jpeg_bytes, word_paste_fake_png_bytes
+
 # From fixture data: backend/tests/fixture-data/Kansas/Topeka/T42
 TURTLE_WITH_IMAGES = {
     "turtle_id": "T42",
@@ -150,16 +152,11 @@ def test_post_primaries_batch_mixed(client, turtle_with_images):
 # --- POST /api/turtles/images/additional (add to turtle) ---
 
 
-def _dummy_image_bytes(size=100):
-    """Minimal bytes that can be sent as image (e.g. JPEG-like)."""
-    return b"\xff\xd8\xff" + b"\x00" * (size - 3)
-
-
 def test_post_turtle_additional_no_turtle_id(client):
     """POST /api/turtles/images/additional without turtle_id returns 400."""
     r = client.post(
         "/api/turtles/images/additional",
-        data={"file_0": ("x.jpg", BytesIO(_dummy_image_bytes())), "type_0": "microhabitat"},
+        data={"file_0": ("x.jpg", BytesIO(valid_jpeg_bytes())), "type_0": "microhabitat"},
     )
     assert r.status_code == 400
     data = r.json()
@@ -179,11 +176,48 @@ def test_post_turtle_additional_no_valid_files(client, turtle_with_images):
     assert "error" in data
 
 
+def test_post_turtle_additional_partial_batch_returns_rejections(client, turtle_with_images):
+    """Mixed batch: valid files are added and decode failures are reported in rejections[]."""
+    tid = turtle_with_images["turtle_id"]
+    loc = turtle_with_images["location"]
+    r0 = client.get(f"/api/turtles/images?turtle_id={tid}&sheet_name={loc}")
+    assert r0.status_code == 200
+    before_paths = {os.path.basename(a.get("path", "")) for a in r0.json()["additional"]}
+
+    r = client.post(
+        "/api/turtles/images/additional",
+        data={
+            "turtle_id": tid,
+            "sheet_name": loc,
+            "file_0": ("word_fake.png", BytesIO(word_paste_fake_png_bytes())),
+            "type_0": "condition",
+            "file_1": ("partial_ok.jpg", BytesIO(valid_jpeg_bytes())),
+            "type_1": "microhabitat",
+        },
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("success") is True
+    assert "Added 1 image(s)" in data.get("message", "")
+    rejections = data.get("rejections") or []
+    assert len(rejections) == 1
+    assert rejections[0]["filename"] == "word_fake.png"
+    assert rejections[0]["code"] in ("decode_failed", "invalid_image")
+    assert rejections[0]["error"]
+
+    r2 = client.get(f"/api/turtles/images?turtle_id={tid}&sheet_name={loc}")
+    assert r2.status_code == 200
+    after_paths = {os.path.basename(a.get("path", "")) for a in r2.json()["additional"]}
+    new_paths = after_paths - before_paths
+    assert len(new_paths) == 1
+    assert any("partial_ok" in p for p in new_paths)
+
+
 def test_post_turtle_additional_success(client, turtle_with_images):
     """POST /api/turtles/images/additional adds image to turtle folder; GET images shows it."""
     tid = turtle_with_images["turtle_id"]
     loc = turtle_with_images["location"]
-    img_bytes = _dummy_image_bytes()
+    img_bytes = valid_jpeg_bytes()
     r = client.post(
         "/api/turtles/images/additional",
         data={
@@ -214,7 +248,7 @@ def test_post_turtle_additional_then_delete_roundtrip(client, turtle_with_images
     assert r0.status_code == 200
     before_paths = {os.path.basename(a.get("path", "")) for a in r0.json()["additional"]}
 
-    img_bytes = _dummy_image_bytes()
+    img_bytes = valid_jpeg_bytes()
     r = client.post(
         "/api/turtles/images/additional",
         data={
@@ -257,7 +291,7 @@ def test_post_additional_with_labels_and_search(client, turtle_with_images):
     """POST with labels_0; GET search-labels finds the image by tag substring."""
     tid = turtle_with_images["turtle_id"]
     loc = turtle_with_images["location"]
-    img_bytes = _dummy_image_bytes()
+    img_bytes = valid_jpeg_bytes()
     # Note: type=carapace/plastron route to Other Carapaces / Other Plastrons (no manifest),
     # so labels on those types are not currently searchable. Architectural follow-up tracked
     # in benchmarks. Use 'condition' here so labels land in additional_images/manifest.json.
@@ -287,7 +321,7 @@ def test_patch_additional_labels(client, turtle_with_images):
     """PATCH additional-labels updates manifest; GET images reflects new labels."""
     tid = turtle_with_images["turtle_id"]
     loc = turtle_with_images["location"]
-    img_bytes = _dummy_image_bytes()
+    img_bytes = valid_jpeg_bytes()
     r_add = client.post(
         "/api/turtles/images/additional",
         data={
@@ -326,7 +360,7 @@ def test_search_labels_with_type_filter_and_combo(client, turtle_with_images):
     """Search endpoint supports category-only and combined category+label filtering."""
     tid = turtle_with_images["turtle_id"]
     loc = turtle_with_images["location"]
-    img_bytes = _dummy_image_bytes()
+    img_bytes = valid_jpeg_bytes()
 
     r_add = client.post(
         "/api/turtles/images/additional",

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconAlertCircle } from '@tabler/icons-react';
-import { validateFile } from '../utils/fileValidation';
+import { acceptUploadFile } from '../utils/uploadFilePipeline';
 import { getCurrentLocation } from '../services/geolocation';
 import {
   uploadTurtlePhoto,
@@ -96,23 +96,26 @@ export function usePhotoUpload({
     };
   }, []);
 
-  const handleDrop = (acceptedFiles: FileWithPath[]): void => {
+  const handleDrop = async (acceptedFiles: FileWithPath[]): Promise<void> => {
     if (acceptedFiles.length > 0) {
       const file = acceptedFiles[0];
 
-      // Validation
-      const validation = validateFile(file);
-      if (!validation.isValid) {
+      const accepted = await acceptUploadFile(file);
+      if (!accepted.isValid || !accepted.file) {
         notifications.show({
           title: 'Invalid File',
-          message: validation.error || 'File could not be validated',
+          message: accepted.error || 'File could not be validated',
           color: 'red',
           icon: <IconAlertCircle size={18} />,
+          autoClose: 8000,
         });
         return;
       }
 
-      setFiles(acceptedFiles);
+      const fileWithPath = Object.assign(accepted.file, {
+        path: accepted.file.name,
+      }) as FileWithPath;
+      setFiles([fileWithPath]);
       setUploadState('idle');
       setUploadResponse(null);
       setImageId(null);
@@ -129,7 +132,7 @@ export function usePhotoUpload({
       reader.onload = (e: ProgressEvent<FileReader>) => {
         setPreview(e.target?.result as string);
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(accepted.file);
     }
   };
 
