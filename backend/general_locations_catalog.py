@@ -15,11 +15,18 @@ import threading
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
-_CATALOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'general_locations.json')
+# Catalog persists in the data volume (``data/``), NOT the code tree, so General
+# Locations an admin adds through the app survive redeploys. The code tree is
+# rebuilt and ``git reset --hard``-ed on every deploy and ``*.json`` is excluded
+# from the backend image, so a catalog kept next to this module was ephemeral and
+# reverted to seed defaults on each deploy (admin-added locations were lost).
+# ``data/`` is a mounted volume; this mirrors ``TurtleManager.base_dir`` (<backend>/data).
+_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+_CATALOG_FILE = os.path.join(_DATA_DIR, 'general_locations.json')
 _CATALOG_LOCK = threading.RLock()
 
-# Seed used only when general_locations.json is missing or has no states/sheet_defaults yet.
-# Keep aligned with the committed general_locations.json so first-run writes match repo defaults.
+# Seed used only when the catalog file is missing or has no states/sheet_defaults yet.
+# ``_DEFAULT_CATALOG`` (below) is the single source of seed truth.
 _DEFAULT_CATALOG: Dict[str, Any] = {
     'states': {
         'Kansas': [
@@ -130,6 +137,7 @@ def _load_catalog_unlocked() -> Dict[str, Any]:
 
 
 def _save_catalog_unlocked(catalog: Dict[str, Any]) -> None:
+    os.makedirs(os.path.dirname(_CATALOG_FILE) or '.', exist_ok=True)
     with open(_CATALOG_FILE, 'w', encoding='utf-8') as f:
         json.dump(catalog, f, indent=2, ensure_ascii=False, sort_keys=True)
 

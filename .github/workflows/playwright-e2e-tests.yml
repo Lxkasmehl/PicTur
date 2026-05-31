@@ -7,10 +7,10 @@ on:
     branches: [main, master, develop]
 
 # Pattern aligned with Playwright CI guidance: quick smoke, then parallel shards over the full suite
-# (each shard runs the full project matrix from playwright.config.ts). Shared Docker + install:
-# .github/actions/e2e-playwright-prepare
+# (each shard runs the full project matrix from playwright.config.ts). Shared Docker + install
+# (browser binaries cached, install guarded with timeout + retry): .github/actions/e2e-playwright-prepare
 #
-# To add capacity, extend matrix.shard to [1, 2, 3] and set PW_SHARD_TOTAL to 3.
+# To add capacity, extend matrix.shard (e.g. [1, 2, 3, 4, 5, 6]) and set PW_SHARD_TOTAL to match.
 
 env:
   PLAYWRIGHT_BASE_URL: http://localhost
@@ -20,11 +20,11 @@ env:
   E2E_STAFF_PASSWORD: testpassword123
   E2E_COMMUNITY_EMAIL: community@test.com
   E2E_COMMUNITY_PASSWORD: testpassword123
-  PW_SHARD_TOTAL: 2
+  PW_SHARD_TOTAL: 4
 
 jobs:
   e2e-smoke:
-    timeout-minutes: 90
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,12 +54,12 @@ jobs:
 
   e2e-shard:
     needs: e2e-smoke
-    timeout-minutes: 150
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-playwright-prepare

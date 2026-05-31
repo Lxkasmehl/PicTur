@@ -316,6 +316,53 @@ def _resolved_path_under_base(base_dir, *relative_parts):
     return real_candidate
 
 
+# Canonical turtle layout is data/<State>/<Location>/<turtle>/ (3 levels) or, for
+# flat combo sheets, data/<Combo>/<turtle>/ (2 levels). A 4th level
+# (data/<State>/<Location>/<Sub-site>/<turtle>/) was created in bulk by an early
+# ingest and is tolerated for existing turtles (lookups use a recursive walk), but
+# the app must never create NEW ones — deeper folders fall outside the dropdown's
+# 2-level scan and complicate sheet-upload resolution.
+_MAX_TURTLE_DIR_DEPTH = 3
+
+
+def _turtle_dir_depth(base_dir, turtle_dir):
+    """Number of path segments of ``turtle_dir`` relative to ``base_dir`` (turtle folder included)."""
+    try:
+        rel = os.path.relpath(turtle_dir, base_dir)
+    except (ValueError, TypeError):
+        return None
+    return len([p for p in rel.replace("\\", "/").split("/") if p and p not in (".", "..")])
+
+
+def _clamp_turtle_dir_depth(base_dir, turtle_dir):
+    """Clamp a NEW turtle folder to ``State/Location/<turtle>`` (<= 3 levels under base).
+
+    Collapses any deeper sub-site nesting (``State/Location/Sub-site/<turtle>``) to
+    ``State/Location/<turtle>`` so the app never creates 4-level folders, warning when
+    it does. Existing deeper folders are reached via the recursive-walk lookups, not
+    here, so they stay matchable/findable. Returns ``turtle_dir`` unchanged when it is
+    already shallow enough or the clamp cannot be safely resolved.
+    """
+    if not turtle_dir:
+        return turtle_dir
+    try:
+        rel = os.path.relpath(turtle_dir, base_dir)
+    except (ValueError, TypeError):
+        return turtle_dir
+    parts = [p for p in rel.replace("\\", "/").split("/") if p and p not in (".", "..")]
+    if len(parts) <= _MAX_TURTLE_DIR_DEPTH:
+        return turtle_dir
+    clamped = parts[:_MAX_TURTLE_DIR_DEPTH - 1] + [parts[-1]]  # State/Location/<turtle>
+    safe = _resolved_path_under_base(base_dir, *clamped)
+    if not safe:
+        return turtle_dir
+    print(
+        "⚠️ Turtle folder would nest below State/Location; clamping (no new sub-site "
+        f"folders): {'/'.join(parts)} -> {'/'.join(clamped)}"
+    )
+    return safe
+
+
 # --- FLASH DRIVE INGEST: Map drive folder names to backend folder names ---
 # When folder names on the flash drive don't match backend/Google Sheets, add mappings here.
 # Ingest will route files to the correct backend State/Location based on these maps.
@@ -982,6 +1029,14 @@ class TurtleManager:
         ``Other Plastrons``/``Other Carapaces``. Shared by ``_process_single_turtle``
         and ``resolve_or_create_canonical_turtle_dir``.
         """
+        # Tripwire: callers clamp before this, so a too-deep path means a create
+        # site was missed. Warn (don't fail) so the regression is visible in logs.
+        depth = _turtle_dir_depth(self.base_dir, turtle_dir)
+        if depth is not None and depth > _MAX_TURTLE_DIR_DEPTH:
+            print(
+                f"⚠️ Creating turtle folder below State/Location/<turtle> (depth {depth}): "
+                f"{turtle_dir} — should have been clamped upstream."
+            )
         for subdir in ('plastron', 'plastron/Old References', 'plastron/Other Plastrons',
                        'carapace', 'carapace/Old References', 'carapace/Other Carapaces'):
             os.makedirs(os.path.join(turtle_dir, subdir), exist_ok=True)
@@ -993,6 +1048,8 @@ class TurtleManager:
             photo_type: 'plastron' (default) saves to plastron/, 'carapace' saves to carapace/.
         """
         turtle_dir = os.path.join(location_dir, turtle_id)
+        # Never create a new turtle below State/Location (no 4-level sub-site nesting).
+        turtle_dir = _clamp_turtle_dir_depth(self.base_dir, turtle_dir)
 
         if photo_type == "carapace":
             data_dir = os.path.join(turtle_dir, 'carapace')
@@ -2430,6 +2487,9 @@ class TurtleManager:
                 state_only = _resolved_path_under_base(self.base_dir, rel_parts[0])
                 if state_only and self._state_dir_has_site_subfolders(state_only):
                     return None
+            # Clamp before creating so a deep location hint can't make a 4-level folder.
+            # (Lookups above used the unclamped path, so existing deep folders still resolve.)
+            explicit = _clamp_turtle_dir_depth(self.base_dir, explicit)
             os.makedirs(os.path.join(explicit, "ref_data"), exist_ok=True)
             os.makedirs(os.path.join(explicit, "loose_images"), exist_ok=True)
             return explicit
@@ -2500,6 +2560,8 @@ class TurtleManager:
         turtle_dir = _resolved_path_under_base(location_dir, folder_name)
         if not turtle_dir:
             return None, False, "could not resolve a safe folder path"
+        # Never create a new turtle below State/Location (no 4-level sub-site nesting).
+        turtle_dir = _clamp_turtle_dir_depth(self.base_dir, turtle_dir)
         self._create_modern_turtle_structure(turtle_dir)
         return turtle_dir, True, None
 
@@ -2563,6 +2625,8 @@ class TurtleManager:
         new_dir = _resolved_path_under_base(location_dir, folder_basename)
         if not new_dir:
             return False, "could not resolve a safe destination path"
+        # Relocations also stay at State/Location (no 4-level sub-site nesting).
+        new_dir = _clamp_turtle_dir_depth(self.base_dir, new_dir)
 
         try:
             if os.path.realpath(current) == os.path.realpath(new_dir):
@@ -2578,7 +2642,8 @@ class TurtleManager:
             return False, f"destination already exists: {rel_existing}"
 
         try:
-            os.makedirs(location_dir, exist_ok=True)
+            # Parent of new_dir, which may have been clamped to State/Location.
+            os.makedirs(os.path.dirname(new_dir) or location_dir, exist_ok=True)
             shutil.move(current, new_dir)
         except (OSError, shutil.Error) as exc:
             return False, f"move failed: {exc}"

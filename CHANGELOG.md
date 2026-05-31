@@ -15,6 +15,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`sheets/bulk_ops.py`**: New backend module with `find_rows_by_general_location` and `bulk_update_general_location` (batched, rate-limit–aware).
 - **API split**: `frontend/src/services/api/sheets.ts` refactored into `turtle-data.ts` (turtle CRUD) and `general-locations.ts` (catalog management); `sheets.ts` re-exports both for backward compatibility.
 
+## [2.0.12] - 2026-05-31 — E2E CI Playwright Node 24.16+ install fix + shard scaling
+
+### Fixed
+
+- **E2E CI Playwright browser install no longer hangs (Node 24.16+ root cause)**: bumped `@playwright/test` `1.57 → 1.60`, which carries the upstream fix for `playwright install` wedging after the browser download completes on Node 24.16+ (a download-worker IPC regression). GitHub's CI runner advanced from Node 24.15 to 24.16 between 2026-05-26 and 2026-05-29, which is what turned CI red — not any project change. Playwright 1.60's removed/deprecated APIs are unused by this codebase, so the bump is behavior-neutral for the suite.
+- **E2E CI install is also hardened against stalls**: the `e2e-playwright-prepare` composite action now caches the downloaded browser binaries (keyed on the Playwright version) and guards both `install-deps` and the browser download with a timeout plus retries. So even a future CDN/runner stall fails fast (~15 min) instead of hanging silently until GitHub kills the job at its ceiling — before any tests run.
+
+### Changed
+
+- **E2E shards scaled 2 → 4**: the full Playwright suite is split across four parallel shards (was two), roughly halving full-suite wall-clock time. All five browser projects (chromium, firefox, webkit, Mobile Chrome, Mobile Safari) are preserved. Smoke and shard job timeouts were tightened (90 → 45 min, 150 → 60 min) so a future stall fails fast instead of consuming the full budget.
+
+## [2.0.11] - 2026-05-23 — General Location persistence + folder-depth guardrail
+
+### Fixed
+
+- **General Locations persist across redeploys**: the catalog (`general_locations.json`) now lives in the persisted `data/` volume instead of the code tree, which was excluded from the backend image (`.dockerignore` `*.json`) and reset by `git reset --hard` on every deploy. General Locations an admin adds through the site (new states/sites) no longer disappear on the next deploy.
+
+### Changed
+
+- **Turtle folders are capped at `State/Location/<turtle>`**: uploads, ingest, and relocations can no longer create deeper `State/Location/Sub-site/<turtle>` (4-level) folders — a too-deep location is clamped to `State/Location` with a logged warning. Existing deeper folders are left untouched and remain matchable and findable.
+
 ## [2.0.10] - 2026-05-23 — Structured upload errors + malformed image repair
 
 ### Added
@@ -526,7 +547,9 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.10...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.12...HEAD
+[2.0.12]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.11...v2.0.12
+[2.0.11]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.10...v2.0.11
 [2.0.10]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.9...v2.0.10
 [2.0.9]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.8...v2.0.9
 [2.0.8]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.7...v2.0.8
