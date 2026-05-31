@@ -226,6 +226,46 @@ def add_general_location(state: str, general_location: str) -> Dict[str, Any]:
         return deepcopy(_normalize_catalog(catalog))
 
 
+def delete_general_location(state: str, general_location: str) -> Dict[str, Any]:
+    state_name = _normalize_text(state)
+    location_name = _normalize_text(general_location)
+    if not state_name:
+        raise ValueError('state is required')
+    if not location_name:
+        raise ValueError('general_location is required')
+
+    with _CATALOG_LOCK:
+        catalog = _load_catalog_unlocked()
+
+        # Refuse if this location is the fixed default for any sheet tab.
+        for sheet_name, rule in catalog.get('sheet_defaults', {}).items():
+            if (
+                _normalize_text(rule.get('state', '')).lower() == state_name.lower()
+                and _normalize_text(rule.get('general_location', '')).lower() == location_name.lower()
+            ):
+                raise ValueError(
+                    f"Cannot delete '{location_name}': it is the fixed General Location for sheet '{sheet_name}'. "
+                    f"Remove that sheet default first."
+                )
+
+        existing_key = next(
+            (key for key in catalog['states'].keys() if key.lower() == state_name.lower()),
+            None,
+        )
+        if existing_key is None:
+            raise ValueError(f"State '{state_name}' not found in catalog")
+
+        existing_locations = catalog['states'].get(existing_key, [])
+        match = _find_location_case_insensitive(existing_locations, location_name)
+        if match is None:
+            raise ValueError(f"General location '{location_name}' not found in state '{state_name}'")
+
+        existing_locations.remove(match)
+        catalog['states'][existing_key] = sorted(existing_locations, key=lambda item: item.lower())
+        _save_catalog_unlocked(catalog)
+        return deepcopy(_normalize_catalog(catalog))
+
+
 def validate_general_location_for_sheet(
     sheet_name: Optional[str],
     general_location: Optional[str],

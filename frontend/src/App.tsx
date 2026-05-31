@@ -14,6 +14,7 @@ import AdminTurtleRecordsPage from './pages/AdminTurtleRecordsPage';
 import AdminTurtleMatchPage from './pages/AdminTurtleMatchPage';
 import AdminReleasePage from './pages/AdminReleasePage';
 import AdminUserManagementPage from './pages/AdminUserManagementPage';
+import AdminLocationManagementPage from './pages/AdminLocationManagementPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import EmailVerificationGuard from './components/EmailVerificationGuard';
 import { store } from './store';
@@ -61,6 +62,7 @@ function App(): React.JSX.Element {
                 />
                 <Route path='/admin/release' element={<AdminReleasePage />} />
                 <Route path='/admin/users' element={<AdminUserManagementPage />} />
+                <Route path='/admin/locations' element={<AdminLocationManagementPage />} />
               </Routes>
               </EmailVerificationGuard>
             </Navigation>

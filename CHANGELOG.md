@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **General Location delete**: Admins can delete a General Location from the catalog via the new `/admin/locations` page; if turtles use the location they must be reassigned to another location first — Sheets values are batch-updated and on-disk folders relocated automatically.
+- **Location Management page**: New admin-only page (`/admin/locations`) lists all states and their General Locations with per-location delete buttons and an inline "Add location" form; locked sheet-default locations show a badge and cannot be deleted.
+- **Affected-turtles check**: `GET /api/general-locations/affected-turtles` returns a per-sheet count of turtles that use a given General Location before deletion.
+- **`sheets/bulk_ops.py`**: New backend module with `find_rows_by_general_location` and `bulk_update_general_location` (batched, rate-limit–aware).
+- **API split**: `frontend/src/services/api/sheets.ts` refactored into `turtle-data.ts` (turtle CRUD) and `general-locations.ts` (catalog management); `sheets.ts` re-exports both for backward compatibility.
+
 ## [2.0.10] - 2026-05-23 — Structured upload errors + malformed image repair
 
 ### Added

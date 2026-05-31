@@ -112,6 +112,8 @@ export {
   getLocations,
   getGeneralLocationCatalog,
   addGeneralLocation,
+  getAffectedTurtleCount,
+  deleteGeneralLocation,
   createSheet,
   getTurtleNames,
   listAllTurtlesFromSheets,
