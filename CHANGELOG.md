@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.12] - 2026-05-31 — E2E CI Playwright Node 24.16+ install fix + shard scaling
+
+### Fixed
+
+- **E2E CI Playwright browser install no longer hangs (Node 24.16+ root cause)**: bumped `@playwright/test` `1.57 → 1.60`, which carries the upstream fix for `playwright install` wedging after the browser download completes on Node 24.16+ (a download-worker IPC regression). GitHub's CI runner advanced from Node 24.15 to 24.16 between 2026-05-26 and 2026-05-29, which is what turned CI red — not any project change. Playwright 1.60's removed/deprecated APIs are unused by this codebase, so the bump is behavior-neutral for the suite.
+- **E2E CI install is also hardened against stalls**: the `e2e-playwright-prepare` composite action now caches the downloaded browser binaries (keyed on the Playwright version) and guards both `install-deps` and the browser download with a timeout plus retries. So even a future CDN/runner stall fails fast (~15 min) instead of hanging silently until GitHub kills the job at its ceiling — before any tests run.
+
+### Changed
+
+- **E2E shards scaled 2 → 4**: the full Playwright suite is split across four parallel shards (was two), roughly halving full-suite wall-clock time. All five browser projects (chromium, firefox, webkit, Mobile Chrome, Mobile Safari) are preserved. Smoke and shard job timeouts were tightened (90 → 45 min, 150 → 60 min) so a future stall fails fast instead of consuming the full budget.
+
 ## [2.0.11] - 2026-05-23 — General Location persistence + folder-depth guardrail
 
 ### Fixed
