@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.12] - 2026-05-31 — E2E CI Playwright Node 24.16+ install fix + shard scaling
+
 ### Fixed
 
 - **E2E CI Playwright browser install no longer hangs (Node 24.16+ root cause)**: bumped `@playwright/test` `1.57 → 1.60`, which carries the upstream fix for `playwright install` wedging after the browser download completes on Node 24.16+ (a download-worker IPC regression). GitHub's CI runner advanced from Node 24.15 to 24.16 between 2026-05-26 and 2026-05-29, which is what turned CI red — not any project change. Playwright 1.60's removed/deprecated APIs are unused by this codebase, so the bump is behavior-neutral for the suite.
