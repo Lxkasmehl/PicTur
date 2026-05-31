@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **E2E CI no longer hangs in Playwright browser install**: the `e2e-playwright-prepare` composite action now caches the downloaded browser binaries (keyed on the Playwright version) and guards both `install-deps` and the browser download with a timeout plus retries. Previously a stalled CDN download inside `playwright install --with-deps` could hang silently until GitHub killed the job at its 90-minute ceiling — before any tests ran.
+
+### Changed
+
+- **E2E shards scaled 2 → 4**: the full Playwright suite is split across four parallel shards (was two), roughly halving full-suite wall-clock time. All five browser projects (chromium, firefox, webkit, Mobile Chrome, Mobile Safari) are preserved. Smoke and shard job timeouts were tightened (90 → 45 min, 150 → 60 min) so a future stall fails fast instead of consuming the full budget.
+
 ## [2.0.11] - 2026-05-23 — General Location persistence + folder-depth guardrail
 
 ### Fixed
