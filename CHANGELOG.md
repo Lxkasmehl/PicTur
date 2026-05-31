@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.13] - 2026-05-31 — Carapace image-extension case handling
+
 ### Fixed
 
 - **Carapace reference upgrade orphaned the old image on case-mismatched extensions**: upgrading a carapace reference during review-approve located the previous reference image with a lowercase-only `['.jpg','.jpeg','.png']` probe, so an existing `.JPG` reference was never archived to `Old References/` nor removed — leaving an orphaned stale image beside the new reference. `turtle_manager.py` now locates it with the existing case-insensitive `_find_image_in_dir` helper. (#214)
