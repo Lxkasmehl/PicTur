@@ -68,7 +68,56 @@ runs:
       working-directory: frontend
       run: npm ci
 
-    - name: Install Playwright Browsers
+    # Cache the downloaded browser binaries, keyed on the resolved Playwright version.
+    # The browser download (not the apt deps) is what stalled on the CDN and silently burned
+    # the entire job budget; a cache hit skips the download entirely, and a miss is guarded below.
+    - name: Resolve Playwright version
+      id: pw
       shell: bash
       working-directory: frontend
-      run: npx playwright install --with-deps
+      run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Playwright browsers
+      id: pw-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ steps.pw.outputs.version }}
+
+    # System libraries are apt packages (not covered by the browser cache), so always install
+    # them. Guarded with a timeout + one retry so a stalled apt mirror fails fast.
+    - name: Install Playwright system dependencies
+      shell: bash
+      working-directory: frontend
+      env:
+        DEBIAN_FRONTEND: noninteractive
+        NEEDRESTART_MODE: a
+      run: |
+        set +e
+        for i in 1 2; do
+          timeout -k 30 300 npx playwright install-deps
+          status=$?
+          if [ "$status" -eq 0 ]; then exit 0; fi
+          echo "playwright install-deps attempt $i failed (status $status); retrying in 15s..."
+          sleep 15
+        done
+        echo "playwright install-deps failed after retries"
+        exit 1
+
+    # Browser binaries: download only on a cache miss, and guard the download with a timeout +
+    # retries so a CDN stall fails fast instead of hanging until the job timeout.
+    - name: Install Playwright browsers
+      if: steps.pw-cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: frontend
+      run: |
+        set +e
+        for i in 1 2 3; do
+          timeout -k 30 300 npx playwright install
+          status=$?
+          if [ "$status" -eq 0 ]; then exit 0; fi
+          echo "playwright browser install attempt $i failed (status $status); retrying in 15s..."
+          sleep 15
+        done
+        echo "playwright browser install failed after retries"
+        exit 1
