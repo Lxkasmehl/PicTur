@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **E2E CI no longer hangs in Playwright browser install**: the `e2e-playwright-prepare` composite action now caches the downloaded browser binaries (keyed on the Playwright version) and guards both `install-deps` and the browser download with a timeout plus retries. Previously a stalled CDN download inside `playwright install --with-deps` could hang silently until GitHub killed the job at its 90-minute ceiling — before any tests ran.
+- **E2E CI Playwright browser install no longer hangs (Node 24.16+ root cause)**: bumped `@playwright/test` `1.57 → 1.60`, which carries the upstream fix for `playwright install` wedging after the browser download completes on Node 24.16+ (a download-worker IPC regression). GitHub's CI runner advanced from Node 24.15 to 24.16 between 2026-05-26 and 2026-05-29, which is what turned CI red — not any project change. Playwright 1.60's removed/deprecated APIs are unused by this codebase, so the bump is behavior-neutral for the suite.
+- **E2E CI install is also hardened against stalls**: the `e2e-playwright-prepare` composite action now caches the downloaded browser binaries (keyed on the Playwright version) and guards both `install-deps` and the browser download with a timeout plus retries. So even a future CDN/runner stall fails fast (~15 min) instead of hanging silently until GitHub kills the job at its ceiling — before any tests run.
 
 ### Changed
 
