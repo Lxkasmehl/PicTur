@@ -42,6 +42,17 @@ export interface DeleteGeneralLocationRequest {
   state: string;
   general_location: string;
   target_general_location?: string;
+  /** When true: bypasses the locked-default check and removes any sheet_defaults referencing this location. */
+  force?: boolean;
+}
+
+export interface SheetDefaultRequest {
+  sheet_name: string;
+  general_location: string;
+}
+
+export interface RemoveSheetDefaultRequest {
+  sheet_name: string;
 }
 
 export interface DeleteGeneralLocationResponse extends GeneralLocationCatalogResponse {
@@ -101,6 +112,42 @@ export const getAffectedTurtleCount = async (
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to count affected turtles');
+  }
+  return await response.json();
+};
+
+export const addSheetDefault = async (
+  data: SheetDefaultRequest,
+): Promise<AddGeneralLocationResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/general-locations/sheet-defaults`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to add sheet default');
+  }
+  return await response.json();
+};
+
+export const removeSheetDefault = async (
+  data: RemoveSheetDefaultRequest,
+): Promise<GeneralLocationCatalogResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/general-locations/sheet-defaults`, {
+    method: 'DELETE',
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to remove sheet default');
   }
   return await response.json();
 };
