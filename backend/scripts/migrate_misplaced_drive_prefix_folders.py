@@ -45,6 +45,9 @@ Exit codes: ``0`` — success; ``1`` — filesystem error during ``--apply``, sk
 conflicts, or **leftovers** still present under a wrong drive-key prefix after the run.
 """
 
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))  # scripts/ for ingest_common etc.
 from __future__ import annotations
 
 import argparse

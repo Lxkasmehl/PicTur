@@ -22,7 +22,7 @@ from additional_image_upload import (
     collect_indexed_additional_uploads,
     no_valid_files_json,
 )
-from turtle_folder_images import (
+from turtle_manager.folder_images import (
     IMAGE_EXTENSIONS,
     build_turtle_images_payload,
     dir_has_image,
@@ -558,3 +558,56 @@ def register_turtle_routes(app):
                     os.remove(temp_path)
                 except OSError:
                     pass
+
+    @app.route('/api/turtles/merge', methods=['POST'])
+    @require_admin
+    def merge_turtles():
+        """Merge a secondary turtle record into a primary turtle record.
+
+        JSON body:
+          primary_id              — Primary ID of the turtle to keep
+          secondary_id            — Primary ID of the turtle to merge in and delete
+          primary_sheet           — Sheet name for primary (optional; used for folder resolution)
+          secondary_sheet         — Sheet name for secondary (optional)
+          plastron_source         — 'primary' or 'secondary' (default 'primary')
+          carapace_source         — 'primary' or 'secondary' (default 'primary')
+          keep_secondary_additional — list of absolute paths from secondary's additional_images
+                                      to migrate; [] → migrate none
+        """
+        if not manager_service.manager_ready.wait(timeout=5):
+            return jsonify({'error': 'TurtleManager is still initializing'}), 503
+        if manager_service.manager is None:
+            return jsonify({'error': 'TurtleManager not available'}), 500
+
+        body = request.get_json(silent=True) or {}
+        primary_id = (body.get('primary_id') or '').strip()
+        secondary_id = (body.get('secondary_id') or '').strip()
+        primary_sheet = (body.get('primary_sheet') or '').strip() or None
+        secondary_sheet = (body.get('secondary_sheet') or '').strip() or None
+        plastron_source = (body.get('plastron_source') or 'primary').strip()
+        carapace_source = (body.get('carapace_source') or 'primary').strip()
+        keep_secondary_additional = body.get('keep_secondary_additional')
+
+        if not primary_id:
+            return jsonify({'error': 'primary_id is required'}), 400
+        if not secondary_id:
+            return jsonify({'error': 'secondary_id is required'}), 400
+        if primary_id == secondary_id:
+            return jsonify({'error': 'Cannot merge a turtle with itself'}), 400
+        if plastron_source not in ('primary', 'secondary'):
+            return jsonify({'error': 'plastron_source must be "primary" or "secondary"'}), 400
+        if carapace_source not in ('primary', 'secondary'):
+            return jsonify({'error': 'carapace_source must be "primary" or "secondary"'}), 400
+        if keep_secondary_additional is not None and not isinstance(keep_secondary_additional, list):
+            return jsonify({'error': 'keep_secondary_additional must be an array'}), 400
+
+        manager = manager_service.manager
+        ok, msg = manager.merge_turtles(
+            primary_id, secondary_id,
+            primary_sheet=primary_sheet,
+            secondary_sheet=secondary_sheet,
+            plastron_source=plastron_source,
+            carapace_source=carapace_source,
+            keep_secondary_additional=keep_secondary_additional if keep_secondary_additional is not None else [],
+        )
+        return jsonify({'success': ok, 'message': msg}), (200 if ok else 500)

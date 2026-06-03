@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Merge duplicate turtle records** (#178): admins can now collapse two turtle entries that turned out to be the same individual. A 4-step modal in the Sheets Browser lets the admin pick the secondary turtle, choose which plastron/carapace reference photo to keep as the active identifier, select which additional images to carry over (duplicates can be dropped), and confirm. The backend merges Google Sheets rows (primary fields win; notes and dates-refound are appended), migrates image files from the secondary folder into the primary, evicts the secondary from the VRAM matching cache, deletes the secondary Sheets row, and removes the secondary folder.
+
+### Changed
+
+- **`turtle_manager.py` split into a package** (`backend/turtle_manager/`): the 3 650-line monolith is now 11 focused modules — `manager.py` (426 lines, core only), `path_utils.py` (pure filesystem helpers), and 9 mixin classes (`merge_mixin`, `reference_mixin`, `deletion_mixin`, `review_mixin`, `folder_resolver_mixin`, `ingest_mixin`, `identifier_plastron_mixin`, `additional_images_mixin`, `flags_mixin`). All external imports (`from turtle_manager import TurtleManager`, `BASE_DATA_DIR`, etc.) remain unchanged via `__init__.py`.
+- **`SheetsBrowserTab.tsx` refactored** (1 530 → 1 021 lines): staged-photo logic extracted into `useStagedPhotos`, delete/restore into `usePhotoDelete`, sidebar thumbnail loading into `usePrimaryImagesBatch`, and the pending-photos UI into `StagedPhotosPanel`.
+- **Backend root cleaned up**: 10 standalone scripts moved to `scripts/`, `google_sheets_service.py` moved to `services/`, `turtle_folder_images.py` moved to `turtle_manager/`.
+
 ## [2.0.13] - 2026-05-31 — Carapace image-extension case handling
 
 ### Fixed
