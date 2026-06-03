@@ -18,6 +18,7 @@ from image_utils import UploadImageError
 from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
 from upload_validation import ingest_saved_upload
 from turtle_manager import canonical_new_turtle_folder_id  # re-exported for callers/tests
+from routes.upload import find_image_for_pt  # case-insensitive .pt→image sibling lookup
 from general_locations_catalog import (
     get_sheet_default,
     resolve_general_location_from_sheet_and_value,
@@ -258,13 +259,10 @@ def register_review_routes(app):
         formatted = []
         for match in results:
             pt_path = match.get('file_path', '') or ''
-            image_path = pt_path
-            if pt_path.endswith('.pt'):
-                base = pt_path[:-3]
-                for ext in ['.jpg', '.jpeg', '.png']:
-                    if os.path.exists(base + ext):
-                        image_path = base + ext
-                        break
+            # Resolve .pt → sibling image case-insensitively (Linux prod is
+            # case-sensitive; carapace refs are often .JPG). Returns pt_path
+            # unchanged when no sibling image is found.
+            image_path = find_image_for_pt(pt_path)
             formatted.append({
                 'turtle_id': match.get('site_id', 'Unknown'),
                 'location': match.get('location', 'Unknown'),
@@ -341,15 +339,14 @@ def register_review_routes(app):
         # Save candidate images to disk
         for rank, match in enumerate(results, start=1):
             pt_path = match.get('file_path', '') or ''
-            if pt_path and pt_path.endswith('.pt'):
-                base_path = pt_path[:-3]
-                for ext in ['.jpg', '.jpeg', '.png']:
-                    if os.path.exists(base_path + ext):
-                        turtle_id = match.get('site_id', 'Unknown')
-                        conf_int = int(round(match.get('confidence', 0.0) * 100))
-                        cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
-                        shutil.copy2(base_path + ext, os.path.join(candidates_dir, cand_filename))
-                        break
+            # Case-insensitive sibling lookup (handles .JPG/.JPEG/.PNG on Linux).
+            src_img = find_image_for_pt(pt_path)
+            if src_img != pt_path and os.path.exists(src_img):
+                ext = os.path.splitext(src_img)[1]
+                turtle_id = match.get('site_id', 'Unknown')
+                conf_int = int(round(match.get('confidence', 0.0) * 100))
+                cand_filename = f"Rank{rank}_ID{turtle_id}_Conf{conf_int}{ext}"
+                shutil.copy2(src_img, os.path.join(candidates_dir, cand_filename))
 
         # Return the updated packet
         item = format_review_packet_item(packet_dir, request_id)

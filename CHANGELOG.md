@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **General location catalog data model**: `_DEFAULT_CATALOG` now uses the sheet tab name (e.g. `NebraskaCPBS`, `IowaHawkeye`) as the `state` key instead of geographic parent names (`Nebraska`, `Iowa`). This correctly matches the folder path schema used by `TurtleManager` (`data/<sheet_name>/<general_location>/...`). A migration in `_normalize_catalog` automatically upgrades existing `general_locations.json` files on first load.
 
+## [2.0.13] - 2026-05-31 — Carapace image-extension case handling
+
+### Fixed
+
+- **Carapace reference upgrade orphaned the old image on case-mismatched extensions**: upgrading a carapace reference during review-approve located the previous reference image with a lowercase-only `['.jpg','.jpeg','.png']` probe, so an existing `.JPG` reference was never archived to `Old References/` nor removed — leaving an orphaned stale image beside the new reference. `turtle_manager.py` now locates it with the existing case-insensitive `_find_image_in_dir` helper. (#214)
+- **Carapace candidate thumbnails not saved after Classify on case-mismatched extensions**: classifying a review packet as carapace ran matching but skipped writing any candidate thumbnail whose reference used an uppercase extension, because `classify_review_packet` (`routes/review.py`) copied candidates with the same lowercase-only extension probe. It now resolves the source image with `find_image_for_pt` and preserves the real extension on the saved candidate filename. (#213)
+- **Carapace cross-check thumbnails blank on case-mismatched extensions**: the cross-check results grid showed matched turtles but rendered blank reference images whenever the carapace reference was stored with an uppercase extension (e.g. `F128.JPG`). `cross_check_review_packet` (`routes/review.py`) rebuilt the display path from the `.pt` using a lowercase-only `['.jpg','.jpeg','.png']` probe, which misses `.JPG/.JPEG/.PNG` on the case-sensitive Linux production filesystem and fell back to the (unservable) `.pt` path. It now resolves the sibling image with the case-insensitive `find_image_for_pt` helper. No image re-encoding. (#212)
+
 ## [2.0.12] - 2026-05-31 — E2E CI Playwright Node 24.16+ install fix + shard scaling
 
 ### Fixed
@@ -552,7 +560,8 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.12...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.13...HEAD
+[2.0.13]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.12...v2.0.13
 [2.0.12]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.11...v2.0.12
 [2.0.11]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.10...v2.0.11
 [2.0.10]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.9...v2.0.10
