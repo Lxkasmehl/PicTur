@@ -118,3 +118,36 @@ def bulk_update_general_location(
             time.sleep(1)
 
     return len(update_data)
+
+
+def find_rows_by_non_matching_general_location(
+    service,
+    spreadsheet_id: str,
+    sheet_name: str,
+    general_location: str,
+) -> List[Dict[str, Any]]:
+    """
+    Return all data rows in sheet_name where "General Location" is non-empty and does NOT
+    equal general_location (case-insensitive). Used to detect row conflicts before making
+    a sheet fixed.
+    """
+    values = _read_sheet_grid(service, spreadsheet_id, sheet_name)
+    if not values or len(values) < 2:
+        return []
+
+    headers = values[0]
+    idx_gl = column_index_for_header(headers, 'General Location')
+    if idx_gl is None:
+        return []
+
+    target = general_location.strip().lower()
+    matches: List[Dict[str, Any]] = []
+
+    for row_idx, row in enumerate(values[1:], start=2):
+        if idx_gl >= len(row):
+            continue
+        cell = str(row[idx_gl] or '').strip()
+        if cell and cell.lower() != target:
+            matches.append({'row_index': row_idx, 'general_location': cell})
+
+    return matches

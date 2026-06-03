@@ -158,7 +158,7 @@ export default function AdminLocationManagementPage() {
     if (!deleteTarget) return;
     setMoveTarget('');
     setAffected({ loading: true, total: 0, sheets: [], error: null });
-    getAffectedTurtleCount(deleteTarget.location)
+    getAffectedTurtleCount(deleteTarget.location, deleteTarget.state)
       .then((res) =>
         setAffected({ loading: false, total: res.total, sheets: res.sheets, error: null }),
       )
@@ -329,19 +329,15 @@ export default function AdminLocationManagementPage() {
   // All fixed programs from sheet_defaults.
   const fixedPrograms = catalog ? Object.entries(catalog.sheet_defaults) : [];
 
-  // Move-target options for the delete modal.
+  // Move-target options for the delete modal — restricted to the same state so the
+  // backend's state-scoped bulk-update accepts the target without validation errors.
   const moveOptions: { value: string; label: string }[] = (() => {
     if (!deleteTarget || !catalog) return [];
-    // Collect all locations across all states except the one being deleted.
-    const opts: { value: string; label: string }[] = [];
-    for (const [, locs] of Object.entries(catalog.states)) {
-      for (const loc of locs) {
-        if (loc !== deleteTarget.location && !opts.find((o) => o.value === loc)) {
-          opts.push({ value: loc, label: loc });
-        }
-      }
-    }
-    return opts.sort((a, b) => a.label.localeCompare(b.label));
+    const stateLocations = catalog.states[deleteTarget.state] ?? [];
+    return stateLocations
+      .filter((loc) => loc !== deleteTarget.location)
+      .map((loc) => ({ value: loc, label: loc }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   })();
 
   // ---------------------------------------------------------------------------

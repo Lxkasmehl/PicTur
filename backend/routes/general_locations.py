@@ -10,6 +10,8 @@ from general_locations_catalog import (
     add_sheet_default,
     delete_general_location,
     get_general_location_catalog,
+    get_locations_for_state,
+    get_sheet_state,
     remove_sheet_default,
 )
 from services import manager_service
@@ -33,19 +35,35 @@ def _serialize_catalog(catalog):
     }
 
 
-def _get_affected_turtles_across_sheets(sheets_svc, general_location: str):
+def _get_affected_turtles_across_sheets(
+    sheets_svc,
+    general_location: str,
+    state: str = '',
+    fail_on_error: bool = False,
+):
     """
-    Scan all research spreadsheet tabs for turtles whose 'General Location' equals
-    general_location. Returns a list of {sheet_name, count, rows[]} dicts.
+    Scan research spreadsheet tabs for turtles whose 'General Location' equals
+    general_location.  When *state* is provided only tabs belonging to that state
+    are scanned (prevents cross-state false positives for shared location names).
+    When *fail_on_error* is True any scan failure raises RuntimeError instead of
+    being silently dropped.
+    Returns a list of {sheet_name, count, rows[]} dicts.
     """
     results = []
+    scan_errors: list = []
     try:
         all_sheets = sheets_svc.list_sheets()
-    except Exception:
+    except Exception as exc:
+        if fail_on_error:
+            raise RuntimeError(f'Failed to list sheets: {exc}') from exc
         return results
+
+    state_lower = state.strip().lower()
 
     with sheets_svc._api_lock:
         for sheet_name in all_sheets:
+            if state_lower and (get_sheet_state(sheet_name) or '').lower() != state_lower:
+                continue
             try:
                 rows = bulk_ops.find_rows_by_general_location(
                     sheets_svc.service,
@@ -57,6 +75,11 @@ def _get_affected_turtles_across_sheets(sheets_svc, general_location: str):
                     results.append({'sheet_name': sheet_name, 'count': len(rows), 'rows': rows})
             except Exception as exc:
                 print(f'affected-turtles: error scanning {sheet_name!r}: {exc}')
+                if fail_on_error:
+                    scan_errors.append(f'{sheet_name}: {exc}')
+
+    if scan_errors:
+        raise RuntimeError('; '.join(scan_errors))
 
     return results
 
@@ -113,6 +136,7 @@ def register_general_location_routes(app):
     @require_admin
     def general_locations_affected_turtles():
         general_location = (request.args.get('general_location') or '').strip()
+        state = (request.args.get('state') or '').strip()
         if not general_location:
             return jsonify({'success': False, 'error': 'general_location is required'}), 400
 
@@ -120,7 +144,7 @@ def register_general_location_routes(app):
         if not sheets_svc:
             return jsonify({'success': True, 'total': 0, 'sheets': []})
 
-        affected = _get_affected_turtles_across_sheets(sheets_svc, general_location)
+        affected = _get_affected_turtles_across_sheets(sheets_svc, general_location, state=state)
         total = sum(s['count'] for s in affected)
         sheets_summary = [{'sheet_name': s['sheet_name'], 'count': s['count']} for s in affected]
         return jsonify({'success': True, 'total': total, 'sheets': sheets_summary})
@@ -139,10 +163,44 @@ def register_general_location_routes(app):
         if not general_location:
             return jsonify({'success': False, 'error': 'general_location is required'}), 400
 
+        # Preflight: validate the catalog operation before any irreversible writes.
+        catalog_check = get_general_location_catalog()
+        state_key = next(
+            (k for k in catalog_check.get('states', {}).keys() if k.lower() == state.lower()),
+            None,
+        )
+        if state_key is None:
+            return jsonify({'success': False, 'error': f"State '{state}' not found in catalog"}), 400
+        if not any(loc.lower() == general_location.lower() for loc in catalog_check['states'].get(state_key, [])):
+            return jsonify({'success': False, 'error': f"General location '{general_location}' not found in state '{state}'"}), 400
+        if not force:
+            for sn_check, rule in catalog_check.get('sheet_defaults', {}).items():
+                if (
+                    rule.get('state', '').lower() == state.lower()
+                    and rule.get('general_location', '').lower() == general_location.lower()
+                ):
+                    return jsonify({
+                        'success': False,
+                        'error': (
+                            f"Cannot delete '{general_location}': it is the fixed General Location "
+                            f"for sheet '{sn_check}'. Remove that sheet default first."
+                        ),
+                    }), 400
+
         sheets_svc = get_sheets_service()
 
-        # Find affected turtles before deleting the location.
-        affected = _get_affected_turtles_across_sheets(sheets_svc, general_location) if sheets_svc else []
+        # Find affected turtles scoped to this state, aborting on any scan failure.
+        affected: list = []
+        if sheets_svc:
+            try:
+                affected = _get_affected_turtles_across_sheets(
+                    sheets_svc, general_location, state=state, fail_on_error=True,
+                )
+            except RuntimeError as exc:
+                return jsonify({
+                    'success': False,
+                    'error': f'Could not scan all sheets for affected turtles: {exc}',
+                }), 500
         total_affected = sum(s['count'] for s in affected)
 
         if total_affected > 0 and not target_general_location:
@@ -153,6 +211,15 @@ def register_general_location_routes(app):
                 'total': total_affected,
                 'sheets': sheets_summary,
             }), 409
+
+        # Validate the target location before any writes (for selectable-state deletions).
+        if total_affected > 0 and target_general_location and not force:
+            valid_locations = get_locations_for_state(state)
+            if not any(loc.lower() == target_general_location.lower() for loc in valid_locations):
+                return jsonify({
+                    'success': False,
+                    'error': f"Target location '{target_general_location}' is not configured for state '{state}'",
+                }), 400
 
         # Move turtles to the target location if needed.
         move_errors = []
@@ -233,6 +300,28 @@ def register_general_location_routes(app):
             return jsonify({'success': False, 'error': 'sheet_name is required'}), 400
         if not general_location:
             return jsonify({'success': False, 'error': 'general_location is required'}), 400
+
+        # Block the conversion if existing turtles have a different General Location.
+        sheets_svc = get_sheets_service()
+        if sheets_svc:
+            with sheets_svc._api_lock:
+                try:
+                    conflicting = bulk_ops.find_rows_by_non_matching_general_location(
+                        sheets_svc.service,
+                        sheets_svc.spreadsheet_id,
+                        sheet_name,
+                        general_location,
+                    )
+                except Exception:
+                    conflicting = []
+            if conflicting:
+                return jsonify({
+                    'success': False,
+                    'error': (
+                        f"{len(conflicting)} turtle(s) in sheet '{sheet_name}' already have a "
+                        f"different General Location. Move them to '{general_location}' first."
+                    ),
+                }), 409
 
         try:
             catalog = add_sheet_default(sheet_name, general_location)

@@ -100,11 +100,13 @@ export const addGeneralLocation = async (
 
 export const getAffectedTurtleCount = async (
   generalLocation: string,
+  state?: string,
 ): Promise<AffectedTurtlesResponse> => {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const params = new URLSearchParams({ general_location: generalLocation });
+  if (state) params.set('state', state);
   const response = await fetch(
     `${TURTLE_API_BASE_URL}/general-locations/affected-turtles?${params.toString()}`,
     { method: 'GET', headers },
