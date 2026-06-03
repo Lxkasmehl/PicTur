@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.14] - 2026-06-03 — Turtle folder merge utility
+
+### Added
+
+- **`merge_turtle.py` script**: merges one turtle folder into another — moves plastron/carapace reference images to the target's `Other Plastrons/`, merges `additional_images/` date-folders, merges `find_metadata.json` (target wins on conflicts), deletes stale `.pt` tensors, and removes the source folder. Dry-run by default; pass `--execute` to apply.
+
 ## [2.0.13] - 2026-05-31 — Carapace image-extension case handling
 
 ### Fixed
@@ -547,7 +553,11 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.10...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.14...HEAD
+[2.0.14]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.13...v2.0.14
+[2.0.13]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.12...v2.0.13
+[2.0.12]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.11...v2.0.12
+[2.0.11]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.10...v2.0.11
 [2.0.10]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.9...v2.0.10
 [2.0.9]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.8...v2.0.9
 [2.0.8]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.7...v2.0.8
