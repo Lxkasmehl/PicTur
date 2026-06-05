@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sheets Browser falsely flagged turtles as "No photos on disk"**: a turtle whose Google Sheet `Location` names a sub-site its folder doesn't actually live under (e.g. `Location=Shredder` while the folder sits directly under `.../CPBS/`) failed folder resolution. `_get_turtle_folder` scoped the walk to the deepest *existing* prefix (`.../CPBS/Shredder`), missed the turtle, and returned `None`, so the browser showed a red "No photos on disk" badge even though the turtle matches fine and has reference images on disk. It now falls back to a full unscoped walk for a globally-unique `primary_id` when the scoped walk misses (bare biology IDs stay scoped — they repeat across sheets), recovering the correct folder. This also lets the admin upload resolvers find the existing folder instead of creating a duplicate under the stale sub-site.
+
 ## [2.0.14] - 2026-06-03 — Turtle folder merge utility
 
 ### Added

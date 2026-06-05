@@ -245,6 +245,37 @@ def test_get_turtle_folder_no_hint_primary_id_resolves_across_tree(mgr):
     assert os.path.normpath(mgr._get_turtle_folder("T1771234567", None)) == os.path.normpath(pj)
 
 
+def test_get_turtle_folder_primary_recovers_when_sheet_location_is_stale(mgr):
+    """Sheet Location names a sub-site the turtle's folder does NOT live under
+    (e.g. Location='Shredder' while the folder sits directly under .../CPBS/).
+    The scoped walk misses it, but a globally-unique primary_id recovers via the
+    unscoped fallback. A bare bio_id must stay scoped (it repeats across sheets)
+    and fail closed. Mirrors the live F286 'No photos on disk' incident."""
+    target = _make_turtle(mgr, "NebraskaCPBS", "CPBS", "F286_T1771234567")
+    # A real sub-site exists but holds a DIFFERENT turtle, so the deepest existing
+    # prefix (.../CPBS/Shredder) is walked first and misses F286.
+    _make_turtle(mgr, "NebraskaCPBS", "CPBS", "Shredder", "F128_T1770000001")
+    stale_hint = "NebraskaCPBS/CPBS/Shredder"
+    assert os.path.normpath(mgr._get_turtle_folder("T1771234567", stale_hint)) == os.path.normpath(target)
+    assert mgr._get_turtle_folder("F286", stale_hint) is None
+
+
+def test_get_turtle_folder_genuinely_nested_turtle_still_resolves(mgr):
+    """A turtle that really lives in a sub-site is still found by the recursive
+    scoped walk, for both its primary id and its bio id (no regression)."""
+    nested = _make_turtle(mgr, "NebraskaCPBS", "CPBS", "Shredder", "F128_T1770000001")
+    hint = "NebraskaCPBS/CPBS/Shredder"
+    assert os.path.normpath(mgr._get_turtle_folder("T1770000001", hint)) == os.path.normpath(nested)
+    assert os.path.normpath(mgr._get_turtle_folder("F128", hint)) == os.path.normpath(nested)
+
+
+def test_get_turtle_folder_primary_fallback_returns_none_when_absent(mgr):
+    """The unscoped primary fallback must not invent a match: a primary that
+    exists nowhere still resolves to None."""
+    _make_turtle(mgr, "NebraskaCPBS", "CPBS", "F286_T1771234567")
+    assert mgr._get_turtle_folder("T9999999999", "NebraskaCPBS/CPBS/Shredder") is None
+
+
 def test_resolve_upload_bare_general_location_stays_in_sheet(mgr):
     """resolve_turtle_dir_for_sheet_upload must not cross sheets when the hint
     is a bare general_location and the same bio_id exists in another sheet."""
