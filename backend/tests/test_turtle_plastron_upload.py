@@ -59,6 +59,36 @@ def test_resolve_or_create_canonical_clamps_deep_location(mgr):
     )
 
 
+def test_resolve_or_create_canonical_gate_requires_primary_for_new_folder(mgr):
+    """Born-canonical-or-fail-loud: CREATING a new folder with a bio_id but no
+    primary_id must fail loud (never a bio-only 'F901' or doubled 'F901_F901'),
+    while resolving an EXISTING folder by bare bio_id still works without a
+    primary (the gate is create-only)."""
+    # No folder yet + bio_id + no primary -> refuse, with a clear reason.
+    turtle_dir, created, reason = mgr.resolve_or_create_canonical_turtle_dir(
+        "F901", "Kansas/Lawrence", primary_id=None, bio_id="F901"
+    )
+    assert turtle_dir is None and created is False
+    assert reason and "Primary ID" in reason
+    assert not os.path.isdir(os.path.join(mgr.base_dir, "Kansas", "Lawrence", "F901"))
+    assert not os.path.isdir(os.path.join(mgr.base_dir, "Kansas", "Lawrence", "F901_F901"))
+
+    # With a primary it is born canonical.
+    turtle_dir, created, reason = mgr.resolve_or_create_canonical_turtle_dir(
+        "F901", "Kansas/Lawrence", primary_id="T1771234901", bio_id="F901"
+    )
+    assert created is True and reason is None
+    expected = os.path.join(mgr.base_dir, "Kansas", "Lawrence", "F901_T1771234901")
+    assert os.path.normpath(turtle_dir) == os.path.normpath(expected)
+
+    # An EXISTING folder still resolves by bare bio_id with no primary.
+    again, created2, reason2 = mgr.resolve_or_create_canonical_turtle_dir(
+        "F901", "Kansas/Lawrence", primary_id=None, bio_id="F901"
+    )
+    assert created2 is False and reason2 is None
+    assert os.path.normpath(again) == os.path.normpath(expected)
+
+
 def test_set_identifier_first_plastron(mgr, tmp_path):
     src = tmp_path / "in.jpg"
     src.write_bytes(b"\xff\xd8\xff fakejpeg")

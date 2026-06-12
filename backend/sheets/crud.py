@@ -219,7 +219,8 @@ def update_turtle_data(service, spreadsheet_id: str, primary_id: str, turtle_dat
                       state: Optional[str] = None, location: Optional[str] = None,
                       ensure_primary_id_column_func=None, find_row_by_primary_id_func=None,
                       get_all_column_indices_func=None,
-                      invalidate_column_indices_cache_func=None) -> bool:
+                      invalidate_column_indices_cache_func=None,
+                      bio_id: Optional[str] = None) -> bool:
     """
     Update existing turtle data in Google Sheets.
     
@@ -253,6 +254,13 @@ def update_turtle_data(service, spreadsheet_id: str, primary_id: str, turtle_dat
         row_idx = find_row_by_primary_id_func(sheet_name, primary_id, 'Primary ID')
         if not row_idx:
             row_idx = find_row_by_primary_id_func(sheet_name, primary_id, 'ID')
+        if not row_idx and bio_id and str(bio_id).strip():
+            # "Null" turtle: the row carries a biology id but no Primary ID yet,
+            # so a freshly-minted primary_id matches neither column. Locate the
+            # row by its biology id (scoped to this sheet -- biology ids repeat
+            # across sheets) so the new primary_id in turtle_data is written into
+            # the Primary ID cell below.
+            row_idx = find_row_by_primary_id_func(sheet_name, str(bio_id).strip(), 'ID')
         if not row_idx:
             return False
 

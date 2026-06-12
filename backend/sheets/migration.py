@@ -3,6 +3,7 @@ Migration functions for Google Sheets
 """
 
 import re
+import secrets
 import time
 import random
 from typing import Dict, Optional, Tuple
@@ -101,11 +102,14 @@ def generate_primary_id(service, spreadsheet_id: str, list_sheets_func=None, fin
     Returns:
         New unique primary ID
     """
-    # Generate ID from timestamp + random. No need to scan all sheets (saves many API reads
-    # and avoids rate limit when adding multiple turtles). Collision probability is negligible.
+    # Millisecond timestamp + a 9-digit CRYPTOGRAPHIC random tail. The old
+    # ms + 5-digit randint(10000,99999) form had only a 90k bucket and produced
+    # confirmed same-millisecond collisions in production (Apr-22 burst); a
+    # 9-digit secrets tail makes a same-ms collision ~1e-9. Still "T" + digits,
+    # so every _PRIMARY_ID_RE / ^T\d{10,}$ matcher keeps working. No sheet scan.
     timestamp = int(time.time() * 1000)
-    random_part = random.randint(10000, 99999)
-    return f"T{timestamp}{random_part}"
+    random_part = secrets.randbelow(1_000_000_000)
+    return f"T{timestamp}{random_part:09d}"
 
 
 def get_max_biology_id_number(service, spreadsheet_id: str, sheet_name: str,
@@ -169,11 +173,14 @@ def get_max_biology_id_number(service, spreadsheet_id: str, sheet_name: str,
                     print(f"Rate limit (429) reading ID column from sheet '{sheet_name}', waiting {wait_sec}s before retry ({attempt + 1}/{SHEETS_RATE_LIMIT_MAX_RETRIES})")
                     time.sleep(wait_sec)
                     continue
-                print(f"Warning: Error reading ID column from sheet '{sheet_name}': {e}")
-                return 0
+                # A genuine (non-429) read failure must NOT silently fall through
+                # to 0 -- returning 0 mints a duplicate low biology id
+                # (<gender>001). Propagate so callers retry (transient) or fail
+                # loud. 0 is reserved for a truly-empty sheet / no ID column.
+                raise
         else:
             if last_error:
-                print(f"Warning: Error reading ID column from sheet '{sheet_name}': {last_error}")
+                raise last_error
             return 0
 
         max_num = 0
@@ -191,11 +198,13 @@ def get_max_biology_id_number(service, spreadsheet_id: str, sheet_name: str,
                 max_num = num
         return max_num
     except HttpError as e:
-        print(f"Warning: Error reading ID column from sheet '{sheet_name}': {e}")
-        return 0
+        # Do not swallow to 0 (see the inner handler) -- a Sheets read failure
+        # must not cause a duplicate biology id. Propagate to the caller.
+        print(f"Error reading ID column from sheet '{sheet_name}' (propagating, not returning 0): {e}")
+        raise
     except Exception as e:
-        print(f"Warning: Error scanning sheet '{sheet_name}' for biology ID: {e}")
-        return 0
+        print(f"Error scanning sheet '{sheet_name}' for biology ID (propagating, not returning 0): {e}")
+        raise
 
 
 def generate_biology_id(service, spreadsheet_id: str, sheet_name: str,

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A transient Google Sheets outage can no longer create a non-canonical turtle folder**: when the Sheets service was momentarily unavailable while approving/uploading a new turtle, the folder could be born with a bio-only name (e.g. `F276`, `F276_F276`) instead of canonical `<bio_id>_<primary_id>`. Because biology IDs repeat across sheets (Kansas `F102` ≠ Nebraska `F102`), a bio-only folder is a cross-sheet contamination risk. New-turtle creation now: (a) generates the globally-unique `primary_id` **locally** (no network) so the folder always carries a real primary — worst case a safe primary-only folder, never bio-only; (b) runs the biology-ID lookup and the sheet-row write through a **bounded retry** that re-establishes a dropped connection; and (c) if Sheets stays down, returns a retryable **503** and creates nothing, rather than degrading to a bad name. The canonical-folder resolver also **fails loud** (with a clear, retryable message) rather than creating a bio-only folder when a primary can't be obtained. A "Null" turtle (a sheet row with a biology ID but no Primary ID) now has a primary minted and written to its row on its first reference photo, so its folder is born canonical. (#240)
+- **`generate_primary_id` collision hardened**: replaced the millisecond-timestamp + 5-digit (`randint`) tail — which produced confirmed same-millisecond collisions — with a 9-digit cryptographic (`secrets`) tail, making a same-millisecond collision negligibly unlikely. IDs remain `T` + digits. (#240)
+- **`generate_biology_id` no longer mints a duplicate `001` on a read error**: a failed Sheets read of the ID column previously returned `0`, producing a duplicate low biology ID (e.g. a second `F001`). It now raises on a genuine read failure (transient → retried/`503`), reserving `0` for a truly-empty sheet. (#240)
+
 ## [2.0.15] - 2026-06-05 — Stale-location turtle folder resolution
 
 ### Fixed
