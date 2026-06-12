@@ -30,6 +30,56 @@ from turtle_folder_images import (
 )
 
 
+def _ensure_primary_for_new_sheet_turtle(turtle_id, bio_id, sheet_name):
+    """Return a real primary_id so a Sheets-browser upload that CREATES a new
+    folder makes it canonical (``<bio_id>_<primary_id>``) -- never bio-only.
+
+    Reads the turtle's sheet row by biology id (scoped to the tab = first
+    segment of the folder hint, since biology ids repeat across sheets); if the
+    row already has a Primary ID, returns it; otherwise mints one and writes it
+    into that row. Runs under bounded Sheets retry, so a transient outage raises
+    ``SheetsServiceUnavailableError`` (-> 503) instead of letting a bio-only
+    folder be created. Returns None when it can't resolve without Sheets config
+    (the caller then fails loud via the canonical-folder gate). Call this ONLY
+    when no folder exists yet and no primary_id was supplied -- minting a primary
+    for a turtle that already has a folder would diverge the sheet from disk.
+    """
+    tab = (sheet_name or '').split('/')[0].strip()
+    bio = (bio_id or turtle_id or '').strip()
+    if not tab or not bio:
+        return None
+
+    def _work(service):
+        if service is None:
+            return None
+        row = service.get_turtle_data(bio, tab)
+        if row is None:
+            # The CRUD layer swallows a transient read HttpError to None, so a
+            # None here means "couldn't read the row" (transient outage) or "row
+            # absent". Either way we must NOT mint a primary + create a folder the
+            # sheet doesn't know about -- raise so call_sheets_with_retry retries
+            # a blip and ultimately surfaces a 503, never a sheet-divergent folder.
+            raise manager_service.SheetsServiceUnavailableError(
+                "Could not read the turtle's sheet row to assign a Primary ID. Please try again."
+            )
+        existing = (row or {}).get('primary_id')
+        if existing and str(existing).strip():
+            return str(existing).strip()
+        new_pid = service.generate_primary_id()
+        # update_turtle_data returns False (it swallows a transient HttpError)
+        # rather than raising -> we MUST check it. Returning new_pid after a
+        # failed write would create a folder whose name carries a primary the
+        # sheet row never received (silent disk/sheet divergence). Raise instead
+        # so the write is retried and, if Sheets stays down, the caller gets 503.
+        if not service.update_turtle_data(new_pid, {'primary_id': new_pid}, tab, bio_id=bio):
+            raise manager_service.SheetsServiceUnavailableError(
+                "Could not write the new Primary ID to the turtle's sheet row. Please try again."
+            )
+        return new_pid
+
+    return manager_service.call_sheets_with_retry(_work)
+
+
 def register_turtle_routes(app):
     """Register turtle-related routes"""
 
@@ -468,6 +518,17 @@ def register_turtle_routes(app):
                     pass
             return upload_error_response(img_err)
         try:
+            # Null-turtle first reference photo (no folder, no primary yet):
+            # ensure a real primary so the new folder is born canonical, never
+            # bio-only. Only when no folder exists -- minting for an existing
+            # folder would diverge the sheet from disk. 503 if Sheets is down.
+            if create_if_missing and not primary_id and sheet_name:
+                mgr = manager_service.manager
+                existing = mgr._get_turtle_folder(turtle_id, sheet_name)
+                if not (existing and os.path.isdir(existing)) and bio_id and bio_id != turtle_id:
+                    existing = mgr._get_turtle_folder(bio_id, sheet_name)
+                if not (existing and os.path.isdir(existing)):
+                    primary_id = _ensure_primary_for_new_sheet_turtle(turtle_id, bio_id, sheet_name)
             success, msg = manager_service.manager.replace_turtle_reference(
                 turtle_id, temp_path, photo_type=photo_type, sheet_name=sheet_name,
                 primary_id=primary_id, create_if_missing=create_if_missing, bio_id=bio_id,
@@ -475,6 +536,8 @@ def register_turtle_routes(app):
             if not success:
                 return jsonify({'error': msg or 'Failed to replace reference'}), 400
             return jsonify({'success': True, 'message': msg})
+        except manager_service.SheetsServiceUnavailableError as e:
+            return jsonify({'error': e.message}), e.status_code
         finally:
             if os.path.isfile(temp_path):
                 try:
@@ -505,11 +568,23 @@ def register_turtle_routes(app):
         sheet_name = (request.form.get('sheet_name') or request.args.get('sheet_name') or '').strip() or None
         # Optional primary_id tried first during folder resolution.
         primary_id = (request.form.get('primary_id') or request.args.get('primary_id') or '').strip() or None
+        bio_id = (request.form.get('bio_id') or request.args.get('bio_id') or '').strip() or None
         mode = (request.form.get('mode') or request.args.get('mode') or '').strip().lower()
         if not turtle_id:
             return jsonify({'error': 'turtle_id required'}), 400
         if mode not in ('set_if_missing', 'replace'):
             return jsonify({'error': 'mode must be set_if_missing or replace'}), 400
+        # Defensive: this endpoint is not the Null-turtle first-photo path
+        # (that's /replace-reference, which auto-assigns a primary). If it would
+        # CREATE a brand-new folder, require a primary_id so the folder is born
+        # canonical (<bio_id>_<primary_id>) rather than bio-only.
+        if not primary_id:
+            existing_dir = manager_service.manager._get_turtle_folder(turtle_id, sheet_name)
+            if not (existing_dir and os.path.isdir(existing_dir)):
+                return jsonify({
+                    'error': 'primary_id is required to create a new turtle folder.',
+                    'code': 'primary_id_required',
+                }), 400
 
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400

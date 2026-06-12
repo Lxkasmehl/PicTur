@@ -10,7 +10,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from flask import request, jsonify
 from auth import require_admin
-from services.manager_service import get_sheets_service, get_community_sheets_service
+from services.manager_service import get_sheets_service, get_community_sheets_service, is_transient_sheets_error
 from general_locations_catalog import resolve_general_location_from_sheet_and_value
 from sheets import sheet_management
 from sheets import lookup as sheets_lookup
@@ -291,6 +291,10 @@ def register_sheets_routes(app):
             except UnicodeEncodeError:
                 print(f"[ERROR] Error generating turtle ID: {str(e)}")
             print(f"Traceback:\n{error_trace}")
+            if is_transient_sheets_error(e):
+                # A genuine Sheets read failure now raises (no silent duplicate
+                # biology id) -> surface a retryable 503 instead of a bare 500.
+                return jsonify({'error': 'Google Sheets is temporarily unavailable. Please try again.'}), 503
             return jsonify({'error': f'Failed to generate turtle ID: {str(e)}'}), 500
 
     @app.route('/api/sheets/turtle', methods=['POST'])
@@ -374,6 +378,8 @@ def register_sheets_routes(app):
             except UnicodeEncodeError:
                 print(f"[ERROR] Error creating turtle data in sheets: {str(e)}")
             print(f"Traceback:\n{error_trace}")
+            if is_transient_sheets_error(e):
+                return jsonify({'error': 'Google Sheets is temporarily unavailable. Please try again.'}), 503
             return jsonify({'error': f'Failed to create turtle data: {str(e)}'}), 500
 
     @app.route('/api/sheets/turtle/<primary_id>', methods=['PUT'])
@@ -533,6 +539,8 @@ def register_sheets_routes(app):
             except UnicodeEncodeError:
                 print(f"[ERROR] Error updating turtle data in sheets: {str(e)}")
             print(f"Traceback:\n{error_trace}")
+            if is_transient_sheets_error(e):
+                return jsonify({'error': 'Google Sheets is temporarily unavailable. Please try again.'}), 503
             return jsonify({'error': f'Failed to update turtle data: {str(e)}'}), 500
 
     # Path must NOT be under /api/sheets/turtle/<id> or "lookup-options" is matched as a primary_id on some stacks.

@@ -2570,6 +2570,17 @@ class TurtleManager:
         location_dir = _resolved_path_under_base(self.base_dir, *rel_parts)
         if not location_dir:
             return None, False, "could not resolve a safe folder path"
+        # Born-canonical-or-fail-loud: never CREATE a new folder named by bio_id
+        # alone. bio_ids repeat across sheets, so a bio-only ("F276" / "F276_F276")
+        # folder is a cross-sheet collision risk -- require the globally-unique
+        # primary_id. The existing-folder branch above already returned, so
+        # resolving a KNOWN turtle by a bare bio_id still works without a primary.
+        if (bio_id or '').strip() and not (primary_id or '').strip():
+            return None, False, (
+                "Can't create a canonical turtle folder without a Primary ID. "
+                "If Google Sheets was momentarily unavailable, try again in a "
+                "moment; otherwise assign this turtle a Primary ID first."
+            )
         folder_name = canonical_new_turtle_folder_id(bio_id, primary_id, tid)
         turtle_dir = _resolved_path_under_base(location_dir, folder_name)
         if not turtle_dir:
