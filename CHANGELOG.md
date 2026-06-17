@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.17] - 2026-06-17 — Restore "Date Last Assayed" on the profile form
+
 ### Fixed
 
 - **"Date Last Assayed" reappears on the turtle profile form**: the `Last Assay Date` field was missing from the Sheets Browser / Turtle Records (profile) form and only showed on the Turtle Match form. The April research-schema refactor split the single form field-order into separate full-sheet and Match lists and, in doing so, dropped `last_assay_date` from the full-sheet list while keeping it on Match. It is now restored to the profile form in canonical column order (after `iButton Last set`). Existing turtles' values were never lost — the field is read and written normally; it was only hidden from this form. (#239)
