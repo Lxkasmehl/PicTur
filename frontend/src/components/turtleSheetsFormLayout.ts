@@ -25,6 +25,7 @@ export const FULL_SHEET_FORM_FIELD_ORDER: TurtleFormOrderKey[] = [
   'name',
   'sex',
   'ibutton_last_set',
+  'last_assay_date',
   '__dates_refound__',
   'specific_location',
   'general_location',
