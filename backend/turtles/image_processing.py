@@ -324,6 +324,28 @@ class TurtleDeepMatcher:
             logger.error(f"Failed to incrementally cache {turtle_id}: {e}")
             return False
 
+    def filter_vram_cache(self, keep_fn, photo_type="plastron"):
+        """Atomically keep only cache entries where keep_fn(cand) is True.
+
+        Runs under the GPU lock so an eviction can't lose a concurrent
+        add_single_to_vram update — both mutate the same cache list, and
+        without this serialization a hand-rolled setattr swap could clobber
+        an in-flight append (matters once the server is threaded).
+        Returns the number of evicted entries.
+        """
+        with self._gpu_lock:
+            attr = 'vram_cache_carapace' if photo_type == 'carapace' else 'vram_cache_plastron'
+            cache = getattr(self, attr)
+            kept = [c for c in cache if keep_fn(c)]
+            removed = len(cache) - len(kept)
+            if removed:
+                setattr(self, attr, kept)
+            return removed
+
+    def evict_from_vram(self, pt_path, photo_type="plastron"):
+        """Remove cache entries whose file_path == pt_path (under the GPU lock)."""
+        return self.filter_vram_cache(lambda c: c.get('file_path') != pt_path, photo_type)
+
     def match_query_robust_vram(self, query_path, location_filter="All Locations", photo_type="plastron"):
         """Convenience wrapper: extract + match in one call."""
         query_feats = self.extract_query_features(query_path)

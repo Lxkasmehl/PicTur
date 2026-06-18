@@ -684,7 +684,7 @@ class TurtleManager:
         Scans plastron/ (new), ref_data/ (legacy), and carapace/ subdirectories.
         Each index entry is a 4-tuple: (pt_path, turtle_id, location, photo_type).
         """
-        self.db_index = []
+        index = []
         for root, dirs, files in os.walk(self.base_dir):
             # Defensively prune Deleted/ subtrees so soft-deleted .pt files
             # (if any lingered across an older format) never enter the index.
@@ -708,12 +708,18 @@ class TurtleManager:
                         # Strip the last 2 parts (TurtleID/plastron or TurtleID/carapace)
                         loc_parts = rel_path.split(os.sep)[:-2]
                         location_name = "/".join(loc_parts)
-                        self.db_index.append((os.path.join(root, file), turtle_id, location_name, photo_type))
+                        index.append((os.path.join(root, file), turtle_id, location_name, photo_type))
+
+        # Assign atomically so a concurrent refresh (now possible under the
+        # threaded server) never observes a half-built index. Each caller
+        # builds a complete index in a local, so "last writer wins" stays
+        # consistent instead of interleaving appends into one shared list.
+        self.db_index = index
 
         # Push the indexed files directly into the Brain's VRAM
         if hasattr(brain, 'load_database_to_vram'):
             print("⚡ Pushing database to Memory Cache...")
-            brain.load_database_to_vram(self.db_index)
+            brain.load_database_to_vram(index)
 
     # Folders that should never appear in user-facing location dropdowns
     SYSTEM_FOLDERS = {"Review_Queue", "Community_Uploads",
@@ -1251,7 +1257,6 @@ class TurtleManager:
             if photo_type == "carapace":
                 ref_dir = os.path.join(target_dir, 'carapace')
                 archive_dir = os.path.join(target_dir, 'carapace', 'Old References')
-                cache_attr = 'vram_cache_carapace'
                 print_prefix = "✨ UPGRADING CARAPACE REFERENCE"
                 archive_prefix = "Archived_Carapace"
             else:
@@ -1264,7 +1269,6 @@ class TurtleManager:
                 else:
                     ref_dir = plastron_dir
                 archive_dir = os.path.join(target_dir, 'plastron', 'Old References')
-                cache_attr = 'vram_cache_plastron'
                 print_prefix = "✨ UPGRADING REFERENCE"
                 archive_prefix = "Archived_Master"
             os.makedirs(ref_dir, exist_ok=True)
@@ -1372,8 +1376,7 @@ class TurtleManager:
             # incremental insert matches what refresh_database_index would
             # produce on a full reload (which derives turtle_id from
             # ``path_parts[-2]``, i.e. the folder basename).
-            cache = getattr(brain, cache_attr, [])
-            setattr(brain, cache_attr, [c for c in cache if c['file_path'] != old_pt_path])
+            self._evict_from_vram(old_pt_path, photo_type)
             rel_path = os.path.relpath(ref_dir, self.base_dir)
             loc_parts = rel_path.split(os.sep)[:-2]
             location_name = "/".join(loc_parts)
@@ -1464,9 +1467,9 @@ class TurtleManager:
         return candidates[0][1]
 
     def _evict_from_vram(self, pt_path, photo_type):
-        cache_attr = 'vram_cache_carapace' if photo_type == 'carapace' else 'vram_cache_plastron'
-        cache = getattr(brain, cache_attr, [])
-        setattr(brain, cache_attr, [c for c in cache if c.get('file_path') != pt_path])
+        # Delegate to the brain so the cache swap happens under _gpu_lock and
+        # can't race a concurrent add_single_to_vram (lost update).
+        brain.evict_from_vram(pt_path, photo_type)
 
     def _location_name_for_ref_dir(self, ref_dir):
         rel_path = os.path.relpath(ref_dir, self.base_dir)
@@ -1907,9 +1910,7 @@ class TurtleManager:
                 # one. Use ref_stem (folder basename) as the cached site_id so
                 # the incremental insert matches what refresh_database_index
                 # would produce on a full reload.
-                cache_attr = 'vram_cache_carapace' if photo_type == 'carapace' else 'vram_cache_plastron'
-                cache = getattr(brain, cache_attr, [])
-                setattr(brain, cache_attr, [c for c in cache if c['file_path'] != old_pt_path])
+                self._evict_from_vram(old_pt_path, photo_type)
                 rel_path = os.path.relpath(ref_dir, self.base_dir)
                 loc_parts = rel_path.split(os.sep)[:-2]
                 location_name = "/".join(loc_parts)
@@ -2124,8 +2125,7 @@ class TurtleManager:
                                 if old_img_path and os.path.exists(old_img_path) and old_img_path != dest_img:
                                     try: os.remove(old_img_path)
                                     except OSError: pass
-                                cache = getattr(brain, 'vram_cache_carapace', [])
-                                brain.vram_cache_carapace = [c for c in cache if c['file_path'] != old_pt_path]
+                                self._evict_from_vram(old_pt_path, 'carapace')
                                 rel = os.path.relpath(target_dir, self.base_dir)
                                 loc = os.path.dirname(rel).replace(os.sep, "/")
                                 brain.add_single_to_vram(dest_pt, target_ref_stem, loc, photo_type='carapace')
@@ -2216,12 +2216,13 @@ class TurtleManager:
         # Evict from VRAM cache (check both new 'plastron' and legacy 'ref_data' paths)
         subdirs_to_check = ['carapace'] if photo_type == 'carapace' else ['plastron', 'ref_data']
         pt_path_fragments = [os.path.join(turtle_id, sd, f"{turtle_id}.pt") for sd in subdirs_to_check]
-        for cache_attr in ('vram_cache_plastron', 'vram_cache_carapace'):
-            cache = getattr(brain, cache_attr, [])
-            before = len(cache)
-            filtered = [c for c in cache if not any(c['file_path'].endswith(frag) for frag in pt_path_fragments)]
-            if len(filtered) < before:
-                setattr(brain, cache_attr, filtered)
+        for cache_attr, ptype in (('vram_cache_plastron', 'plastron'),
+                                  ('vram_cache_carapace', 'carapace')):
+            removed = brain.filter_vram_cache(
+                lambda c: not any(c['file_path'].endswith(frag) for frag in pt_path_fragments),
+                photo_type=ptype,
+            )
+            if removed:
                 print(f"🔙 Evicted {turtle_id} from {cache_attr}")
 
     def reject_review_packet(self, request_id):

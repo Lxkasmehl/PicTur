@@ -706,12 +706,19 @@ export const listAllTurtlesFromSheets = async (
 };
 
 /**
- * Admin-only: download ZIP with backend data/ mirror + Google Sheets CSV/JSON exports.
- * Triggers a browser file download.
+ * Admin-only: download a ZIP of the backend data/ mirror + Google Sheets
+ * CSV/JSON exports.
+ *
+ * The archive is multi-GB, so we do NOT buffer it (no fetch -> blob): the
+ * server streams it in constant memory. Because a navigation/anchor download
+ * can't send the Authorization header, we first mint a short-lived one-shot
+ * token (authenticated via the header) and then hand the ?dl= URL to the
+ * browser's own download manager, which streams straight to disk in the
+ * background. `timeoutMs` bounds only the small token request.
  */
 export async function downloadAdminBackupArchive(
   options: { scope: 'all' } | { scope: 'sheet'; sheet: string },
-  timeoutMs = 600000,
+  timeoutMs = 30000,
 ): Promise<void> {
   const token = getToken();
   if (!token) {
@@ -723,40 +730,29 @@ export async function downloadAdminBackupArchive(
     params.set('sheet', options.sheet);
   }
 
+  // 1) Mint a short-lived download token (authenticated via the header).
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
+  let dlToken: string;
   try {
-    const response = await fetch(
-      `${TURTLE_API_BASE_URL}/backup/archive?${params.toString()}`,
+    const res = await fetch(
+      `${TURTLE_API_BASE_URL}/backup/archive/token?${params.toString()}`,
       {
-        method: 'GET',
+        method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
       },
     );
-
     clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error((err as { error?: string }).error || 'Backup download failed');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as { error?: string }).error || 'Backup authorization failed');
     }
-
-    const blob = await response.blob();
-    const cd = response.headers.get('Content-Disposition');
-    let filename = 'turtle-backup.zip';
-    const m = cd && /filename="([^"]+)"/.exec(cd);
-    if (m) {
-      filename = m[1];
+    const data = (await res.json()) as { token?: string };
+    if (!data.token) {
+      throw new Error('Backup authorization failed: no token returned');
     }
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    dlToken = data.token;
   } catch (e) {
     clearTimeout(timeoutId);
     if (e instanceof Error && e.name === 'AbortError') {
@@ -764,4 +760,15 @@ export async function downloadAdminBackupArchive(
     }
     throw e;
   }
+
+  // 2) Hand off to the browser's download manager (streams to disk; the
+  //    response's Content-Disposition names the file).
+  params.set('dl', dlToken);
+  const url = `${TURTLE_API_BASE_URL}/backup/archive?${params.toString()}`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
