@@ -20,6 +20,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **General location catalog data model**: `_DEFAULT_CATALOG` now uses the sheet tab name (e.g. `NebraskaCPBS`, `IowaHawkeye`) as the `state` key instead of geographic parent names (`Nebraska`, `Iowa`). This correctly matches the folder path schema used by `TurtleManager` (`data/<sheet_name>/<general_location>/...`). A migration in `_normalize_catalog` automatically upgrades existing `general_locations.json` files on first load.
 
+## [2.0.17] - 2026-06-17 — Restore "Date Last Assayed" on the profile form
+
+### Fixed
+
+- **"Date Last Assayed" reappears on the turtle profile form**: the `Last Assay Date` field was missing from the Sheets Browser / Turtle Records (profile) form and only showed on the Turtle Match form. The April research-schema refactor split the single form field-order into separate full-sheet and Match lists and, in doing so, dropped `last_assay_date` from the full-sheet list while keeping it on Match. It is now restored to the profile form in canonical column order (after `iButton Last set`). Existing turtles' values were never lost — the field is read and written normally; it was only hidden from this form. (#239)
+
+## [2.0.16] - 2026-06-12 — Born-canonical turtle naming under Sheets outages
+
+### Fixed
+
+- **A transient Google Sheets outage can no longer create a non-canonical turtle folder**: when the Sheets service was momentarily unavailable while approving/uploading a new turtle, the folder could be born with a bio-only name (e.g. `F276`, `F276_F276`) instead of canonical `<bio_id>_<primary_id>`. Because biology IDs repeat across sheets (Kansas `F102` ≠ Nebraska `F102`), a bio-only folder is a cross-sheet contamination risk. New-turtle creation now: (a) generates the globally-unique `primary_id` **locally** (no network) so the folder always carries a real primary — worst case a safe primary-only folder, never bio-only; (b) runs the biology-ID lookup and the sheet-row write through a **bounded retry** that re-establishes a dropped connection; and (c) if Sheets stays down, returns a retryable **503** and creates nothing, rather than degrading to a bad name. The canonical-folder resolver also **fails loud** (with a clear, retryable message) rather than creating a bio-only folder when a primary can't be obtained. A "Null" turtle (a sheet row with a biology ID but no Primary ID) now has a primary minted and written to its row on its first reference photo, so its folder is born canonical. (#240)
+- **`generate_primary_id` collision hardened**: replaced the millisecond-timestamp + 5-digit (`randint`) tail — which produced confirmed same-millisecond collisions — with a 9-digit cryptographic (`secrets`) tail, making a same-millisecond collision negligibly unlikely. IDs remain `T` + digits. (#240)
+- **`generate_biology_id` no longer mints a duplicate `001` on a read error**: a failed Sheets read of the ID column previously returned `0`, producing a duplicate low biology ID (e.g. a second `F001`). It now raises on a genuine read failure (transient → retried/`503`), reserving `0` for a truly-empty sheet. (#240)
+
+## [2.0.15] - 2026-06-05 — Stale-location turtle folder resolution
+
+### Fixed
+
+- **Sheets Browser falsely flagged turtles as "No photos on disk"**: a turtle whose Google Sheet `Location` names a sub-site its folder doesn't actually live under (e.g. `Location=Shredder` while the folder sits directly under `.../CPBS/`) failed folder resolution. `_get_turtle_folder` scoped the walk to the deepest *existing* prefix (`.../CPBS/Shredder`), missed the turtle, and returned `None`, so the browser showed a red "No photos on disk" badge even though the turtle matches fine and has reference images on disk. It now falls back to a full unscoped walk for a globally-unique `primary_id` when the scoped walk misses (bare biology IDs stay scoped — they repeat across sheets), recovering the correct folder. This also lets the admin upload resolvers find the existing folder instead of creating a duplicate under the stale sub-site.
+
+## [2.0.14] - 2026-06-03 — Turtle folder merge utility
+
+### Added
+
+- **`merge_turtle.py` script**: merges one turtle folder into another — moves plastron/carapace reference images to the target's `Other Plastrons/`, merges `additional_images/` date-folders, merges `find_metadata.json` (target wins on conflicts), deletes stale `.pt` tensors, and removes the source folder. Dry-run by default; pass `--execute` to apply.
+
 ## [2.0.13] - 2026-05-31 — Carapace image-extension case handling
 
 ### Fixed
@@ -560,7 +586,11 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.13...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.17...HEAD
+[2.0.17]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.16...v2.0.17
+[2.0.16]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.15...v2.0.16
+[2.0.15]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.14...v2.0.15
+[2.0.14]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.13...v2.0.14
 [2.0.13]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.12...v2.0.13
 [2.0.12]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.11...v2.0.12
 [2.0.11]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.10...v2.0.11

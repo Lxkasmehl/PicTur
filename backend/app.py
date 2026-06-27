@@ -76,6 +76,17 @@ def handle_http_exception(err: HTTPException):
         {'Content-Type': 'application/json'},
     )
 
+@app.errorhandler(manager_service.SheetsServiceUnavailableError)
+def handle_sheets_unavailable(err):
+    """A transient Google Sheets outage that survived bounded retry -> 503
+    (retryable). Keeps a flaky connection from silently degrading a new turtle
+    into a non-canonical folder; the client can simply retry."""
+    return (
+        {'error': getattr(err, 'message', str(err)) or 'Google Sheets is temporarily unavailable.'},
+        getattr(err, 'status_code', 503),
+        {'Content-Type': 'application/json'},
+    )
+
 @app.errorhandler(Exception)
 def handle_exception(err):
     """Log unhandled exceptions and return JSON (works in debug mode too)."""

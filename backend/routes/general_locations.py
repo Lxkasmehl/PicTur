@@ -213,7 +213,13 @@ def register_general_location_routes(app):
             }), 409
 
         # Validate the target location before any writes (for selectable-state deletions).
+        # Exclude the location being deleted — it cannot be its own move target.
         if total_affected > 0 and target_general_location and not force:
+            if target_general_location.lower() == general_location.lower():
+                return jsonify({
+                    'success': False,
+                    'error': f"Cannot move turtles to '{target_general_location}': that is the location being deleted",
+                }), 400
             valid_locations = get_locations_for_state(state)
             if not any(loc.lower() == target_general_location.lower() for loc in valid_locations):
                 return jsonify({
@@ -312,8 +318,11 @@ def register_general_location_routes(app):
                         sheet_name,
                         general_location,
                     )
-                except Exception:
-                    conflicting = []
+                except Exception as exc:
+                    return jsonify({
+                        'success': False,
+                        'error': f"Could not scan sheet '{sheet_name}' for conflicting turtles: {exc}",
+                    }), 500
             if conflicting:
                 return jsonify({
                     'success': False,

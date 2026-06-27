@@ -2333,6 +2333,24 @@ class TurtleManager:
         except OSError:
             pass
 
+        # The hint scoped us to a subtree that doesn't actually hold this turtle.
+        # This happens when the sheet's Location names a sub-site the turtle's
+        # folder doesn't live under (e.g. Location="Shredder" while the folder is
+        # directly under .../CPBS/), so the scoped walk misses it -- even though
+        # matching finds it via the unscoped VRAM index. A globally-unique
+        # primary_id is safe to recover with a full unscoped walk; bio_ids are
+        # NOT (they repeat across sheets), so this fallback is primary-only. Skip
+        # it when the walk was already unscoped (no usable hint -> base_dir).
+        if (not candidates
+                and _looks_like_primary_id(tid)
+                and self.base_dir not in walk_roots):
+            try:
+                for root, dirs, files in os.walk(self.base_dir):
+                    if _basename_matches_turtle_id(os.path.basename(root), tid):
+                        add_candidate(root)
+            except OSError:
+                pass
+
         if not candidates:
             return None
         # No usable hint + a bare biology id matching more than one folder is
@@ -2552,6 +2570,17 @@ class TurtleManager:
         location_dir = _resolved_path_under_base(self.base_dir, *rel_parts)
         if not location_dir:
             return None, False, "could not resolve a safe folder path"
+        # Born-canonical-or-fail-loud: never CREATE a new folder named by bio_id
+        # alone. bio_ids repeat across sheets, so a bio-only ("F276" / "F276_F276")
+        # folder is a cross-sheet collision risk -- require the globally-unique
+        # primary_id. The existing-folder branch above already returned, so
+        # resolving a KNOWN turtle by a bare bio_id still works without a primary.
+        if (bio_id or '').strip() and not (primary_id or '').strip():
+            return None, False, (
+                "Can't create a canonical turtle folder without a Primary ID. "
+                "If Google Sheets was momentarily unavailable, try again in a "
+                "moment; otherwise assign this turtle a Primary ID first."
+            )
         folder_name = canonical_new_turtle_folder_id(bio_id, primary_id, tid)
         turtle_dir = _resolved_path_under_base(location_dir, folder_name)
         if not turtle_dir:

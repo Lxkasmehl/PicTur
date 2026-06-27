@@ -218,8 +218,15 @@ class GoogleSheetsService:
                     )
             return created
     
-    def update_turtle_data(self, primary_id: str, turtle_data: Dict[str, Any], sheet_name: str, state: Optional[str] = None, location: Optional[str] = None) -> bool:
-        """Update existing turtle data in Google Sheets."""
+    def update_turtle_data(self, primary_id: str, turtle_data: Dict[str, Any], sheet_name: str, state: Optional[str] = None, location: Optional[str] = None, bio_id: Optional[str] = None) -> bool:
+        """Update existing turtle data in Google Sheets.
+
+        ``bio_id`` lets a "Null" turtle (a row that has a biology id but no
+        Primary ID yet) be located by its biology id when ``primary_id`` is a
+        freshly-minted value not yet present in the sheet -- so the new primary
+        gets written into that row. Scoped to ``sheet_name`` (biology ids repeat
+        across sheets, so a bio-id row lookup must never broaden past one tab).
+        """
         with self._api_lock:
             if turtle_data.get('deceased') is not None:
                 sheet_management.ensure_deceased_column(
@@ -232,7 +239,7 @@ class GoogleSheetsService:
             ok = crud.update_turtle_data(
                 self.service, self.spreadsheet_id, primary_id, turtle_data, sheet_name, state, location,
                 self._ensure_primary_id_column, self._find_row_by_primary_id, self._get_all_column_indices,
-                self._invalidate_column_indices_cache,
+                self._invalidate_column_indices_cache, bio_id=bio_id,
             )
             if ok and not self.apply_general_location_sheet_validation:
                 try:
