@@ -421,13 +421,23 @@ class TurtleMergeMixin:
                 except Exception as e:
                     print(f"   ⚠️ Could not update primary Sheets row: {e}")
 
-            # 10. Delete secondary Sheets row
+            # 10. Delete secondary Sheets row — abort before folder removal if delete fails
             if sheets_svc and resolved_secondary_sheet:
+                sheets_delete_ok = False
                 try:
-                    sheets_svc.delete_turtle_data(secondary_id, resolved_secondary_sheet)
-                    print(f"   🗑️ Deleted secondary Sheets row for {secondary_id}")
+                    sheets_delete_ok = sheets_svc.delete_turtle_data(secondary_id, resolved_secondary_sheet)
+                    if sheets_delete_ok:
+                        print(f"   🗑️ Deleted secondary Sheets row for {secondary_id}")
+                    else:
+                        print(f"   ⚠️ Could not delete secondary Sheets row for {secondary_id} — aborting folder removal to prevent orphaned row")
+                        return False, (
+                            f"Merge partially applied: images migrated but secondary Sheets row for "
+                            f"'{secondary_id}' could not be deleted (row not found by Primary ID). "
+                            f"Delete it manually then remove the secondary folder."
+                        )
                 except Exception as e:
                     print(f"   ⚠️ Could not delete secondary Sheets row: {e}")
+                    return False, f"Merge partially applied: Sheets deletion failed ({e}). Secondary folder was NOT removed."
 
             # 11. Remove secondary folder
             try:

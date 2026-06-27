@@ -59,6 +59,36 @@ def test_resolve_or_create_canonical_clamps_deep_location(mgr):
     )
 
 
+def test_resolve_or_create_canonical_gate_requires_primary_for_new_folder(mgr):
+    """Born-canonical-or-fail-loud: CREATING a new folder with a bio_id but no
+    primary_id must fail loud (never a bio-only 'F901' or doubled 'F901_F901'),
+    while resolving an EXISTING folder by bare bio_id still works without a
+    primary (the gate is create-only)."""
+    # No folder yet + bio_id + no primary -> refuse, with a clear reason.
+    turtle_dir, created, reason = mgr.resolve_or_create_canonical_turtle_dir(
+        "F901", "Kansas/Lawrence", primary_id=None, bio_id="F901"
+    )
+    assert turtle_dir is None and created is False
+    assert reason and "Primary ID" in reason
+    assert not os.path.isdir(os.path.join(mgr.base_dir, "Kansas", "Lawrence", "F901"))
+    assert not os.path.isdir(os.path.join(mgr.base_dir, "Kansas", "Lawrence", "F901_F901"))
+
+    # With a primary it is born canonical.
+    turtle_dir, created, reason = mgr.resolve_or_create_canonical_turtle_dir(
+        "F901", "Kansas/Lawrence", primary_id="T1771234901", bio_id="F901"
+    )
+    assert created is True and reason is None
+    expected = os.path.join(mgr.base_dir, "Kansas", "Lawrence", "F901_T1771234901")
+    assert os.path.normpath(turtle_dir) == os.path.normpath(expected)
+
+    # An EXISTING folder still resolves by bare bio_id with no primary.
+    again, created2, reason2 = mgr.resolve_or_create_canonical_turtle_dir(
+        "F901", "Kansas/Lawrence", primary_id=None, bio_id="F901"
+    )
+    assert created2 is False and reason2 is None
+    assert os.path.normpath(again) == os.path.normpath(expected)
+
+
 def test_set_identifier_first_plastron(mgr, tmp_path):
     src = tmp_path / "in.jpg"
     src.write_bytes(b"\xff\xd8\xff fakejpeg")
@@ -243,6 +273,37 @@ def test_get_turtle_folder_no_hint_primary_id_resolves_across_tree(mgr):
     _make_turtle(mgr, "Kansas", "North Topeka", "F298")
     pj = _make_turtle(mgr, "NebraskaCPBS", "CPBS", "T1771234567")
     assert os.path.normpath(mgr._get_turtle_folder("T1771234567", None)) == os.path.normpath(pj)
+
+
+def test_get_turtle_folder_primary_recovers_when_sheet_location_is_stale(mgr):
+    """Sheet Location names a sub-site the turtle's folder does NOT live under
+    (e.g. Location='Shredder' while the folder sits directly under .../CPBS/).
+    The scoped walk misses it, but a globally-unique primary_id recovers via the
+    unscoped fallback. A bare bio_id must stay scoped (it repeats across sheets)
+    and fail closed. Mirrors the live F286 'No photos on disk' incident."""
+    target = _make_turtle(mgr, "NebraskaCPBS", "CPBS", "F286_T1771234567")
+    # A real sub-site exists but holds a DIFFERENT turtle, so the deepest existing
+    # prefix (.../CPBS/Shredder) is walked first and misses F286.
+    _make_turtle(mgr, "NebraskaCPBS", "CPBS", "Shredder", "F128_T1770000001")
+    stale_hint = "NebraskaCPBS/CPBS/Shredder"
+    assert os.path.normpath(mgr._get_turtle_folder("T1771234567", stale_hint)) == os.path.normpath(target)
+    assert mgr._get_turtle_folder("F286", stale_hint) is None
+
+
+def test_get_turtle_folder_genuinely_nested_turtle_still_resolves(mgr):
+    """A turtle that really lives in a sub-site is still found by the recursive
+    scoped walk, for both its primary id and its bio id (no regression)."""
+    nested = _make_turtle(mgr, "NebraskaCPBS", "CPBS", "Shredder", "F128_T1770000001")
+    hint = "NebraskaCPBS/CPBS/Shredder"
+    assert os.path.normpath(mgr._get_turtle_folder("T1770000001", hint)) == os.path.normpath(nested)
+    assert os.path.normpath(mgr._get_turtle_folder("F128", hint)) == os.path.normpath(nested)
+
+
+def test_get_turtle_folder_primary_fallback_returns_none_when_absent(mgr):
+    """The unscoped primary fallback must not invent a match: a primary that
+    exists nowhere still resolves to None."""
+    _make_turtle(mgr, "NebraskaCPBS", "CPBS", "F286_T1771234567")
+    assert mgr._get_turtle_folder("T9999999999", "NebraskaCPBS/CPBS/Shredder") is None
 
 
 def test_resolve_upload_bare_general_location_stays_in_sheet(mgr):

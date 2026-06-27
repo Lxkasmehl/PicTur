@@ -18,6 +18,7 @@ from image_utils import UploadImageError
 from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
 from upload_validation import ingest_saved_upload
 from turtle_manager import canonical_new_turtle_folder_id  # re-exported for callers/tests
+from sheets.migration import generate_primary_id as gen_primary_id  # pure (no network)
 from routes.upload import find_image_for_pt  # case-insensitive .pt→image sibling lookup
 from general_locations_catalog import (
     get_sheet_default,
@@ -483,29 +484,34 @@ def register_review_routes(app):
             id_sheet = (sd.get('sheet_name') or '').strip() or (new_location or '')
             id_state = (sd.get('general_location') or '').strip()
             id_location = (sd.get('location') or '').strip()
-            try:
-                id_service = (
-                    get_community_sheets_service() if is_community_upload
-                    else get_sheets_service()
-                )
-            except Exception as svc_err:
-                print(f"⚠️ Could not load Sheets service for id pre-resolution: {svc_err}")
-                id_service = None
-            if id_service:
-                if not canonical_primary_id:
-                    try:
-                        canonical_primary_id = id_service.generate_primary_id(id_state, id_location)
-                    except Exception as id_err:
-                        print(f"⚠️ Could not pre-generate primary_id for new turtle: {id_err}")
-                if not bio_id and id_sheet:
-                    try:
+            # Primary id is generated LOCALLY (pure timestamp+random, no network)
+            # so a Google Sheets outage can NEVER leave the new folder without a
+            # primary -> it is never born bio-only (the cross-sheet-collision
+            # case). Worst case, with no biology id, is a primary-only folder,
+            # which is globally unique and safe. The SAME value flows into the
+            # sheet row below (canonical_primary_id is reused), so folder and row
+            # always carry the same primary.
+            if not canonical_primary_id:
+                canonical_primary_id = gen_primary_id(None, None, state=id_state, location=id_location)
+            # Biology id, when the submitter didn't supply one, needs a live sheet
+            # read. Best-effort under bounded retry: a transient outage retries,
+            # and any failure just yields a primary-only folder rather than
+            # blocking the approval or minting a duplicate <gender>001.
+            if not bio_id and id_sheet:
+                try:
+                    def _gen_bio(service):
+                        if service is None:
+                            return ''
                         sex = (sd.get('sex') or '').strip().upper()
                         gender = sex if sex in ('M', 'F', 'J') else 'U'
-                        bio_id = id_service.generate_biology_id(gender, id_sheet)
-                        if isinstance(sheets_data, dict):
-                            sheets_data['id'] = bio_id
-                    except Exception as id_err:
-                        print(f"⚠️ Could not pre-generate biology id for new turtle: {id_err}")
+                        return service.generate_biology_id(gender, id_sheet)
+                    bio_id = manager_service.call_sheets_with_retry(
+                        _gen_bio, community=is_community_upload
+                    ) or bio_id
+                    if bio_id and isinstance(sheets_data, dict):
+                        sheets_data['id'] = bio_id
+                except Exception as id_err:
+                    print(f"⚠️ Could not pre-generate biology id for new turtle: {id_err}")
             new_turtle_id = canonical_new_turtle_folder_id(bio_id, canonical_primary_id, new_turtle_id)
 
         try:
@@ -530,6 +536,7 @@ def register_review_routes(app):
                 # New turtle: create row in the correct spreadsheet (research vs community).
                 # For new turtles, Sheets sync must succeed — otherwise roll back disk and keep packet.
                 sheets_sync_error = None
+                sheets_sync_exc = None
                 if is_new_turtle:
                     sheet_name = (isinstance(sheets_data, dict) and sheets_data.get('sheet_name')) or new_location
                     state = (isinstance(sheets_data, dict) and sheets_data.get('general_location')) or ''
@@ -561,6 +568,7 @@ def register_review_routes(app):
                                     print(f"✅ Created community spreadsheet entry for new turtle {new_turtle_id} with Primary ID {primary_id}")
                             except Exception as comm_err:
                                 sheets_sync_error = f"Community Google Sheets sync failed: {comm_err}"
+                                sheets_sync_exc = comm_err
                     else:
                         service = get_sheets_service()
                         if not service:
@@ -597,6 +605,7 @@ def register_review_routes(app):
                                     print(f"✅ Created Google Sheets entry for new turtle {new_turtle_id} with Primary ID {primary_id} (fallback)")
                             except Exception as sheets_error:
                                 sheets_sync_error = f"Google Sheets sync failed: {sheets_error}"
+                                sheets_sync_exc = sheets_error
 
                     # If Sheets sync failed, roll back the turtle from disk/VRAM and keep the packet
                     if sheets_sync_error:
@@ -604,6 +613,13 @@ def register_review_routes(app):
                         manager_service.manager.rollback_new_turtle(
                             new_turtle_id, new_location, photo_type=photo_type,
                         )
+                        if sheets_sync_exc is not None and manager_service.is_transient_sheets_error(sheets_sync_exc):
+                            # Transient outage: nothing was saved, so the client
+                            # can simply retry. The packet is preserved (deleted
+                            # only on success below), so the retry re-uses it.
+                            return jsonify({
+                                'error': 'Google Sheets is temporarily unavailable; nothing was saved. Please re-upload in a moment.'
+                            }), 503
                         return jsonify({
                             'error': f'Upload could not be fully completed. {sheets_sync_error}. Please re-upload.'
                         }), 500
