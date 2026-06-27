@@ -182,6 +182,7 @@ class TurtleMergeMixin:
                 src_manifest = []
 
             entries_to_copy = []
+            manifest_filenames = set()
             for entry in src_manifest:
                 fn = entry.get('filename')
                 if not fn:
@@ -189,6 +190,7 @@ class TurtleMergeMixin:
                 src_img = os.path.join(sec_date_dir, fn)
                 if not os.path.isfile(src_img):
                     continue
+                manifest_filenames.add(fn)
                 if keep_paths is not None:
                     try:
                         real_img = os.path.realpath(src_img)
@@ -197,6 +199,23 @@ class TurtleMergeMixin:
                     if real_img not in keep_paths:
                         continue
                 entries_to_copy.append((fn, entry))
+
+            # Also include admin-selected files that exist on disk but are absent
+            # from manifest.json (folder_images exposes these as fallback entries).
+            if keep_paths is not None:
+                for disk_fn in os.listdir(sec_date_dir):
+                    if disk_fn in manifest_filenames or disk_fn == 'manifest.json':
+                        continue
+                    src_img = os.path.join(sec_date_dir, disk_fn)
+                    if not os.path.isfile(src_img):
+                        continue
+                    try:
+                        real_img = os.path.realpath(src_img)
+                    except OSError:
+                        continue
+                    if real_img not in keep_paths:
+                        continue
+                    entries_to_copy.append((disk_fn, {'filename': disk_fn}))
 
             if not entries_to_copy:
                 continue
@@ -321,8 +340,15 @@ class TurtleMergeMixin:
                         primary_data = sheets_svc.get_turtle_data(primary_id, resolved_primary_sheet) or {}
                     if resolved_secondary_sheet:
                         secondary_data = sheets_svc.get_turtle_data(secondary_id, resolved_secondary_sheet) or {}
+                        if not secondary_data:
+                            return False, (
+                                f"Could not read secondary turtle '{secondary_id}' from Sheets "
+                                f"(row not found or transient read error). Aborting to prevent "
+                                f"metadata loss — retry or check the sheet manually."
+                            )
                 except Exception as e:
                     print(f"   ⚠️ Could not fetch Sheets data: {e}")
+                    return False, f"Aborting merge: failed to read Sheets data ({e}). No changes were made."
 
             # 3. Merge Sheets fields (primary wins; notes & dates_refound appended)
             meta_skip = {'sheet_name', 'row_index'}

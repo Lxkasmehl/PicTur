@@ -78,8 +78,8 @@ except ImportError as e:
 class TurtleManager(TurtleReferenceMixin, TurtleDeletionMixin, TurtleReviewMixin, TurtleFolderResolverMixin, TurtleIngestMixin, TurtleIdentifierPlastronMixin, TurtleAdditionalImagesMixin, TurtleFlagsMixin, TurtleMergeMixin):
     def __init__(self, base_data_dir='data'):
         import threading
-        # backend/data/
-        self.base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), base_data_dir)
+        # backend/data/ — go up two levels: manager.py → turtle_manager/ → backend/
+        self.base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), base_data_dir)
         self.review_queue_dir = os.path.join(self.base_dir, 'Review_Queue')
         # Serializes approve/reject so two admins can't double-process the same packet
         self._approval_lock = threading.Lock()
