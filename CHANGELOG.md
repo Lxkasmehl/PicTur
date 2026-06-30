@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Merge duplicate turtle records** (#178): admins can now collapse two turtle entries that turned out to be the same individual. A 4-step modal in the Sheets Browser lets the admin pick the secondary turtle, choose which plastron/carapace reference photo to keep as the active identifier, select which additional images to carry over (duplicates can be dropped), and confirm. The backend merges Google Sheets rows (primary fields win; notes and dates-refound are appended), migrates image files from the secondary folder into the primary, evicts the secondary from the VRAM matching cache, deletes the secondary Sheets row, and removes the secondary folder.
 - **General Location delete**: Admins can delete a General Location from the catalog via the new `/admin/locations` page; if turtles use the location they must be reassigned to another location first — Sheets values are batch-updated and on-disk folders relocated automatically.
 - **Location Management page**: Redesigned admin-only page (`/admin/locations`) with two distinct sections — "Selectable Locations" (programs where admins pick a location per turtle) and "Fixed Programs" (programs whose General Location is determined by the sheet tab). Supports creating, deleting, and converting between both types.
 - **Fixed program management**: New `POST /api/general-locations/sheet-defaults` and `DELETE /api/general-locations/sheet-defaults` endpoints allow creating fixed programs and converting them to selectable. `DELETE /api/general-locations` accepts `force: true` to delete a fixed program and its sheet default atomically.
@@ -20,8 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MergeTurtlesModal no longer crashes when Google Sheets contains duplicate turtle rows**: if `listAllTurtlesFromSheets()` returns the same `sheet_name::primary_id` more than once, the second occurrence is silently dropped before being passed to the Mantine `<Select>`, preventing the "Duplicate options are not supported" crash.
 - **General location catalog data model**: `_DEFAULT_CATALOG` now uses the sheet tab name (e.g. `NebraskaCPBS`, `IowaHawkeye`) as the `state` key instead of geographic parent names (`Nebraska`, `Iowa`). This correctly matches the folder path schema used by `TurtleManager` (`data/<sheet_name>/<general_location>/...`). A migration in `_normalize_catalog` automatically upgrades existing `general_locations.json` files on first load.
 - **Force-deleting a General Location could mask a failed affected-turtles scan**: `bulk_ops.find_rows_by_general_location` returned an empty list instead of raising when a Sheets read failed (`HttpError`), so callers with `fail_on_error=True` couldn't distinguish a genuinely empty tab from a transient API failure and could proceed as if no turtles were affected. It now raises `RuntimeError` on a failed read. The check that rejects a location as its own move target now also applies to force deletions, not just standard ones.
+
+### Changed
+
+- **`turtle_manager.py` split into a package** (`backend/turtle_manager/`): the 3 650-line monolith is now 11 focused modules — `manager.py` (426 lines, core only), `path_utils.py` (pure filesystem helpers), and 9 mixin classes (`merge_mixin`, `reference_mixin`, `deletion_mixin`, `review_mixin`, `folder_resolver_mixin`, `ingest_mixin`, `identifier_plastron_mixin`, `additional_images_mixin`, `flags_mixin`). All external imports (`from turtle_manager import TurtleManager`, `BASE_DATA_DIR`, etc.) remain unchanged via `__init__.py`.
+- **`SheetsBrowserTab.tsx` refactored** (1 530 → 1 021 lines): staged-photo logic extracted into `useStagedPhotos`, delete/restore into `usePhotoDelete`, sidebar thumbnail loading into `usePrimaryImagesBatch`, and the pending-photos UI into `StagedPhotosPanel`.
+- **Backend root cleaned up**: 10 standalone scripts moved to `scripts/`, `google_sheets_service.py` moved to `services/`, `turtle_folder_images.py` moved to `turtle_manager/`.
 
 ## [2.0.17] - 2026-06-17 — Restore "Date Last Assayed" on the profile form
 

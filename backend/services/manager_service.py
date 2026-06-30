@@ -8,10 +8,9 @@ import socket
 import ssl
 import threading
 import time
-
 from googleapiclient.errors import HttpError
 
-from google_sheets_service import GoogleSheetsService
+from services.google_sheets_service import GoogleSheetsService
 
 # Initialize Turtle Manager in background thread to avoid blocking server start
 # This allows the server to start immediately and respond to health checks

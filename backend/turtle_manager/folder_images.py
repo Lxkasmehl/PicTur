@@ -6,7 +6,7 @@ import re
 import time
 
 from additional_image_labels import normalize_label_list, read_labels_for_file
-from turtle_manager import _extract_exif_date
+from turtle_manager.path_utils import _extract_exif_date
 
 # Matches a millisecond-epoch timestamp at the start of a loose-photo filename,
 # e.g. "plastron_1712345678901_source.jpg" or "carapace_1712345678901_foo.jpg".

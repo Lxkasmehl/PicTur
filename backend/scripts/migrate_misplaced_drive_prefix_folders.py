@@ -47,6 +47,10 @@ conflicts, or **leftovers** still present under a wrong drive-key prefix after t
 
 from __future__ import annotations
 
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))  # scripts/ for ingest_common etc.
+
 import argparse
 import os
 import shutil
@@ -242,7 +246,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_root = (
         args.data_root
         or os.environ.get("DATA_DIR")

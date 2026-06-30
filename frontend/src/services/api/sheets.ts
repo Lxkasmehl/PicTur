@@ -176,6 +176,43 @@ export const generatePrimaryId = async (
   }
 };
 
+export interface MergeTurtlesParams {
+  primaryId: string;
+  secondaryId: string;
+  primarySheet: string;
+  secondarySheet: string;
+  plastronSource: 'primary' | 'secondary';
+  carapaceSource: 'primary' | 'secondary';
+  /** Absolute filesystem paths of secondary additional images to migrate. */
+  keepSecondaryAdditional: string[];
+}
+
+export const mergeTurtles = async (
+  params: MergeTurtlesParams,
+): Promise<{ success: boolean; message: string }> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/merge`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      primary_id: params.primaryId,
+      secondary_id: params.secondaryId,
+      primary_sheet: params.primarySheet,
+      secondary_sheet: params.secondarySheet,
+      plastron_source: params.plastronSource,
+      carapace_source: params.carapaceSource,
+      keep_secondary_additional: params.keepSecondaryAdditional,
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || data.message || 'Failed to merge turtles');
+  }
+  return data as { success: boolean; message: string };
+};
+
 export const generateTurtleId = async (
   data: GenerateTurtleIdRequest,
   timeoutMs = 10000,
@@ -208,6 +245,7 @@ export const generateTurtleId = async (
 // ---------------------------------------------------------------------------
 // Backup archive download
 // ---------------------------------------------------------------------------
+
 
 /**
  * Admin-only: download ZIP with backend data/ mirror + Google Sheets CSV/JSON exports.
