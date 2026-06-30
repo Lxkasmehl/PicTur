@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.18] - 2026-06-30 — General Location management (delete, fixed programs, conversion)
+
 ### Added
 
 - **General Location delete**: Admins can delete a General Location from the catalog via the new `/admin/locations` page; if turtles use the location they must be reassigned to another location first — Sheets values are batch-updated and on-disk folders relocated automatically.
@@ -19,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **General location catalog data model**: `_DEFAULT_CATALOG` now uses the sheet tab name (e.g. `NebraskaCPBS`, `IowaHawkeye`) as the `state` key instead of geographic parent names (`Nebraska`, `Iowa`). This correctly matches the folder path schema used by `TurtleManager` (`data/<sheet_name>/<general_location>/...`). A migration in `_normalize_catalog` automatically upgrades existing `general_locations.json` files on first load.
+- **Force-deleting a General Location could mask a failed affected-turtles scan**: `bulk_ops.find_rows_by_general_location` returned an empty list instead of raising when a Sheets read failed (`HttpError`), so callers with `fail_on_error=True` couldn't distinguish a genuinely empty tab from a transient API failure and could proceed as if no turtles were affected. It now raises `RuntimeError` on a failed read. The check that rejects a location as its own move target now also applies to force deletions, not just standard ones.
 
 ## [2.0.17] - 2026-06-17 — Restore "Date Last Assayed" on the profile form
 
@@ -586,7 +589,8 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.17...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.18...HEAD
+[2.0.18]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.17...v2.0.18
 [2.0.17]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.16...v2.0.17
 [2.0.16]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.15...v2.0.16
 [2.0.15]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.14...v2.0.15

@@ -399,7 +399,11 @@ export default function AdminLocationManagementPage() {
                           onClick={() =>
                             setExpandedStates((prev) => {
                               const next = new Set(prev);
-                              next.has(stateName) ? next.delete(stateName) : next.add(stateName);
+                              if (next.has(stateName)) {
+                                next.delete(stateName);
+                              } else {
+                                next.add(stateName);
+                              }
                               return next;
                             })
                           }
