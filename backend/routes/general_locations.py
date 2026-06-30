@@ -212,20 +212,21 @@ def register_general_location_routes(app):
                 'sheets': sheets_summary,
             }), 409
 
-        # Validate the target location before any writes (for selectable-state deletions).
+        # Validate the target location before any writes.
         # Exclude the location being deleted — it cannot be its own move target.
-        if total_affected > 0 and target_general_location and not force:
+        if total_affected > 0 and target_general_location:
             if target_general_location.lower() == general_location.lower():
                 return jsonify({
                     'success': False,
                     'error': f"Cannot move turtles to '{target_general_location}': that is the location being deleted",
                 }), 400
-            valid_locations = get_locations_for_state(state)
-            if not any(loc.lower() == target_general_location.lower() for loc in valid_locations):
-                return jsonify({
-                    'success': False,
-                    'error': f"Target location '{target_general_location}' is not configured for state '{state}'",
-                }), 400
+            if not force:
+                valid_locations = get_locations_for_state(state)
+                if not any(loc.lower() == target_general_location.lower() for loc in valid_locations):
+                    return jsonify({
+                        'success': False,
+                        'error': f"Target location '{target_general_location}' is not configured for state '{state}'",
+                    }), 400
 
         # Move turtles to the target location if needed.
         move_errors = []

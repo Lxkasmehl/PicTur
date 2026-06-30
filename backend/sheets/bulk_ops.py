@@ -18,9 +18,12 @@ def find_rows_by_general_location(
     """
     Return all data rows in sheet_name where "General Location" equals general_location
     (case-insensitive). Each result: {row_index (1-based), primary_id, id, name}.
+    Raises RuntimeError if the sheet cannot be read (e.g. transient API error).
     """
     values = _read_sheet_grid(service, spreadsheet_id, sheet_name)
-    if not values or len(values) < 2:
+    if values is None:
+        raise RuntimeError(f"Failed to read sheet '{sheet_name}'")
+    if len(values) < 2:
         return []
 
     headers = values[0]
@@ -70,7 +73,9 @@ def bulk_update_general_location(
     Batches writes in groups of 50 and retries once on rate-limit (HTTP 429).
     """
     values = _read_sheet_grid(service, spreadsheet_id, sheet_name)
-    if not values or len(values) < 2:
+    if values is None:
+        raise RuntimeError(f"Failed to read sheet '{sheet_name}'")
+    if len(values) < 2:
         return 0
 
     headers = values[0]
@@ -130,9 +135,12 @@ def find_rows_by_non_matching_general_location(
     Return all data rows in sheet_name where "General Location" is non-empty and does NOT
     equal general_location (case-insensitive). Used to detect row conflicts before making
     a sheet fixed.
+    Raises RuntimeError if the sheet cannot be read (e.g. transient API error).
     """
     values = _read_sheet_grid(service, spreadsheet_id, sheet_name)
-    if not values or len(values) < 2:
+    if values is None:
+        raise RuntimeError(f"Failed to read sheet '{sheet_name}'")
+    if len(values) < 2:
         return []
 
     headers = values[0]
