@@ -1,10 +1,23 @@
 """
-Shared catalog for state-specific general locations.
+Shared catalog for program-specific general locations.
 
 The catalog is used by:
 - the frontend dropdown source
 - backend validation for sheet writes and review flows
 - Google Sheets validation rules when creating/syncing tabs
+
+Terminology
+-----------
+``state``
+    The key used to look up the location list for a given sheet tab.  It always
+    equals the sheet tab name (e.g. "NebraskaCPBS", "IowaHawkeye", "Kansas").
+    This matches the top-level folder name used by TurtleManager:
+      data/<sheet_name>/<general_location>/<BiologyID_PrimaryKey>/
+
+``sheet_default``
+    Marks a program whose General Location is fixed (never chosen per-turtle).
+    The ``state`` field inside a sheet_default entry MUST equal the sheet_name
+    key.  Geographic parent names ("Iowa", "Nebraska") must NOT be used.
 """
 
 from __future__ import annotations
@@ -26,7 +39,8 @@ _CATALOG_FILE = os.path.join(_DATA_DIR, 'general_locations.json')
 _CATALOG_LOCK = threading.RLock()
 
 # Seed used only when the catalog file is missing or has no states/sheet_defaults yet.
-# ``_DEFAULT_CATALOG`` (below) is the single source of seed truth.
+# Each state key = sheet tab name.  For fixed programs the state key equals the
+# sheet_default key so that folder paths are always data/<sheet_name>/<location>/...
 _DEFAULT_CATALOG: Dict[str, Any] = {
     'states': {
         'Kansas': [
@@ -37,25 +51,27 @@ _DEFAULT_CATALOG: Dict[str, Any] = {
             'Other',
             'West Topeka',
         ],
-        'Nebraska': [
+        'NebraskaCPBS': [
             'CPBS',
+        ],
+        'NebraskaCL': [
             'Crescent Lake',
         ],
-        'Iowa': [
+        'IowaHawkeye': [
             'Hawkeye',
         ],
     },
     'sheet_defaults': {
         'NebraskaCPBS': {
-            'state': 'Nebraska',
+            'state': 'NebraskaCPBS',
             'general_location': 'CPBS',
         },
         'NebraskaCL': {
-            'state': 'Nebraska',
+            'state': 'NebraskaCL',
             'general_location': 'Crescent Lake',
         },
         'IowaHawkeye': {
-            'state': 'Iowa',
+            'state': 'IowaHawkeye',
             'general_location': 'Hawkeye',
         },
     },
@@ -109,6 +125,52 @@ def _normalize_catalog(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # Ensure every default sheet's state exists in the catalog.
     for rule in catalog['sheet_defaults'].values():
         catalog['states'].setdefault(rule['state'], [])
+
+    # --- Migration: fix legacy entries where state != sheet_name ---------------
+    # Older catalog files used geographic parent names ("Iowa", "Nebraska") as the
+    # state key.  The correct model is state == sheet_name so that folder paths
+    # match data/<sheet_name>/<general_location>/...
+    for sheet_key in list(catalog['sheet_defaults'].keys()):
+        rule = catalog['sheet_defaults'][sheet_key]
+        old_state = rule['state']
+        location = rule['general_location']
+        if old_state.lower() == sheet_key.lower():
+            continue  # already correct
+
+        # Move location to a state keyed by sheet_name.
+        new_state_key = next(
+            (k for k in catalog['states'].keys() if k.lower() == sheet_key.lower()),
+            sheet_key,
+        )
+        new_locs = catalog['states'].setdefault(new_state_key, [])
+        if not any(loc.lower() == location.lower() for loc in new_locs):
+            new_locs.append(location)
+
+        # Remove location from old state if no other default still references it.
+        still_used = any(
+            r['state'].lower() == old_state.lower() and r['general_location'].lower() == location.lower()
+            for sn, r in catalog['sheet_defaults'].items()
+            if sn != sheet_key
+        )
+        if not still_used:
+            old_key = next(
+                (k for k in catalog['states'].keys() if k.lower() == old_state.lower()),
+                None,
+            )
+            if old_key:
+                catalog['states'][old_key] = [
+                    loc for loc in catalog['states'][old_key]
+                    if loc.lower() != location.lower()
+                ]
+                if not catalog['states'][old_key]:
+                    del catalog['states'][old_key]
+
+        # Update the sheet_default to use the correct state.
+        catalog['sheet_defaults'][sheet_key] = {
+            'state': new_state_key,
+            'general_location': location,
+        }
+    # ---------------------------------------------------------------------------
 
     # Keep states sorted for stable UI rendering.
     catalog['states'] = {
@@ -231,6 +293,131 @@ def add_general_location(state: str, general_location: str) -> Dict[str, Any]:
             _save_catalog_unlocked(catalog)
         else:
             location_name = match
+        return deepcopy(_normalize_catalog(catalog))
+
+
+def delete_general_location(state: str, general_location: str, *, force: bool = False) -> Dict[str, Any]:
+    """Remove a location from a state's catalog.
+
+    When *force* is True the locked-default check is skipped and any sheet_defaults
+    that reference this state+location are also removed atomically (used when an admin
+    deletes an entire fixed program via the management UI).
+    """
+    state_name = _normalize_text(state)
+    location_name = _normalize_text(general_location)
+    if not state_name:
+        raise ValueError('state is required')
+    if not location_name:
+        raise ValueError('general_location is required')
+
+    with _CATALOG_LOCK:
+        catalog = _load_catalog_unlocked()
+
+        if not force:
+            # Refuse if this location is the fixed default for any sheet tab.
+            for sheet_name, rule in catalog.get('sheet_defaults', {}).items():
+                if (
+                    _normalize_text(rule.get('state', '')).lower() == state_name.lower()
+                    and _normalize_text(rule.get('general_location', '')).lower() == location_name.lower()
+                ):
+                    raise ValueError(
+                        f"Cannot delete '{location_name}': it is the fixed General Location for sheet '{sheet_name}'. "
+                        f"Remove that sheet default first."
+                    )
+        else:
+            # Remove any sheet_defaults that point to this state+location.
+            to_remove = [
+                sn for sn, rule in catalog.get('sheet_defaults', {}).items()
+                if (
+                    _normalize_text(rule.get('state', '')).lower() == state_name.lower()
+                    and _normalize_text(rule.get('general_location', '')).lower() == location_name.lower()
+                )
+            ]
+            for sn in to_remove:
+                del catalog['sheet_defaults'][sn]
+
+        existing_key = next(
+            (key for key in catalog['states'].keys() if key.lower() == state_name.lower()),
+            None,
+        )
+        if existing_key is None:
+            raise ValueError(f"State '{state_name}' not found in catalog")
+
+        existing_locations = catalog['states'].get(existing_key, [])
+        match = _find_location_case_insensitive(existing_locations, location_name)
+        if match is None:
+            raise ValueError(f"General location '{location_name}' not found in state '{state_name}'")
+
+        existing_locations.remove(match)
+        catalog['states'][existing_key] = sorted(existing_locations, key=lambda item: item.lower())
+
+        # Drop the state entry entirely if it became empty.
+        if not catalog['states'][existing_key]:
+            del catalog['states'][existing_key]
+
+        _save_catalog_unlocked(catalog)
+        return deepcopy(_normalize_catalog(catalog))
+
+
+def add_sheet_default(sheet_name: str, general_location: str) -> Dict[str, Any]:
+    """Create or update a fixed-program sheet default.
+
+    The *state* is always set to *sheet_name* (new-style programs where the sheet tab
+    name doubles as the state identifier).  The location is added to catalog.states if
+    it is not already present.
+    """
+    sheet = _normalize_text(sheet_name)
+    location = _normalize_text(general_location)
+    if not sheet:
+        raise ValueError('sheet_name is required')
+    if not location:
+        raise ValueError('general_location is required')
+
+    with _CATALOG_LOCK:
+        catalog = _load_catalog_unlocked()
+
+        # Find or create the state keyed by sheet_name.
+        existing_key = next(
+            (k for k in catalog['states'].keys() if k.lower() == sheet.lower()),
+            sheet,
+        )
+        existing_locations = catalog['states'].setdefault(existing_key, [])
+        if _find_location_case_insensitive(existing_locations, location) is None:
+            existing_locations.append(location)
+            existing_locations[:] = sorted(existing_locations, key=lambda x: x.lower())
+
+        catalog['sheet_defaults'][existing_key] = {
+            'state': existing_key,
+            'general_location': location,
+        }
+
+        _save_catalog_unlocked(catalog)
+        return deepcopy(_normalize_catalog(catalog))
+
+
+def remove_sheet_default(sheet_name: str) -> Dict[str, Any]:
+    """Convert a fixed program to selectable by removing its sheet default.
+
+    Because the catalog always enforces state == sheet_name (see _normalize_catalog),
+    the location simply stays in catalog.states[sheet_name] after the default is
+    removed — no migration is needed.
+    """
+    sheet = _normalize_text(sheet_name)
+    if not sheet:
+        raise ValueError('sheet_name is required')
+
+    with _CATALOG_LOCK:
+        catalog = _load_catalog_unlocked()
+
+        match_key = next(
+            (k for k in catalog.get('sheet_defaults', {}).keys() if k.lower() == sheet.lower()),
+            None,
+        )
+        if match_key is None:
+            raise ValueError(f"Sheet default '{sheet_name}' not found")
+
+        catalog['sheet_defaults'].pop(match_key)
+        _save_catalog_unlocked(catalog)
         return deepcopy(_normalize_catalog(catalog))
 
 
