@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **General Location delete**: Admins can delete a General Location from the catalog via the new `/admin/locations` page; if turtles use the location they must be reassigned to another location first — Sheets values are batch-updated and on-disk folders relocated automatically.
+- **Location Management page**: Redesigned admin-only page (`/admin/locations`) with two distinct sections — "Selectable Locations" (programs where admins pick a location per turtle) and "Fixed Programs" (programs whose General Location is determined by the sheet tab). Supports creating, deleting, and converting between both types.
+- **Fixed program management**: New `POST /api/general-locations/sheet-defaults` and `DELETE /api/general-locations/sheet-defaults` endpoints allow creating fixed programs and converting them to selectable. `DELETE /api/general-locations` accepts `force: true` to delete a fixed program and its sheet default atomically.
+- **Affected-turtles check**: `GET /api/general-locations/affected-turtles` returns a per-sheet count of turtles that use a given General Location before deletion.
+- **`sheets/bulk_ops.py`**: New backend module with `find_rows_by_general_location` and `bulk_update_general_location` (batched, rate-limit–aware).
+- **API split**: `frontend/src/services/api/sheets.ts` refactored into `turtle-data.ts` (turtle CRUD) and `general-locations.ts` (catalog management); `sheets.ts` re-exports both for backward compatibility.
+
+### Fixed
+
+- **General location catalog data model**: `_DEFAULT_CATALOG` now uses the sheet tab name (e.g. `NebraskaCPBS`, `IowaHawkeye`) as the `state` key instead of geographic parent names (`Nebraska`, `Iowa`). This correctly matches the folder path schema used by `TurtleManager` (`data/<sheet_name>/<general_location>/...`). A migration in `_normalize_catalog` automatically upgrades existing `general_locations.json` files on first load.
+
 ## [2.0.17] - 2026-06-17 — Restore "Date Last Assayed" on the profile form
 
 ### Fixed
@@ -573,7 +586,10 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.14...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.17...HEAD
+[2.0.17]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.16...v2.0.17
+[2.0.16]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.15...v2.0.16
+[2.0.15]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.14...v2.0.15
 [2.0.14]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.13...v2.0.14
 [2.0.13]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.12...v2.0.13
 [2.0.12]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.11...v2.0.12
