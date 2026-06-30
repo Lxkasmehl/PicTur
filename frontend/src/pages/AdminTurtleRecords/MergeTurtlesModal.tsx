@@ -223,6 +223,7 @@ export function MergeTurtlesModal({
     setOptionsLoading(true);
     listAllTurtlesFromSheets()
       .then((res) => {
+        const seen = new Set<string>();
         const opts = (res.turtles || [])
           .filter((t) => (t.primary_id || t.id) !== (primaryTurtle.primary_id || primaryTurtle.id))
           .map((t) => {
@@ -233,7 +234,12 @@ export function MergeTurtlesModal({
             const value = `${t.sheet_name || ''}::${t.primary_id || t.id || ''}`;
             return { value, label: `${id}${name}${sheet}`, data: t };
           })
-          .filter((o) => o.data.primary_id || o.data.id);
+          .filter((o) => {
+            if (!o.data.primary_id && !o.data.id) return false;
+            if (seen.has(o.value)) return false;
+            seen.add(o.value);
+            return true;
+          });
         setTurtleOptions(opts);
       })
       .catch(() => {})

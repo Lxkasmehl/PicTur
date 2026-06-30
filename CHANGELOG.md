@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **MergeTurtlesModal no longer crashes when Google Sheets contains duplicate turtle rows**: if `listAllTurtlesFromSheets()` returns the same `sheet_name::primary_id` more than once, the second occurrence is silently dropped before being passed to the Mantine `<Select>`, preventing the "Duplicate options are not supported" crash.
+
 ### Added
 
 - **Merge duplicate turtle records** (#178): admins can now collapse two turtle entries that turned out to be the same individual. A 4-step modal in the Sheets Browser lets the admin pick the secondary turtle, choose which plastron/carapace reference photo to keep as the active identifier, select which additional images to carry over (duplicates can be dropped), and confirm. The backend merges Google Sheets rows (primary fields win; notes and dates-refound are appended), migrates image files from the secondary folder into the primary, evicts the secondary from the VRAM matching cache, deletes the secondary Sheets row, and removes the secondary folder.
