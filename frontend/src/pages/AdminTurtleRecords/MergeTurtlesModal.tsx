@@ -229,9 +229,11 @@ export function MergeTurtlesModal({
             const id = t.id || t.primary_id || '';
             const name = t.name ? ` — ${t.name}` : '';
             const sheet = t.sheet_name ? ` (${t.sheet_name})` : '';
-            return { value: t.primary_id || t.id || '', label: `${id}${name}${sheet}`, data: t };
+            // Include sheet_name in value so turtles with the same bio-ID across sheets don't collide
+            const value = `${t.sheet_name || ''}::${t.primary_id || t.id || ''}`;
+            return { value, label: `${id}${name}${sheet}`, data: t };
           })
-          .filter((o) => o.value);
+          .filter((o) => o.data.primary_id || o.data.id);
         setTurtleOptions(opts);
       })
       .catch(() => {})
@@ -259,6 +261,9 @@ export function MergeTurtlesModal({
         setSecondaryImages(sImg);
         // Default: all secondary additional images checked
         setKeepPaths(new Set((sImg.additional || []).map((a) => a.path)));
+        // If primary has no reference but secondary does, default to secondary to avoid an empty reference
+        setPlastronSource(!pImg.primary && sImg.primary ? 'secondary' : 'primary');
+        setCarapaceSource(!pImg.primary_carapace && sImg.primary_carapace ? 'secondary' : 'primary');
       })
       .catch(() => {})
       .finally(() => setImagesLoading(false));
@@ -270,6 +275,7 @@ export function MergeTurtlesModal({
     setSecondaryTurtle(found?.data ?? null);
     setPrimaryImages(null);
     setSecondaryImages(null);
+    // plastronSource / carapaceSource are updated once images load
     setPlastronSource('primary');
     setCarapaceSource('primary');
     setKeepPaths(new Set());

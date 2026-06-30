@@ -246,7 +246,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_root = (
         args.data_root
         or os.environ.get("DATA_DIR")

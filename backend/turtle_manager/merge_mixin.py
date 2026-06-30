@@ -438,14 +438,20 @@ class TurtleMergeMixin:
                     )
                 ])
 
-            # 9. Update primary Sheets row
+            # 9. Update primary Sheets row — abort before any destructive steps if this fails
             if sheets_svc and merged_data and resolved_primary_sheet:
                 try:
                     ok = sheets_svc.update_turtle_data(primary_id, merged_data, resolved_primary_sheet)
                     if not ok:
-                        print(f"   ⚠️ Failed to update primary Sheets row for {primary_id}")
+                        return False, (
+                            f"Merge aborted: failed to update primary Sheets row for '{primary_id}'. "
+                            f"No data has been deleted. Retry or check the sheet manually."
+                        )
                 except Exception as e:
-                    print(f"   ⚠️ Could not update primary Sheets row: {e}")
+                    return False, (
+                        f"Merge aborted: could not update primary Sheets row ({e}). "
+                        f"No data has been deleted."
+                    )
 
             # 10. Delete secondary Sheets row — abort before folder removal if delete fails
             if sheets_svc and resolved_secondary_sheet:

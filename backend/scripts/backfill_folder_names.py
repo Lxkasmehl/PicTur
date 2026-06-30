@@ -239,7 +239,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help='Override the backend data directory (defaults to BASE_DATA_DIR).')
     args = parser.parse_args(argv)
 
-    data_root = args.data_root or os.path.join(os.path.dirname(os.path.abspath(__file__)), BASE_DATA_DIR)
+    data_root = args.data_root or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), BASE_DATA_DIR)
     if not os.path.isdir(data_root):
         print(f"ERROR: data root not found: {data_root}", file=sys.stderr)
         return 2
