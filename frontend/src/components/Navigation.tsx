@@ -27,6 +27,7 @@ import {
   IconUsers,
   IconFlag,
   IconCompass,
+  IconMapPin,
 } from '@tabler/icons-react';
 import { useUser } from '../hooks/useUser';
 import { logout as apiLogout } from '../services/api';
@@ -88,6 +89,11 @@ export default function Navigation({ children }: NavigationProps) {
           path: '/admin/users',
           icon: IconUsers,
         });
+        items.splice(5, 0, {
+          label: 'Locations',
+          path: '/admin/locations',
+          icon: IconMapPin,
+        });
       }
     }
     return items;
@@ -100,7 +106,7 @@ export default function Navigation({ children }: NavigationProps) {
     const baseBreakpoint = 1000; // Base breakpoint for customer view with normal name
 
     // Home + Observer HQ (+ staff/admin ops); About/Contact are in the footer
-    const itemCount = isAdmin ? 5 : isStaff ? 4 : 2;
+    const itemCount = isAdmin ? 6 : isStaff ? 4 : 2;
 
     // Admin has 2 extra items, increase breakpoint by ~167px per extra item
     // This makes drawer appear earlier when there are more nav items

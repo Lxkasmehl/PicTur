@@ -1,103 +1,20 @@
 /**
- * Google Sheets API – turtle data, sheets list, primary ID, etc.
+ * Google Sheets API — barrel re-export + sheet-tab management, ID generation,
+ * locations, and backup archive download.
+ *
+ * Sub-modules:
+ *   turtle-data.ts       — TurtleSheetsData type, CRUD, mark-deceased, lookup
+ *   general-locations.ts — General Location catalog management
  */
+
+export * from './turtle-data';
+export * from './general-locations';
 
 import { getToken, TURTLE_API_BASE_URL } from './config';
 
-export interface TurtleSheetsData {
-  primary_id?: string;
-  sheet_name?: string; // Which Google Sheets tab this turtle belongs to
-  transmitter_id?: string;
-  /** Sheet column "Frequency" (legacy header "Freq") */
-  freq?: string;
-  id?: string;
-  id2?: string;
-  pit?: string;
-  /** Legacy sheet header "Pic in 2024 Archive?" (still read from old tabs) */
-  pic_in_2024_archive?: string;
-  plastron_picture_in_archive?: string;
-  carapace_picture_in_archive?: string;
-  adopted?: string;
-  ibutton?: string;
-  /** Sheet column "Date DNA Extracted?" (legacy "DNA Extracted?") */
-  dna_extracted?: string;
-  cow_interactions?: string;
-  date_1st_found?: string;
-  species?: string;
-  name?: string;
-  sex?: string;
-  ibutton_last_set?: string;
-  last_assay_date?: string;
-  dates_refound?: string;
-  /** Sheet column between Dates refound and General Location */
-  specific_location?: string;
-  general_location?: string;
-  location?: string;
-  health_status?: string;
-  /** Google Sheets column "Deceased?" — Yes / No */
-  deceased?: string;
-  notes?: string;
-  transmitter_put_on_by?: string;
-  transmitter_on_date?: string;
-  transmitter_type?: string;
-  transmitter_lifespan?: string;
-  radio_replace_date?: string;
-  old_frequencies?: string;
-  // Optional mass and morphometrics (sheet headers CCL, Cflat, …; legacy long names still read)
-  mass_g?: string;
-  flesh_flies?: string;
-  curved_carapace_length_mm?: string;
-  straight_carapace_length_mm?: string;
-  carapace_width_mm?: string;
-  curved_plastron_length_mm?: string;
-  straight_plastron_length_mm?: string;
-  plastron_p1_mm?: string;
-  plastron_p2_mm?: string;
-  plastron_width_mm?: string;
-  dome_height_mm?: string;
-  /** Google Sheet row (1-based header excluded); set when listing from /api/sheets/turtles */
-  row_index?: number;
-}
-
-/**
- * On-disk folder / ref_data stem: biology **ID** column when set (e.g. F439), else **Primary ID**.
- * Image APIs walk ``basename == turtle_id``; folders usually match the short biology ID, not the numeric primary.
- */
-export function turtleDiskFolderId(
-  t: Pick<TurtleSheetsData, 'id' | 'primary_id'>,
-): string {
-  const bio = (t.id || '').trim();
-  if (bio) return bio;
-  return (t.primary_id || '').trim();
-}
-
-/**
- * Folder hint for turtle image APIs: matches `data/<...>/` on disk.
- * The on-disk top-level folder IS the spreadsheet tab (`sheet_name`, e.g.
- * `Kansas`, `NebraskaCPBS`); `general_location` / `location` are subpaths under
- * it. Lead with the tab so the backend scopes the lookup to the correct sheet —
- * biology IDs repeat across sheets, so a hint missing the tab can resolve to
- * the wrong turtle's photos.
- */
-export function turtleDataFolderHint(
-  t: Pick<TurtleSheetsData, 'sheet_name' | 'general_location' | 'location'>,
-): string | null {
-  const gl = (t.general_location || '').trim().replace(/\\/g, '/');
-  const loc = (t.location || '').trim().replace(/\\/g, '/');
-  const sheet = (t.sheet_name || '').trim();
-  const segs = [sheet, gl, loc].filter(Boolean);
-  // Drop consecutive duplicate segments (e.g. a sheet whose tab name equals its
-  // general_location) so the hint doesn't become `Kansas/Kansas/...`.
-  const deduped = segs.filter((s, i) => i === 0 || s !== segs[i - 1]);
-  return deduped.length ? deduped.join('/') : null;
-}
-
-export interface GetTurtleSheetsDataResponse {
-  success: boolean;
-  data?: TurtleSheetsData;
-  message?: string;
-  exists?: boolean;
-}
+// ---------------------------------------------------------------------------
+// Sheet-tab management
+// ---------------------------------------------------------------------------
 
 export interface ListSheetsResponse {
   success: boolean;
@@ -108,85 +25,6 @@ export interface ListSheetsResponse {
 export interface GetLocationsResponse {
   success: boolean;
   locations?: string[];
-  error?: string;
-}
-
-export interface GeneratePrimaryIdRequest {
-  state: string;
-  location?: string;
-}
-
-export interface GeneratePrimaryIdResponse {
-  success: boolean;
-  primary_id?: string;
-  error?: string;
-}
-
-export interface CreateTurtleSheetsDataRequest {
-  sheet_name: string;
-  state?: string;
-  location?: string;
-  turtle_data: TurtleSheetsData;
-  /** When 'community', create in community-facing spreadsheet (e.g. review queue community upload). Default 'research'. */
-  target_spreadsheet?: 'research' | 'community';
-}
-
-export interface CreateTurtleSheetsDataResponse {
-  success: boolean;
-  primary_id?: string;
-  message?: string;
-  error?: string;
-}
-
-export interface UpdateTurtleSheetsDataRequest {
-  sheet_name: string;
-  state?: string;
-  location?: string;
-  turtle_data: Partial<TurtleSheetsData>;
-  /** When 'community', update in community spreadsheet. Default 'research'. */
-  target_spreadsheet?: 'research' | 'community';
-}
-
-export interface UpdateTurtleSheetsDataResponse {
-  success: boolean;
-  message?: string;
-  error?: string;
-}
-
-export interface MarkTurtleDeceasedRequest {
-  sheet_name: string;
-  primary_id?: string;
-  biology_id?: string;
-  id?: string;
-  name?: string;
-  deceased?: boolean;
-  target_spreadsheet?: 'research' | 'community';
-}
-
-export interface MarkTurtleDeceasedMatch {
-  row_index: number;
-  primary_id: string;
-  id: string;
-  name: string;
-}
-
-export interface MarkTurtleDeceasedResponse {
-  success: boolean;
-  primary_id?: string;
-  biology_id?: string;
-  name?: string;
-  deceased?: string;
-  message?: string;
-  error?: string;
-  matches?: MarkTurtleDeceasedMatch[];
-}
-
-export type TurtleLookupField = 'primary_id' | 'biology_id' | 'name';
-
-export interface GetTurtleLookupOptionsResponse {
-  success: boolean;
-  options?: string[];
-  count?: number;
   error?: string;
 }
 
@@ -203,349 +41,32 @@ export interface CreateSheetResponse {
   error?: string;
 }
 
-export interface GenerateTurtleIdRequest {
-  sex: string; // M, F, J, or U
-  sheet_name: string;
-  /** When 'community', use community spreadsheet for ID generation (do not create sheet in research). */
-  target_spreadsheet?: 'research' | 'community';
-}
-
-export interface GenerateTurtleIdResponse {
-  success: boolean;
-  id?: string;
-  error?: string;
-}
-
-export interface TurtleNameEntry {
-  name: string;
-  primary_id: string;
-}
-
-export interface ListTurtleNamesResponse {
-  success: boolean;
-  names: TurtleNameEntry[];
-  error?: string;
-}
-
-export interface ListTurtlesResponse {
-  success: boolean;
-  turtles: TurtleSheetsData[];
-  count: number;
-  error?: string;
-}
-
-export interface GeneralLocationCatalog {
-  states: Record<string, string[]>;
-  sheet_defaults: Record<string, { state: string; general_location: string }>;
-}
-
-export interface GeneralLocationCatalogResponse {
-  success: boolean;
-  catalog?: GeneralLocationCatalog;
-  states?: { state: string; locations: string[] }[];
-  sheet_defaults?: { sheet_name: string; state: string; general_location: string }[];
-  error?: string;
-}
-
-export interface AddGeneralLocationRequest {
-  state: string;
-  general_location: string;
-}
-
-export interface AddGeneralLocationResponse extends GeneralLocationCatalogResponse {
-  synced?: boolean;
-  sheets_updated?: number;
-  sync_error?: string;
-  /** Present when Sheets API ran but no tab was updated (e.g. missing header). */
-  sync_warning?: string;
-  message?: string;
-}
-
-// Get turtle data from Google Sheets
-export const getTurtleSheetsData = async (
-  primaryId: string,
-  sheetName?: string,
-  state?: string,
-  location?: string,
-  signal?: AbortSignal,
-): Promise<GetTurtleSheetsDataResponse> => {
+export const listSheets = async (timeoutMs = 25000): Promise<ListSheetsResponse> => {
   const token = getToken();
   const headers: Record<string, string> = {};
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const params = new URLSearchParams();
-  if (sheetName) {
-    params.append('sheet_name', sheetName);
-  }
-  if (state) {
-    params.append('state', state);
-  }
-  if (location) {
-    params.append('location', location);
-  }
-
-  const response = await fetch(
-    `${TURTLE_API_BASE_URL}/sheets/turtle/${primaryId}${params.toString() ? `?${params.toString()}` : ''}`,
-    {
-      method: 'GET',
-      headers,
-      signal,
-    },
-  );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to get turtle data from sheets');
-  }
-
-  return await response.json();
-};
-
-// Create turtle data in Google Sheets
-export const createTurtleSheetsData = async (
-  data: CreateTurtleSheetsDataRequest,
-): Promise<CreateTurtleSheetsDataResponse> => {
-  const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${TURTLE_API_BASE_URL}/sheets/turtle`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to create turtle data in sheets');
-  }
-
-  return await response.json();
-};
-
-// Update turtle data in Google Sheets
-export const updateTurtleSheetsData = async (
-  primaryId: string,
-  data: UpdateTurtleSheetsDataRequest,
-): Promise<UpdateTurtleSheetsDataResponse> => {
-  const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(
-    `${TURTLE_API_BASE_URL}/sheets/turtle/${primaryId}`,
-    {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(data),
-    },
-  );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to update turtle data in sheets');
-  }
-
-  return await response.json();
-};
-
-/** Mark deceased without plastron ID: lookup by primary_id, biology id, or name within one sheet tab. */
-export const markTurtleDeceased = async (
-  body: MarkTurtleDeceasedRequest,
-): Promise<MarkTurtleDeceasedResponse> => {
-  const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  const response = await fetch(`${TURTLE_API_BASE_URL}/sheets/turtle/mark-deceased`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-  const data = (await response.json()) as MarkTurtleDeceasedResponse;
-  if (!response.ok) {
-    throw new Error(data.error || 'Failed to update deceased status');
-  }
-  return data;
-};
-
-/** Distinct values from ID / Name / Primary ID column in one sheet tab (for mark-deceased picker). */
-export const getTurtleLookupOptions = async (
-  sheetName: string,
-  field: TurtleLookupField,
-  targetSpreadsheet: 'research' | 'community' = 'research',
-): Promise<GetTurtleLookupOptionsResponse> => {
-  const token = getToken();
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  const params = new URLSearchParams({
-    sheet_name: sheetName,
-    field,
-  });
-  if (targetSpreadsheet !== 'research') {
-    params.set('target_spreadsheet', targetSpreadsheet);
-  }
-  const response = await fetch(
-    `${TURTLE_API_BASE_URL}/sheets/mark-deceased/lookup-options?${params.toString()}`,
-    { method: 'GET', headers },
-  );
-  const data = (await response.json()) as GetTurtleLookupOptionsResponse & {
-    exists?: boolean;
-    data?: unknown;
-  };
-  if (!response.ok) {
-    return { success: false, options: [], error: data.error || 'Failed to load options' };
-  }
-  // Wrong route (e.g. matched as GET /turtle/<primary_id>) returns turtle payload without options
-  if (!Array.isArray(data.options)) {
-    return {
-      success: false,
-      options: [],
-      error: 'Unexpected API response. Ensure the backend is updated (mark-deceased lookup-options route).',
-    };
-  }
-  return data;
-};
-
-// Generate a new primary ID
-export const generatePrimaryId = async (
-  data: GeneratePrimaryIdRequest,
-  timeoutMs: number = 15000,
-): Promise<GeneratePrimaryIdResponse> => {
-  const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(
-      `${TURTLE_API_BASE_URL}/sheets/generate-primary-id`,
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(data),
-        signal: controller.signal,
-      },
-    );
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to generate primary ID');
-    }
-
-    return await response.json();
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`Request timeout after ${timeoutMs}ms`);
-    }
-    throw error;
-  }
-};
-
-// Generate the next biology ID (ID column) based on sex: M/F/J/U + sequence number
-export const generateTurtleId = async (
-  data: GenerateTurtleIdRequest,
-  timeoutMs: number = 10000,
-): Promise<GenerateTurtleIdResponse> => {
-  const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(`${TURTLE_API_BASE_URL}/sheets/generate-id`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to generate turtle ID');
-    }
-    return await response.json();
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`Request timeout after ${timeoutMs}ms`);
-    }
-    throw error;
-  }
-};
-
-// List all available sheets
-export const listSheets = async (
-  timeoutMs: number = 25000,
-): Promise<ListSheetsResponse> => {
-  const token = getToken();
-  const headers: Record<string, string> = {};
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
     const response = await fetch(`${TURTLE_API_BASE_URL}/sheets/sheets`, {
       method: 'GET',
       headers,
       signal: controller.signal,
     });
-
     clearTimeout(timeoutId);
-
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to list sheets');
     }
-
     return await response.json();
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`Request timeout after ${timeoutMs}ms`);
-    }
+    if (error instanceof Error && error.name === 'AbortError') throw new Error(`Request timeout after ${timeoutMs}ms`);
     throw error;
   }
 };
 
-// List sheet (tab) names from the community-facing spreadsheet (for Review Queue – community uploads)
-export const listCommunitySheets = async (
-  timeoutMs: number = 25000,
-): Promise<ListSheetsResponse> => {
+export const listCommunitySheets = async (timeoutMs = 25000): Promise<ListSheetsResponse> => {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -565,24 +86,16 @@ export const listCommunitySheets = async (
     return await response.json();
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`Request timeout after ${timeoutMs}ms`);
-    }
+    if (error instanceof Error && error.name === 'AbortError') throw new Error(`Request timeout after ${timeoutMs}ms`);
     throw error;
   }
 };
 
-// List backend location paths (State/Location) for community upload and manual upload
 export const getLocations = async (): Promise<GetLocationsResponse> => {
   const token = getToken();
   const headers: Record<string, string> = {};
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  const response = await fetch(`${TURTLE_API_BASE_URL}/locations`, {
-    method: 'GET',
-    headers,
-  });
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/locations`, { method: 'GET', headers });
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to load locations');
@@ -590,120 +103,149 @@ export const getLocations = async (): Promise<GetLocationsResponse> => {
   return await response.json();
 };
 
-// Shared catalog of state-specific General Location options
-export const getGeneralLocationCatalog = async (): Promise<GeneralLocationCatalogResponse> => {
+export const createSheet = async (data: CreateSheetRequest): Promise<CreateSheetResponse> => {
   const token = getToken();
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  const response = await fetch(`${TURTLE_API_BASE_URL}/general-locations`, {
-    method: 'GET',
-    headers,
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to load general locations');
-  }
-  return await response.json();
-};
-
-export const addGeneralLocation = async (
-  data: AddGeneralLocationRequest,
-): Promise<AddGeneralLocationResponse> => {
-  const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  const response = await fetch(`${TURTLE_API_BASE_URL}/general-locations`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to add general location');
-  }
-  return await response.json();
-};
-
-// List all turtle names across sheets (for duplicate-name validation)
-export const getTurtleNames = async (): Promise<ListTurtleNamesResponse> => {
-  const token = getToken();
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  const response = await fetch(`${TURTLE_API_BASE_URL}/sheets/turtle-names`, {
-    method: 'GET',
-    headers,
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to list turtle names');
-  }
-  return await response.json();
-};
-
-// Create a new sheet with headers
-export const createSheet = async (
-  data: CreateSheetRequest,
-): Promise<CreateSheetResponse> => {
-  const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
   const response = await fetch(`${TURTLE_API_BASE_URL}/sheets/sheets`, {
     method: 'POST',
     headers,
     body: JSON.stringify(data),
   });
-
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to create sheet');
   }
-
   return await response.json();
 };
 
-// List all turtles from Google Sheets
-export const listAllTurtlesFromSheets = async (
-  sheetName?: string,
-): Promise<ListTurtlesResponse> => {
+// ---------------------------------------------------------------------------
+// ID generation
+// ---------------------------------------------------------------------------
+
+export interface GeneratePrimaryIdRequest {
+  state: string;
+  location?: string;
+}
+
+export interface GeneratePrimaryIdResponse {
+  success: boolean;
+  primary_id?: string;
+  error?: string;
+}
+
+export interface GenerateTurtleIdRequest {
+  sex: string; // M, F, J, or U
+  sheet_name: string;
+  /** When 'community', use community spreadsheet for ID generation. */
+  target_spreadsheet?: 'research' | 'community';
+}
+
+export interface GenerateTurtleIdResponse {
+  success: boolean;
+  id?: string;
+  error?: string;
+}
+
+export const generatePrimaryId = async (
+  data: GeneratePrimaryIdRequest,
+  timeoutMs = 15000,
+): Promise<GeneratePrimaryIdResponse> => {
   const token = getToken();
-  const headers: Record<string, string> = {};
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const params = new URLSearchParams();
-  if (sheetName) {
-    params.append('sheet', sheetName);
-  }
-
-  const response = await fetch(
-    `${TURTLE_API_BASE_URL}/sheets/turtles?${params.toString()}`,
-    {
-      method: 'GET',
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${TURTLE_API_BASE_URL}/sheets/generate-primary-id`, {
+      method: 'POST',
       headers,
-    },
-  );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to list turtles from sheets');
+      body: JSON.stringify(data),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to generate primary ID');
+    }
+    return await response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') throw new Error(`Request timeout after ${timeoutMs}ms`);
+    throw error;
   }
-
-  return await response.json();
 };
+
+export interface MergeTurtlesParams {
+  primaryId: string;
+  secondaryId: string;
+  primarySheet: string;
+  secondarySheet: string;
+  plastronSource: 'primary' | 'secondary';
+  carapaceSource: 'primary' | 'secondary';
+  /** Absolute filesystem paths of secondary additional images to migrate. */
+  keepSecondaryAdditional: string[];
+}
+
+export const mergeTurtles = async (
+  params: MergeTurtlesParams,
+): Promise<{ success: boolean; message: string }> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/turtles/merge`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      primary_id: params.primaryId,
+      secondary_id: params.secondaryId,
+      primary_sheet: params.primarySheet,
+      secondary_sheet: params.secondarySheet,
+      plastron_source: params.plastronSource,
+      carapace_source: params.carapaceSource,
+      keep_secondary_additional: params.keepSecondaryAdditional,
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || data.message || 'Failed to merge turtles');
+  }
+  return data as { success: boolean; message: string };
+};
+
+export const generateTurtleId = async (
+  data: GenerateTurtleIdRequest,
+  timeoutMs = 10000,
+): Promise<GenerateTurtleIdResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${TURTLE_API_BASE_URL}/sheets/generate-id`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to generate turtle ID');
+    }
+    return await response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') throw new Error(`Request timeout after ${timeoutMs}ms`);
+    throw error;
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Backup archive download
+// ---------------------------------------------------------------------------
+
 
 /**
  * Admin-only: download a ZIP of the backend data/ mirror + Google Sheets
@@ -711,7 +253,7 @@ export const listAllTurtlesFromSheets = async (
  *
  * The archive is multi-GB, so we do NOT buffer it (no fetch -> blob): the
  * server streams it in constant memory. Because a navigation/anchor download
- * can't send the Authorization header, we first mint a short-lived one-shot
+ * can't send the Authorization header, we first mint a short-lived
  * token (authenticated via the header) and then hand the ?dl= URL to the
  * browser's own download manager, which streams straight to disk in the
  * background. `timeoutMs` bounds only the small token request.
@@ -721,14 +263,10 @@ export async function downloadAdminBackupArchive(
   timeoutMs = 30000,
 ): Promise<void> {
   const token = getToken();
-  if (!token) {
-    throw new Error('Not authenticated');
-  }
+  if (!token) throw new Error('Not authenticated');
 
   const params = new URLSearchParams({ scope: options.scope });
-  if (options.scope === 'sheet') {
-    params.set('sheet', options.sheet);
-  }
+  if (options.scope === 'sheet') params.set('sheet', options.sheet);
 
   // 1) Mint a short-lived download token (authenticated via the header).
   const controller = new AbortController();
@@ -755,9 +293,7 @@ export async function downloadAdminBackupArchive(
     dlToken = data.token;
   } catch (e) {
     clearTimeout(timeoutId);
-    if (e instanceof Error && e.name === 'AbortError') {
-      throw new Error(`Request timed out after ${timeoutMs}ms`);
-    }
+    if (e instanceof Error && e.name === 'AbortError') throw new Error(`Request timed out after ${timeoutMs}ms`);
     throw e;
   }
 

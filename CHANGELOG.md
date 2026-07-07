@@ -7,15 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.18] - 2026-06-17 — Streaming offline-backup ZIP download
-
 ### Fixed
 
-- **Admin "Offline backup (ZIP)" download now works**: the Sheets Browser backup button built the entire multi-GB archive (the full `data/` tree + Google Sheets snapshots) in server memory before sending a single byte, which ran out of memory / timed out, so the download never started. The ZIP is now **streamed** in constant server memory (compressed on the fly and flushed chunk-by-chunk) and the browser's own download manager writes it **progressively to disk** — so even the full ~9 GB archive downloads reliably. The walk tolerates files changing or vanishing mid-stream (a concurrent approval, relocation, soft-delete, or nightly rename can no longer abort the download), skips in-flight `*_staged_*` and OS-junk files, and preserves the existing archive layout (`data/` + `sheets_export/`). Because a browser navigation download cannot carry the `Authorization` header, the client first mints a short-lived (~2 min) one-shot download token, so the long-lived admin JWT is never placed in the URL.
+- **Admin "Offline backup (ZIP)" download now works**: the Sheets Browser backup button built the entire multi-GB archive (the full `data/` tree + Google Sheets snapshots) in server memory before sending a single byte, which ran out of memory / timed out, so the download never started. The ZIP is now **streamed** in constant server memory (compressed on the fly and flushed chunk-by-chunk) and the browser's own download manager writes it **progressively to disk** — so even the full ~9 GB archive downloads reliably. The walk tolerates files changing or vanishing mid-stream (a concurrent approval, relocation, soft-delete, or nightly rename can no longer abort the download), skips in-flight `*_staged_*` and OS-junk files, and preserves the existing archive layout (`data/` + `sheets_export/`). Because a browser navigation download cannot carry the `Authorization` header, the client first mints a short-lived (~2 min) download token, so the long-lived admin JWT is never placed in the URL.
 
 ### Changed
 
-- **Backend serves requests concurrently (`threaded=True`)**: a working multi-minute backup download would otherwise hold the single Flask request thread and stall matching/upload/review for everyone else. The server now handles requests on separate threads, so a large download (or any long request) no longer starves other users. This is safe because the hot shared resources were already lock-guarded (GPU/VRAM cache, approvals, Google Sheets API, rate-limiting, locations catalog) and the app already ran concurrent background upload threads. As part of this, two in-memory VRAM-cache operations that previously mutated state without the GPU lock were hardened: the search-index rebuild now swaps an atomically-built index, and every cache eviction goes through one lock-guarded path so a concurrent add can't lose an update. These are match-cache-consistency fixes only — no change to on-disk data — and a stale entry would already self-heal on the next index refresh.
+- **Backend serves requests concurrently (`threaded=True`)**: a working multi-minute backup download would otherwise hold the single Flask request thread and stall matching/upload/review for everyone else. The server now handles requests on separate threads, so a large download (or any long request) no longer starves other users. This is safe because the hot shared resources were already lock-guarded (GPU/VRAM cache, approvals, Google Sheets API, rate-limiting, locations catalog) and the app already ran concurrent background upload threads. As part of this, two in-memory VRAM-cache operations that previously mutated state without the GPU lock were hardened: the search-index rebuild now swaps an atomically-built index, and every cache eviction goes through one lock-guarded path so a concurrent add can't lose an update — including the two eviction sites introduced by the merge-turtles feature (2.0.19). These are match-cache-consistency fixes only — no change to on-disk data — and a stale entry would already self-heal on the next index refresh.
+
+## [2.0.19] - 2026-06-30 — Merge duplicate turtle records; turtle_manager package refactor
+
+### Added
+
+- **Merge duplicate turtle records** (#178): admins can now collapse two turtle entries that turned out to be the same individual. A 4-step modal in the Sheets Browser lets the admin pick the secondary turtle, choose which plastron/carapace reference photo to keep as the active identifier, select which additional images to carry over (duplicates can be dropped), and confirm. The backend merges Google Sheets rows (primary fields win; notes and dates-refound are appended), migrates image files from the secondary folder into the primary, evicts the secondary from the VRAM matching cache, deletes the secondary Sheets row, and removes the secondary folder.
+
+### Fixed
+
+- **MergeTurtlesModal no longer crashes when Google Sheets contains duplicate turtle rows**: if `listAllTurtlesFromSheets()` returns the same `sheet_name::primary_id` more than once, the second occurrence is silently dropped before being passed to the Mantine `<Select>`, preventing the "Duplicate options are not supported" crash.
+
+### Changed
+
+- **`turtle_manager.py` split into a package** (`backend/turtle_manager/`): the 3 650-line monolith is now 11 focused modules — `manager.py` (426 lines, core only), `path_utils.py` (pure filesystem helpers), and 9 mixin classes (`merge_mixin`, `reference_mixin`, `deletion_mixin`, `review_mixin`, `folder_resolver_mixin`, `ingest_mixin`, `identifier_plastron_mixin`, `additional_images_mixin`, `flags_mixin`). All external imports (`from turtle_manager import TurtleManager`, `BASE_DATA_DIR`, etc.) remain unchanged via `__init__.py`.
+- **`SheetsBrowserTab.tsx` refactored** (1 530 → 1 021 lines): staged-photo logic extracted into `useStagedPhotos`, delete/restore into `usePhotoDelete`, sidebar thumbnail loading into `usePrimaryImagesBatch`, and the pending-photos UI into `StagedPhotosPanel`.
+- **Backend root cleaned up**: 10 standalone scripts moved to `scripts/`, `google_sheets_service.py` moved to `services/`, `turtle_folder_images.py` moved to `turtle_manager/`.
+
+## [2.0.18] - 2026-06-30 — General Location management (delete, fixed programs, conversion)
+
+### Added
+
+- **General Location delete**: Admins can delete a General Location from the catalog via the new `/admin/locations` page; if turtles use the location they must be reassigned to another location first — Sheets values are batch-updated and on-disk folders relocated automatically.
+- **Location Management page**: Redesigned admin-only page (`/admin/locations`) with two distinct sections — "Selectable Locations" (programs where admins pick a location per turtle) and "Fixed Programs" (programs whose General Location is determined by the sheet tab). Supports creating, deleting, and converting between both types.
+- **Fixed program management**: New `POST /api/general-locations/sheet-defaults` and `DELETE /api/general-locations/sheet-defaults` endpoints allow creating fixed programs and converting them to selectable. `DELETE /api/general-locations` accepts `force: true` to delete a fixed program and its sheet default atomically.
+- **Affected-turtles check**: `GET /api/general-locations/affected-turtles` returns a per-sheet count of turtles that use a given General Location before deletion.
+- **`sheets/bulk_ops.py`**: New backend module with `find_rows_by_general_location` and `bulk_update_general_location` (batched, rate-limit–aware).
+- **API split**: `frontend/src/services/api/sheets.ts` refactored into `turtle-data.ts` (turtle CRUD) and `general-locations.ts` (catalog management); `sheets.ts` re-exports both for backward compatibility.
+
+### Fixed
+
+- **General location catalog data model**: `_DEFAULT_CATALOG` now uses the sheet tab name (e.g. `NebraskaCPBS`, `IowaHawkeye`) as the `state` key instead of geographic parent names (`Nebraska`, `Iowa`). This correctly matches the folder path schema used by `TurtleManager` (`data/<sheet_name>/<general_location>/...`). A migration in `_normalize_catalog` automatically upgrades existing `general_locations.json` files on first load.
+- **Force-deleting a General Location could mask a failed affected-turtles scan**: `bulk_ops.find_rows_by_general_location` returned an empty list instead of raising when a Sheets read failed (`HttpError`), so callers with `fail_on_error=True` couldn't distinguish a genuinely empty tab from a transient API failure and could proceed as if no turtles were affected. It now raises `RuntimeError` on a failed read. The check that rejects a location as its own move target now also applies to force deletions, not just standard ones.
 
 ## [2.0.17] - 2026-06-17 — Restore "Date Last Assayed" on the profile form
 
@@ -583,7 +613,12 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.14...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.19...HEAD
+[2.0.19]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.18...v2.0.19
+[2.0.18]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.17...v2.0.18
+[2.0.17]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.16...v2.0.17
+[2.0.16]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.15...v2.0.16
+[2.0.15]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.14...v2.0.15
 [2.0.14]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.13...v2.0.14
 [2.0.13]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.12...v2.0.13
 [2.0.12]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.11...v2.0.12

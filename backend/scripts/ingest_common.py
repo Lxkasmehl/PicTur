@@ -7,6 +7,10 @@ NEVER writes to Google Sheets.
 
 from __future__ import annotations
 
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))  # scripts/ for ingest_common etc.
+
 import os
 import re
 import sys
