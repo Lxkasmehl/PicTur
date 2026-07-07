@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.20] - 2026-07-07 — Streaming offline-backup ZIP download
+
 ### Fixed
 
 - **Admin "Offline backup (ZIP)" download now works**: the Sheets Browser backup button built the entire multi-GB archive (the full `data/` tree + Google Sheets snapshots) in server memory before sending a single byte, which ran out of memory / timed out, so the download never started. The ZIP is now **streamed** in constant server memory (compressed on the fly and flushed chunk-by-chunk) and the browser's own download manager writes it **progressively to disk** — so even the full ~9 GB archive downloads reliably. The walk tolerates files changing or vanishing mid-stream (a concurrent approval, relocation, soft-delete, or nightly rename can no longer abort the download), skips in-flight `*_staged_*` and OS-junk files, and preserves the existing archive layout (`data/` + `sheets_export/`). Because a browser navigation download cannot carry the `Authorization` header, the client first mints a short-lived (~2 min) download token, so the long-lived admin JWT is never placed in the URL.
