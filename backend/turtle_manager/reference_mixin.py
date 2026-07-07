@@ -178,7 +178,6 @@ class TurtleReferenceMixin:
             if photo_type == "carapace":
                 ref_dir = os.path.join(target_dir, 'carapace')
                 archive_dir = os.path.join(target_dir, 'carapace', 'Old References')
-                cache_attr = 'vram_cache_carapace'
                 print_prefix = "✨ UPGRADING CARAPACE REFERENCE"
                 archive_prefix = "Archived_Carapace"
             else:
@@ -191,7 +190,6 @@ class TurtleReferenceMixin:
                 else:
                     ref_dir = plastron_dir
                 archive_dir = os.path.join(target_dir, 'plastron', 'Old References')
-                cache_attr = 'vram_cache_plastron'
                 print_prefix = "✨ UPGRADING REFERENCE"
                 archive_prefix = "Archived_Master"
             os.makedirs(ref_dir, exist_ok=True)
@@ -299,8 +297,7 @@ class TurtleReferenceMixin:
             # incremental insert matches what refresh_database_index would
             # produce on a full reload (which derives turtle_id from
             # ``path_parts[-2]``, i.e. the folder basename).
-            cache = getattr(brain, cache_attr, [])
-            setattr(brain, cache_attr, [c for c in cache if c['file_path'] != old_pt_path])
+            self._evict_from_vram(old_pt_path, photo_type)
             rel_path = os.path.relpath(ref_dir, self.base_dir)
             loc_parts = rel_path.split(os.sep)[:-2]
             location_name = "/".join(loc_parts)

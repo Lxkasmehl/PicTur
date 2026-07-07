@@ -256,7 +256,7 @@ class TurtleManager(TurtleReferenceMixin, TurtleDeletionMixin, TurtleReviewMixin
         Scans plastron/ (new), ref_data/ (legacy), and carapace/ subdirectories.
         Each index entry is a 4-tuple: (pt_path, turtle_id, location, photo_type).
         """
-        self.db_index = []
+        index = []
         for root, dirs, files in os.walk(self.base_dir):
             # Defensively prune Deleted/ subtrees so soft-deleted .pt files
             # (if any lingered across an older format) never enter the index.
@@ -280,12 +280,18 @@ class TurtleManager(TurtleReferenceMixin, TurtleDeletionMixin, TurtleReviewMixin
                         # Strip the last 2 parts (TurtleID/plastron or TurtleID/carapace)
                         loc_parts = rel_path.split(os.sep)[:-2]
                         location_name = "/".join(loc_parts)
-                        self.db_index.append((os.path.join(root, file), turtle_id, location_name, photo_type))
+                        index.append((os.path.join(root, file), turtle_id, location_name, photo_type))
+
+        # Assign atomically so a concurrent refresh (now possible under the
+        # threaded server) never observes a half-built index. Each caller
+        # builds a complete index in a local, so "last writer wins" stays
+        # consistent instead of interleaving appends into one shared list.
+        self.db_index = index
 
         # Push the indexed files directly into the Brain's VRAM
         if hasattr(brain, 'load_database_to_vram'):
             print("⚡ Pushing database to Memory Cache...")
-            brain.load_database_to_vram(self.db_index)
+            brain.load_database_to_vram(index)
 
     # Folders that should never appear in user-facing location dropdowns
     SYSTEM_FOLDERS = {"Review_Queue", "Community_Uploads",
