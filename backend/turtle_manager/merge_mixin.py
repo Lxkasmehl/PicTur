@@ -34,7 +34,6 @@ class TurtleMergeMixin:
         if photo_type == 'carapace':
             pri_ref_dir = os.path.join(primary_dir, 'carapace')
             pri_archive_dir = os.path.join(primary_dir, 'carapace', 'Old References')
-            cache_attr = 'vram_cache_carapace'
             archive_prefix = 'Archived_Carapace'
             sec_ref_dir = os.path.join(secondary_dir, 'carapace')
         else:
@@ -45,7 +44,6 @@ class TurtleMergeMixin:
                 else (pri_ref_data if os.path.isdir(pri_ref_data) else pri_plastron)
             )
             pri_archive_dir = os.path.join(primary_dir, 'plastron', 'Old References')
-            cache_attr = 'vram_cache_plastron'
             archive_prefix = 'Archived_Master'
             sec_plastron = os.path.join(secondary_dir, 'plastron')
             sec_ref_data = os.path.join(secondary_dir, 'ref_data')
@@ -121,8 +119,7 @@ class TurtleMergeMixin:
                             os.remove(pri_ref_img)
                         except OSError:
                             pass
-                cache = getattr(brain, cache_attr, [])
-                setattr(brain, cache_attr, [c for c in cache if c.get('file_path') != pri_ref_pt])
+                self._evict_from_vram(pri_ref_pt, photo_type)
                 rel = os.path.relpath(pri_ref_dir, self.base_dir)
                 location_name = "/".join(rel.split(os.sep)[:-2])
                 brain.add_single_to_vram(new_pt, primary_stem, location_name, photo_type=photo_type)
@@ -429,14 +426,13 @@ class TurtleMergeMixin:
                 secondary_real = os.path.realpath(secondary_dir)
             except OSError:
                 secondary_real = secondary_dir
-            for attr in ('vram_cache_plastron', 'vram_cache_carapace'):
-                cache = getattr(brain, attr, [])
-                setattr(brain, attr, [
-                    c for c in cache
-                    if not os.path.realpath(c.get('file_path', '')).startswith(
+            for ptype in ('plastron', 'carapace'):
+                brain.filter_vram_cache(
+                    lambda c: not os.path.realpath(c.get('file_path', '')).startswith(
                         secondary_real + os.sep
-                    )
-                ])
+                    ),
+                    photo_type=ptype,
+                )
 
             # 9. Update primary Sheets row — abort before any destructive steps if this fails
             if sheets_svc and merged_data and resolved_primary_sheet:

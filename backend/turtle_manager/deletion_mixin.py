@@ -102,9 +102,9 @@ class TurtleDeletionMixin:
         return candidates[0][1]
 
     def _evict_from_vram(self, pt_path, photo_type):
-        cache_attr = 'vram_cache_carapace' if photo_type == 'carapace' else 'vram_cache_plastron'
-        cache = getattr(brain, cache_attr, [])
-        setattr(brain, cache_attr, [c for c in cache if c.get('file_path') != pt_path])
+        # Delegate to the brain so the cache swap happens under _gpu_lock and
+        # can't race a concurrent add_single_to_vram (lost update).
+        brain.evict_from_vram(pt_path, photo_type)
 
     def _location_name_for_ref_dir(self, ref_dir):
         rel_path = os.path.relpath(ref_dir, self.base_dir)

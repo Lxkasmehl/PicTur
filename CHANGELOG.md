@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.20] - 2026-07-07 — Streaming offline-backup ZIP download
+
+### Fixed
+
+- **Admin "Offline backup (ZIP)" download now works**: the Sheets Browser backup button built the entire multi-GB archive (the full `data/` tree + Google Sheets snapshots) in server memory before sending a single byte, which ran out of memory / timed out, so the download never started. The ZIP is now **streamed** in constant server memory (compressed on the fly and flushed chunk-by-chunk) and the browser's own download manager writes it **progressively to disk** — so even the full ~9 GB archive downloads reliably. The walk tolerates files changing or vanishing mid-stream (a concurrent approval, relocation, soft-delete, or nightly rename can no longer abort the download), skips in-flight `*_staged_*` and OS-junk files, and preserves the existing archive layout (`data/` + `sheets_export/`). Because a browser navigation download cannot carry the `Authorization` header, the client first mints a short-lived (~2 min) download token, so the long-lived admin JWT is never placed in the URL.
+
+### Changed
+
+- **Backend serves requests concurrently (`threaded=True`)**: a working multi-minute backup download would otherwise hold the single Flask request thread and stall matching/upload/review for everyone else. The server now handles requests on separate threads, so a large download (or any long request) no longer starves other users. This is safe because the hot shared resources were already lock-guarded (GPU/VRAM cache, approvals, Google Sheets API, rate-limiting, locations catalog) and the app already ran concurrent background upload threads. As part of this, two in-memory VRAM-cache operations that previously mutated state without the GPU lock were hardened: the search-index rebuild now swaps an atomically-built index, and every cache eviction goes through one lock-guarded path so a concurrent add can't lose an update — including the two eviction sites introduced by the merge-turtles feature (2.0.19). These are match-cache-consistency fixes only — no change to on-disk data — and a stale entry would already self-heal on the next index refresh.
+
 ## [2.0.19] - 2026-06-30 — Merge duplicate turtle records; turtle_manager package refactor
 
 ### Added
