@@ -10,6 +10,8 @@ import {
   Loader,
   Modal,
   ActionIcon,
+  Switch,
+  Alert,
 } from '@mantine/core';
 import type { ComboboxData, ComboboxItem, ComboboxItemGroup } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
@@ -26,14 +28,17 @@ import {
   IconSkull,
   IconStar,
   IconStarFilled,
+  IconEyeCheck,
 } from '@tabler/icons-react';
 import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { MAX_RAW_FILE_BYTES } from '../utils/uploadConstants';
 import { dropzoneRejectionMessage } from '../utils/uploadErrorMessages';
 import { useUser } from '../hooks/useUser';
 import { usePhotoUpload } from '../hooks/usePhotoUpload';
-import { isStaffRole } from '../services/api/auth';
+import { isStaffRole, isAdminRole } from '../services/api/auth';
 import { PreviewCard } from '../components/PreviewCard';
+import { CarapaceQuickCheckResults } from '../components/CarapaceQuickCheckResults';
+import { useCarapaceQuickCheck } from '../hooks/useCarapaceQuickCheck';
 import { InstructionsModal } from '../components/InstructionsModal';
 import {
   getLocations,
@@ -87,6 +92,9 @@ export default function HomePage() {
   const pendingRewards = useAppSelector((s) => s.communityGame.pendingRewards);
   const { role, isLoggedIn, authChecked } = useUser();
   const isStaff = isStaffRole(role);
+  const isAdmin = isAdminRole(role);
+  const quickCheck = useCarapaceQuickCheck();
+  const carapaceMode = isAdmin && quickCheck.enabled;
   const canUseObserverGamification = authChecked && isLoggedIn;
   const isMobile = useMediaQuery('(max-width: 768px)', undefined, { getInitialValueInEffect: false });
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -382,6 +390,7 @@ export default function HomePage() {
     setPhysicalFlag,
     extraFiles,
     setExtraFiles,
+    resetUploadStatus,
     handleDrop,
     handleUpload,
     handleRemove,
@@ -448,6 +457,19 @@ export default function HomePage() {
     }
   };
 
+  /** Carapace mode submit: read-only quick check instead of the normal upload. */
+  const handleQuickCheckRun = (): void => {
+    const file = files[0];
+    if (!file) return;
+    void quickCheck.run(file, matchSheetForUpload ?? '');
+  };
+
+  /** Full exit from carapace mode: results + staged photo cleared, toggle off. */
+  const handleQuickCheckExit = (): void => {
+    quickCheck.reset();
+    handleRemove();
+  };
+
   return (
     <Container size='sm' py={{ base: 'md', sm: 'xl' }} px={{ base: 'xs', sm: 'md' }}>
       <Paper shadow='sm' p={{ base: 'md', sm: 'xl' }} radius='md' withBorder>
@@ -491,6 +513,31 @@ export default function HomePage() {
                 </Button>
               )}
             </Group>
+            {isAdmin && (
+              <Switch
+                label='Carapace-only quick check'
+                color='orange'
+                size='sm'
+                checked={quickCheck.enabled}
+                disabled={uploadState === 'uploading' || quickCheck.status === 'running'}
+                onChange={(event) => {
+                  if (event.currentTarget.checked) {
+                    // A stale success/error from a previous normal upload would
+                    // otherwise suppress the "Run quick check" button (PreviewCard
+                    // only shows the submit button while uploadState is 'idle').
+                    if (uploadState !== 'idle') {
+                      resetUploadStatus();
+                    }
+                    quickCheck.setEnabled(true);
+                  } else if (quickCheck.status === 'idle') {
+                    // Nothing ran — leave the mode but keep the staged photo.
+                    quickCheck.reset();
+                  } else {
+                    handleQuickCheckExit();
+                  }
+                }}
+              />
+            )}
           </Stack>
 
           {/* Staff/Admin: select which location (backend folder / state) to test against */}
@@ -520,7 +567,7 @@ export default function HomePage() {
                   }
                   allowDeselect={false}
                   required
-                  disabled={uploadState === 'uploading'}
+                  disabled={uploadState === 'uploading' || quickCheck.status === 'running'}
                   renderOption={({ option }) => {
                     const isFav = favoriteLocations.includes(option.value);
                     return (
@@ -563,6 +610,35 @@ export default function HomePage() {
             </Stack>
           )}
 
+          {carapaceMode && (
+            <Alert
+              icon={<IconEyeCheck size={18} />}
+              color='orange'
+              radius='md'
+              variant='light'
+            >
+              <Text fw={600} size='sm'>
+                Carapace-only mode — read-only
+              </Text>
+              <Text size='sm'>
+                Matches run against carapace references only; nothing is saved.
+              </Text>
+            </Alert>
+          )}
+
+          {carapaceMode && quickCheck.status !== 'idle' ? (
+            <CarapaceQuickCheckResults
+              status={quickCheck.status}
+              error={quickCheck.error}
+              queryPreviewUrl={preview ?? ''}
+              matches={quickCheck.matches}
+              elapsed={quickCheck.elapsed}
+              selectedIndex={quickCheck.selectedIndex}
+              onSelect={quickCheck.select}
+              onBack={handleQuickCheckExit}
+            />
+          ) : (
+            <>
           {/* Hidden file inputs for mobile */}
           <input
             ref={cameraInputRef}
@@ -586,6 +662,7 @@ export default function HomePage() {
             <Stack gap='md'>
               <Button
                 size='lg'
+                color={carapaceMode ? 'orange' : undefined}
                 leftSection={<IconCamera size={20} />}
                 onClick={handleCameraClick}
                 disabled={uploadState === 'uploading'}
@@ -596,6 +673,7 @@ export default function HomePage() {
               <Button
                 size='lg'
                 variant='light'
+                color={carapaceMode ? 'orange' : undefined}
                 leftSection={<IconPhoto size={20} />}
                 onClick={handleFileSelectClick}
                 disabled={uploadState === 'uploading'}
@@ -617,6 +695,11 @@ export default function HomePage() {
               }}
               multiple={false}
               disabled={uploadState === 'uploading'}
+              style={
+                carapaceMode
+                  ? { borderColor: 'var(--mantine-color-orange-6)' }
+                  : undefined
+              }
             >
               <Group
                 justify='center'
@@ -665,18 +748,21 @@ export default function HomePage() {
             isGettingLocation={isGettingLocation}
             locationPermissionDenied={locationPermissionDenied}
             role={role}
-            locationHint={locationHint}
-            setLocationHint={setLocationHint}
-            requestLocationHint={requestLocationHint}
-            collectedToLab={collectedToLab}
-            setCollectedToLab={setCollectedToLab}
-            physicalFlag={physicalFlag}
-            setPhysicalFlag={setPhysicalFlag}
-            extraFiles={extraFiles}
-            setExtraFiles={setExtraFiles}
-            onUpload={handleUpload}
+            locationHint={carapaceMode ? null : locationHint}
+            setLocationHint={carapaceMode ? undefined : setLocationHint}
+            requestLocationHint={carapaceMode ? undefined : requestLocationHint}
+            collectedToLab={carapaceMode ? null : collectedToLab}
+            setCollectedToLab={carapaceMode ? undefined : setCollectedToLab}
+            physicalFlag={carapaceMode ? null : physicalFlag}
+            setPhysicalFlag={carapaceMode ? undefined : setPhysicalFlag}
+            extraFiles={carapaceMode ? undefined : extraFiles}
+            setExtraFiles={carapaceMode ? undefined : setExtraFiles}
+            onUpload={carapaceMode ? handleQuickCheckRun : handleUpload}
             onRemove={handleRemove}
+            uploadLabel={carapaceMode ? 'Run quick check' : undefined}
           />
+            </>
+          )}
         </Stack>
       </Paper>
 
