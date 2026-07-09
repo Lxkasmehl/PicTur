@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.21] - 2026-07-07 — Carapace-only quick check
+
+### Added
+
+- **Carapace-only quick check (admin)**: a new switch on the photo-upload screen, just below "Mortality without plastron ID", puts the page into a clearly-marked read-only carapace mode. The admin picks a location scope and uploads a photo exactly like normal, but matching runs against **only the carapace reference pool** and returns the usual ranked candidates; clicking a candidate opens the same enlarged side-by-side comparison used on the match page. The whole mode is strictly read-only — no review-queue packet is created, the query photo is never stored (server temp deleted immediately after matching), and no select/approve/create-turtle/replace-reference/add-images action exists anywhere in the flow. Backing out returns to the normal plastron flow (mode and results reset; the chosen location is kept). Backend: new admin-only `POST /api/match/quick-check` endpoint that reuses the existing carapace matcher and the case-insensitive `.pt`→image lookup.
+
 ## [2.0.20] - 2026-07-07 — Streaming offline-backup ZIP download
 
 ### Fixed
@@ -615,7 +621,9 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.19...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.21...HEAD
+[2.0.21]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.20...v2.0.21
+[2.0.20]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.19...v2.0.20
 [2.0.19]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.18...v2.0.19
 [2.0.18]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.17...v2.0.18
 [2.0.17]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.16...v2.0.17
