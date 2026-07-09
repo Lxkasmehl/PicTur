@@ -74,6 +74,8 @@ interface PreviewCardProps {
   setExtraFiles?: (files: UploadExtraFile[] | ((prev: UploadExtraFile[]) => UploadExtraFile[])) => void;
   onUpload: () => void;
   onRemove: () => void;
+  /** Label for the submit button (default: 'Upload Photo'). */
+  uploadLabel?: string;
 }
 
 export function PreviewCard({
@@ -99,6 +101,7 @@ export function PreviewCard({
   setExtraFiles,
   onUpload,
   onRemove,
+  uploadLabel = 'Upload Photo',
 }: PreviewCardProps) {
   const [stillAtLocation, setStillAtLocation] = useState<'yes' | 'no' | null>(null);
   const [manualLat, setManualLat] = useState('');
@@ -681,7 +684,7 @@ export function PreviewCard({
                       size='md'
                       fullWidth
                     >
-                      Upload Photo
+                      {uploadLabel}
                     </Button>
                   )}
                   <Button

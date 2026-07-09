@@ -19,6 +19,23 @@ export interface UploadPhotoResponse {
   message: string;
 }
 
+/** One row from the read-only carapace quick check (mirrors cross-check shape). */
+export interface QuickCheckMatch {
+  turtle_id: string;
+  location: string;
+  confidence: number;
+  score: number;
+  /** May still be a `.pt` path when no sibling image exists — treat as "no image". */
+  image_path: string;
+}
+
+export interface QuickCheckResponse {
+  success: boolean;
+  photo_type: 'carapace';
+  matches: QuickCheckMatch[];
+  elapsed: number;
+}
+
 /** Location hint from community (never stored in sheets, queue/display only) */
 export interface LocationHint {
   latitude: number;
