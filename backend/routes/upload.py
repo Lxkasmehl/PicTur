@@ -14,7 +14,7 @@ import uuid
 from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
-from auth import optional_auth, check_auth_revocation, require_admin_only
+from auth import optional_auth, check_auth_revocation, require_admin
 from image_utils import UploadImageError
 from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
 from upload_validation import ingest_saved_upload, log_upload_rejection, upload_error_response
@@ -457,9 +457,9 @@ def register_upload_routes(app):
             }), 500
 
     @app.route('/api/match/quick-check', methods=['POST'])
-    @require_admin_only
+    @require_admin
     def quick_check_match():
-        """Carapace-only quick check (admin only, strictly read-only).
+        """Carapace-only quick check (staff + admin, strictly read-only).
 
         Runs a fresh photo against the carapace VRAM cache and returns the
         ranked candidates. Unlike /api/upload, this persists NOTHING: no

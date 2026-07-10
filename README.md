@@ -208,9 +208,9 @@ You need to run **all three services** simultaneously:
    - If a carapace photo is attached as an additional image, a **Cross-check carapace** button runs a parallel carapace search and displays both result sets side-by-side, flagging disagreements
    - Admin selects the best match (optionally marking the upload as the new reference) or creates a new turtle
 
-2. **Carapace-only quick check (read-only)**:
+2. **Carapace-only quick check (read-only, staff + admin)**:
 
-   - A switch below "Mortality without plastron ID" puts the upload page into a clearly-marked carapace-only mode (orange banner)
+   - A switch below "Mortality without plastron ID" puts the upload page into a clearly-marked carapace-only mode (orange banner); available to staff and admin accounts (everyone except community)
    - Pick a location scope and upload a carapace photo like normal — matching runs against **only the carapace reference pool** and returns the ranked candidates; clicking one opens the same enlarged side-by-side comparison as the match page
    - Strictly read-only: nothing is saved (no review-queue packet, no stored query photo) and no select/approve/create/replace action exists in this mode; backing out returns to the normal plastron flow
 

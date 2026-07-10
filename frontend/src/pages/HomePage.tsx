@@ -35,7 +35,7 @@ import { MAX_RAW_FILE_BYTES } from '../utils/uploadConstants';
 import { dropzoneRejectionMessage } from '../utils/uploadErrorMessages';
 import { useUser } from '../hooks/useUser';
 import { usePhotoUpload } from '../hooks/usePhotoUpload';
-import { isStaffRole, isAdminRole } from '../services/api/auth';
+import { isStaffRole } from '../services/api/auth';
 import { PreviewCard } from '../components/PreviewCard';
 import { CarapaceQuickCheckResults } from '../components/CarapaceQuickCheckResults';
 import { useCarapaceQuickCheck } from '../hooks/useCarapaceQuickCheck';
@@ -92,9 +92,8 @@ export default function HomePage() {
   const pendingRewards = useAppSelector((s) => s.communityGame.pendingRewards);
   const { role, isLoggedIn, authChecked } = useUser();
   const isStaff = isStaffRole(role);
-  const isAdmin = isAdminRole(role);
   const quickCheck = useCarapaceQuickCheck();
-  const carapaceMode = isAdmin && quickCheck.enabled;
+  const carapaceMode = isStaff && quickCheck.enabled;
   const canUseObserverGamification = authChecked && isLoggedIn;
   const isMobile = useMediaQuery('(max-width: 768px)', undefined, { getInitialValueInEffect: false });
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -513,7 +512,7 @@ export default function HomePage() {
                 </Button>
               )}
             </Group>
-            {isAdmin && (
+            {isStaff && (
               <Switch
                 label='Carapace-only quick check'
                 color='orange'

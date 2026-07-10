@@ -1,9 +1,9 @@
 """
-Unit tests for POST /api/match/quick-check — the admin-only, strictly
-read-only carapace quick check. Pins: strict-admin auth (staff must be
-rejected), carapace photo_type forwarding, cross-check-style response shape,
-case-insensitive .pt→image resolution, zero review-queue writes, and
-temp-file cleanup on success and error paths.
+Unit tests for POST /api/match/quick-check — the staff/admin, strictly
+read-only carapace quick check. Pins: staff-or-admin auth (community and
+anonymous rejected), carapace photo_type forwarding, cross-check-style
+response shape, case-insensitive .pt→image resolution, zero review-queue
+writes, and temp-file cleanup on success and error paths.
 """
 
 import io
@@ -78,26 +78,27 @@ def test_requires_token(app_client, quick_check_env):
     assert r.status_code == 401
 
 
-@pytest.mark.parametrize("role", ["community", "staff"])
-def test_non_admin_forbidden(app_client, quick_check_env, role):
-    """Staff must be rejected too — the quick check is strict-admin."""
+def test_community_forbidden(app_client, quick_check_env):
+    """Community users must be rejected — the quick check is staff/admin only."""
     r = app_client.post(
         "/api/match/quick-check",
         data=_file_payload(),
         content_type="multipart/form-data",
-        headers=_auth(role),
+        headers=_auth("community"),
     )
     assert r.status_code == 403
     assert quick_check_env["manager"].search_for_matches.call_count == 0
 
 
-def test_admin_ok_and_forwards_carapace_scope(app_client, quick_check_env):
+@pytest.mark.parametrize("role", ["admin", "staff"])
+def test_admin_ok_and_forwards_carapace_scope(app_client, quick_check_env, role):
+    """Both admin and staff can run the quick check (everyone but community)."""
     manager = quick_check_env["manager"]
     r = app_client.post(
         "/api/match/quick-check",
         data=_file_payload(extra={"match_sheet": "Kansas"}),
         content_type="multipart/form-data",
-        headers=_auth("admin"),
+        headers=_auth(role),
     )
     assert r.status_code == 200, r.get_json()
     body = r.get_json()
