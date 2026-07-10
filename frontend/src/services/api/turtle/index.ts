@@ -2,7 +2,7 @@
  * PicTur API – photo upload, review queue, matching, turtle images
  */
 
-export { uploadTurtlePhoto } from './upload';
+export { uploadTurtlePhoto, quickCheckCarapaceMatch } from './upload';
 
 export {
   getReviewQueue,
@@ -39,6 +39,8 @@ export type {
   TurtleMatch,
   PhotoType,
   UploadPhotoResponse,
+  QuickCheckMatch,
+  QuickCheckResponse,
   LocationHint,
   AdditionalImageType,
   AdditionalImage,

@@ -166,6 +166,25 @@ def test_process_uploaded_image_shrinks_oversized_jpeg(tmp_path):
         assert max(im.size) <= 2560
 
 
+def test_process_uploaded_image_uppercase_jpg_survives_resize(tmp_path):
+    """Oversized '.JPG' input: the resized output must survive.
+
+    On a case-insensitive filesystem (Windows dev) 'big.JPG' and the resize
+    destination 'big.jpg' are the SAME file — the old plain string compare
+    deleted the freshly written JPEG, so matching later read nothing.
+
+    NOTE: this only catches the regression when run on a case-insensitive
+    filesystem (Windows/macOS dev) — on Linux CI the old code also passed,
+    because there the two names really are different files.
+    """
+    path = tmp_path / 'big.JPG'
+    Image.new('RGB', (4000, 3000)).save(str(path), 'JPEG', quality=95)
+    result = process_uploaded_image(str(path))
+    assert os.path.isfile(result)
+    with Image.open(result) as im:
+        assert max(im.size) <= 2560
+
+
 # ---------- Module exports ----------
 
 

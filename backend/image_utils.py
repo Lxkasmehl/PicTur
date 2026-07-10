@@ -194,7 +194,9 @@ def _repair_to_jpeg(path: str, original_exc: Exception | None = None) -> str:
     try:
         rgb = _to_rgb(im)
         dest = _save_ingest_jpeg(rgb, path, quality=90)
-        if dest != path and os.path.isfile(path):
+        # normcase: on Windows 'X.JPG' and 'X.jpg' are the SAME file — a plain
+        # string compare would delete the JPEG that was just written.
+        if os.path.normcase(dest) != os.path.normcase(path) and os.path.isfile(path):
             try:
                 os.remove(path)
             except OSError:
@@ -230,7 +232,9 @@ def _resize_ingest_if_needed(path):
             dest = os.path.splitext(path)[0] + '.jpg'
             _save_ingest_jpeg(im, dest, quality=88)
 
-        if dest != path and os.path.isfile(path):
+        # normcase: on Windows 'X.JPG' and 'X.jpg' are the SAME file — a plain
+        # string compare would delete the JPEG that was just written.
+        if os.path.normcase(dest) != os.path.normcase(path) and os.path.isfile(path):
             try:
                 os.remove(path)
             except OSError:
