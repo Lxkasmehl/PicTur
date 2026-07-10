@@ -8,12 +8,12 @@ import {
 } from './fixtures';
 
 /**
- * Carapace-only quick check (admin-only, strictly read-only).
+ * Carapace-only quick check (staff + admin, strictly read-only).
  *
  * The quick-check endpoint and image serving are mocked, so these tests need
- * no carapace fixture data on disk — they pin the frontend contract: admin
- * gating, mode indication, read-only results, click-to-compare, and the
- * full reset on back-out.
+ * no carapace fixture data on disk — they pin the frontend contract: role
+ * gating (staff and admin yes, community no), mode indication, read-only
+ * results, click-to-compare, and the full reset on back-out.
  */
 
 const QUICK_CHECK_MATCHES = [
@@ -77,13 +77,13 @@ test.describe('Carapace-only quick check', () => {
     await expect(page.getByLabel('Carapace-only quick check')).toHaveCount(0);
   });
 
-  test('toggle is not visible for staff users (admin only, not isStaff)', async ({ page }) => {
+  test('staff users can see and enable the toggle (everyone but community)', async ({ page }) => {
     await loginAsStaff(page);
-    // Staff DO see the mortality button — the quick-check switch must not follow it
-    await expect(
-      page.getByRole('button', { name: 'Mortality without plastron ID' }),
-    ).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByLabel('Carapace-only quick check')).toHaveCount(0);
+    const toggleLabel = page.getByText('Carapace-only quick check');
+    await expect(toggleLabel).toBeVisible({ timeout: 10_000 });
+    await toggleLabel.click();
+    await expect(page.getByLabel('Carapace-only quick check')).toBeChecked();
+    await expect(page.getByText(/Carapace-only mode/)).toBeVisible();
   });
 
   test('full read-only flow: banner, results, compare, back-out reset', async ({ page }) => {

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.22] - 2026-07-10 — Carapace quick check opened to staff
+
+### Changed
+
+- **Carapace-only quick check is now available to staff accounts** (was admin-only in 2.0.21): the toggle on the photo-upload screen now shows for every staff and admin user, and the backend `POST /api/match/quick-check` endpoint accepts staff tokens (community and anonymous still rejected). The mode itself is unchanged — strictly read-only, carapace pool only.
+
 ## [2.0.21] - 2026-07-07 — Carapace-only quick check
 
 ### Added
@@ -621,7 +627,8 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.21...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.22...HEAD
+[2.0.22]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.21...v2.0.22
 [2.0.21]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.20...v2.0.21
 [2.0.20]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.19...v2.0.20
 [2.0.19]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.18...v2.0.19
