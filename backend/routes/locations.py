@@ -5,6 +5,7 @@ Used for two-level path selection: sheet (state) + location.
 
 from flask import jsonify
 from auth import require_admin
+from scope import get_ctx, filter_locations
 from services import manager_service
 
 
@@ -25,6 +26,9 @@ def register_locations_routes(app):
             return jsonify({'error': 'TurtleManager failed to initialize'}), 500
         try:
             locations = manager_service.manager.get_all_locations()
+            # Scoped-group members see only their areas (plus the shared
+            # Community_Uploads); global admins/staff get the full list.
+            locations = filter_locations(get_ctx(), locations)
             return jsonify({'success': True, 'locations': locations})
         except Exception as e:
             return jsonify({'error': str(e)}), 500

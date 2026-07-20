@@ -11,6 +11,16 @@ from typing import Optional, Tuple
 from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from auth import require_admin
+from scope import (
+    get_ctx,
+    is_global,
+    effective_match_filter,
+    annotate_in_scope,
+    packet_scope_allows,
+    resolve_turtle_location,
+    scope_allows_location,
+    SCOPE_DENIED_ERROR,
+)
 from services import manager_service
 from services.manager_service import get_sheets_service, get_community_sheets_service
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
@@ -102,6 +112,46 @@ def normalize_new_turtle_location_for_disk(
     return (out, resolved_general_loc)
 
 
+def _read_packet_metadata(packet_dir):
+    """Load a review packet's metadata.json as a dict (empty on any error)."""
+    if not packet_dir:
+        return {}
+    meta_path = os.path.join(packet_dir, 'metadata.json')
+    if not os.path.isfile(meta_path):
+        return {}
+    try:
+        with open(meta_path, 'r') as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _packet_scope_denied(packet_dir):
+    """403 (json, code) when a scoped caller may not act on this (resolved) packet, else None."""
+    ctx = get_ctx()
+    if is_global(ctx):
+        return None
+    if not packet_scope_allows(ctx, _read_packet_metadata(packet_dir)):
+        return jsonify({'error': SCOPE_DENIED_ERROR}), 403
+    return None
+
+
+def _packet_scope_denied_by_id(request_id):
+    """403 (json, code) for a scoped caller acting on request_id, else None.
+
+    Resolves the packet dir first; a missing packet returns None so the handler's
+    own not-found path (404/400) still runs unchanged for everyone.
+    """
+    ctx = get_ctx()
+    if is_global(ctx):
+        return None
+    packet_dir = manager_service.manager._resolve_packet_dir(request_id)
+    if not packet_dir or not os.path.isdir(packet_dir):
+        return None
+    return _packet_scope_denied(packet_dir)
+
+
 def register_review_routes(app):
     """Register review queue routes"""
     
@@ -121,8 +171,16 @@ def register_review_routes(app):
         try:
             queue_items = manager_service.manager.get_review_queue()
             formatted_items = [format_review_packet_item(item['path'], item['request_id']) for item in queue_items]
+            # Scoped-group members only see packets in their areas; community
+            # packets with no declared location are visible to global users only.
+            ctx = get_ctx()
+            if not is_global(ctx):
+                formatted_items = [
+                    it for it in formatted_items
+                    if packet_scope_allows(ctx, it.get('metadata'))
+                ]
             return jsonify({'success': True, 'items': formatted_items})
-        
+
         except Exception as e:
             return jsonify({'error': f'Failed to load review queue: {str(e)}'}), 500
 
@@ -136,6 +194,9 @@ def register_review_routes(app):
             return jsonify({'error': 'TurtleManager is still initializing.'}), 503
         if manager_service.manager is None:
             return jsonify({'error': 'TurtleManager failed to initialize'}), 500
+        denied = _packet_scope_denied_by_id(request_id)
+        if denied:
+            return denied
         files_with_types = []
         try:
             files_with_types, rejections = collect_indexed_additional_uploads(
@@ -168,6 +229,9 @@ def register_review_routes(app):
         filename = (data.get('filename') or '').strip()
         if not filename:
             return jsonify({'error': 'filename required'}), 400
+        denied = _packet_scope_denied_by_id(request_id)
+        if denied:
+            return denied
         success, err = manager_service.manager.remove_additional_image_from_packet(request_id, filename)
         if not success:
             return jsonify({'error': err or 'Failed to remove image'}), 400
@@ -184,6 +248,10 @@ def register_review_routes(app):
         packet_dir = manager_service.manager._resolve_packet_dir(request_id)
         if not packet_dir or not os.path.isdir(packet_dir):
             return jsonify({'error': 'Request not found'}), 404
+        # A scoped member can only read a packet the queue would show them.
+        denied = _packet_scope_denied(packet_dir)
+        if denied:
+            return denied
         item = format_review_packet_item(packet_dir, request_id)
         return jsonify({'success': True, 'item': item})
 
@@ -212,6 +280,10 @@ def register_review_routes(app):
         if not packet_dir or not os.path.isdir(packet_dir):
             return jsonify({'error': 'Request not found'}), 404
 
+        denied = _packet_scope_denied(packet_dir)
+        if denied:
+            return denied
+
         # Use specified image_path if provided, otherwise fall back to packet's main image
         query_image = None
         specified_path = (data.get('image_path') or '').strip()
@@ -238,6 +310,11 @@ def register_review_routes(app):
                 location_filter = (packet_metadata.get('match_sheet') or '').strip() or None
             except (json.JSONDecodeError, OSError):
                 pass
+
+        # Scoped-group members: narrow the cross-check to their areas the same
+        # way the upload match does (global unchanged).
+        scope_ctx = get_ctx()
+        location_filter, scope_forced = effective_match_filter(scope_ctx, location_filter)
 
         try:
             # Cross-check disables the "expand to all locations when < 5 matches"
@@ -272,10 +349,13 @@ def register_review_routes(app):
                 'image_path': image_path,
             })
 
+        scope_expanded = annotate_in_scope(scope_ctx, formatted) or scope_forced
+
         return jsonify({
             'success': True,
             'photo_type': photo_type,
             'matches': formatted,
+            'scope_expanded': scope_expanded,
             'elapsed': round(elapsed, 2),
         })
 
@@ -300,6 +380,10 @@ def register_review_routes(app):
         packet_dir = manager_service.manager._resolve_packet_dir(request_id)
         if not packet_dir or not os.path.isdir(packet_dir):
             return jsonify({'error': 'Request not found'}), 404
+
+        denied = _packet_scope_denied(packet_dir)
+        if denied:
+            return denied
 
         # Update metadata with photo_type
         metadata_path = os.path.join(packet_dir, 'metadata.json')
@@ -363,6 +447,10 @@ def register_review_routes(app):
             return jsonify({'error': 'TurtleManager failed to initialize'}), 500
         try:
             items = manager_service.manager.get_turtles_with_flags()
+            # Scoped-group members only see flagged turtles in their areas.
+            ctx = get_ctx()
+            if not is_global(ctx):
+                items = [it for it in items if scope_allows_location(ctx, it.get('location'))]
             return jsonify({'success': True, 'items': items})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
@@ -380,6 +468,12 @@ def register_review_routes(app):
         location = (data.get('location') or '').strip() or None
         if not turtle_id:
             return jsonify({'error': 'turtle_id required'}), 400
+        # Scope gate on the flagged turtle's on-disk location (fail closed).
+        ctx = get_ctx()
+        if not is_global(ctx):
+            resolved = resolve_turtle_location(manager_service.manager, turtle_id, location)
+            if not scope_allows_location(ctx, resolved):
+                return jsonify({'error': SCOPE_DENIED_ERROR}), 403
         success, err = manager_service.manager.clear_release_flag(turtle_id, location)
         if not success:
             return jsonify({'error': err or 'Failed to clear release flag'}), 400
@@ -396,6 +490,9 @@ def register_review_routes(app):
             return jsonify({'error': 'TurtleManager is still initializing. Please try again in a moment.'}), 503
         if manager_service.manager is None:
             return jsonify({'error': 'TurtleManager failed to initialize'}), 500
+        denied = _packet_scope_denied_by_id(request_id)
+        if denied:
+            return denied
         try:
             success, message = manager_service.manager.reject_review_packet(request_id)
             if success:
@@ -464,6 +561,33 @@ def register_review_routes(app):
                 return jsonify({'error': str(exc)}), 400
             if isinstance(sheets_data, dict) and resolved_for_sheet is not None:
                 sheets_data['general_location'] = resolved_for_sheet
+
+        # Scope gate: a scoped-group member may only approve into their areas.
+        # Gate on the write TARGET — the matched turtle's on-disk folder, a
+        # community->admin destination, or the new turtle's location — and fail
+        # closed when the target can't be resolved. Placed before the new-turtle
+        # ID generation below so an out-of-scope approve never triggers any Sheets
+        # work. Global members skip the whole check.
+        #
+        # The target precedence MUST mirror _approve_review_packet_locked: it runs
+        # "Scenario A" (write onto the matched turtle's folder, resolved unscoped)
+        # whenever match_turtle_id is truthy, ignoring new_location/new_admin_location.
+        # Checking new_location first would let an attacker pass an in-scope
+        # new_location as a decoy while the manager writes onto an out-of-scope
+        # matched turtle. So match_turtle_id is gated first, exactly as the manager acts.
+        ctx = get_ctx()
+        if not is_global(ctx):
+            if match_turtle_id:
+                hint = sheets_data.get('sheet_name') if isinstance(sheets_data, dict) else None
+                target_loc = resolve_turtle_location(manager_service.manager, match_turtle_id, hint)
+            elif new_admin_location:
+                target_loc = new_admin_location
+            elif new_location:
+                target_loc = new_location
+            else:
+                target_loc = None
+            if not scope_allows_location(ctx, target_loc):
+                return jsonify({'error': SCOPE_DENIED_ERROR}), 403
 
         # For new turtle creation, defer packet deletion until Sheets sync succeeds.
         # This ensures the packet survives as a retry point if Sheets fails.

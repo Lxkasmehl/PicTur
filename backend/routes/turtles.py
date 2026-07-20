@@ -7,6 +7,13 @@ import time
 from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from auth import require_admin
+from scope import (
+    get_ctx,
+    is_global,
+    resolve_turtle_location,
+    scope_allows_location,
+    SCOPE_DENIED_ERROR,
+)
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from image_utils import UploadImageError
 from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
@@ -78,6 +85,24 @@ def _ensure_primary_for_new_sheet_turtle(turtle_id, bio_id, sheet_name):
         return new_pid
 
     return manager_service.call_sheets_with_retry(_work)
+
+
+def _scope_denied_for_turtle(manager, turtle_id, sheet_name=None, primary_id=None):
+    """403 (json, code) when a scoped caller may not write to this turtle, else None.
+
+    Global ctx → None (no-op). Otherwise resolves the turtle's on-disk location
+    and fails closed (403) when it is unresolvable or outside the caller's areas.
+    New-turtle creation via these endpoints therefore fails closed for scoped
+    members (no folder yet → unresolvable); they create new turtles through the
+    review-approve flow, which gates on the chosen destination instead.
+    """
+    ctx = get_ctx()
+    if is_global(ctx):
+        return None
+    location = resolve_turtle_location(manager, turtle_id, sheet_name, primary_id)
+    if not scope_allows_location(ctx, location):
+        return jsonify({'error': SCOPE_DENIED_ERROR}), 403
+    return None
 
 
 def register_turtle_routes(app):
@@ -184,6 +209,9 @@ def register_turtle_routes(app):
             return jsonify({'error': 'filename required'}), 400
         if labels is not None and not isinstance(labels, list):
             return jsonify({'error': 'labels must be an array of strings'}), 400
+        denied = _scope_denied_for_turtle(manager_service.manager, turtle_id, sheet_name)
+        if denied:
+            return denied
         lbs = normalize_label_list(labels if isinstance(labels, list) else [])
         ok, err = manager_service.manager.update_turtle_additional_image_labels(
             turtle_id, filename, sheet_name, lbs
@@ -227,6 +255,9 @@ def register_turtle_routes(app):
         # Same primary-first lookup order as the image endpoints — biology IDs
         # collide across US state sheets, primaries don't.
         manager = manager_service.manager
+        denied = _scope_denied_for_turtle(manager, turtle_id, sheet_name, primary_id_fallback)
+        if denied:
+            return denied
         ok = False
         err = None
         if primary_id_fallback:
@@ -343,6 +374,9 @@ def register_turtle_routes(app):
             return jsonify({'error': 'turtle_id required'}), 400
         if not path:
             return jsonify({'error': 'path required'}), 400
+        denied = _scope_denied_for_turtle(manager_service.manager, turtle_id, sheet_name)
+        if denied:
+            return denied
         success, info = manager_service.manager.soft_delete_turtle_image(
             turtle_id, path, sheet_name
         )
@@ -377,6 +411,9 @@ def register_turtle_routes(app):
             return jsonify({'error': 'turtle_id required'}), 400
         if not path:
             return jsonify({'error': 'path required'}), 400
+        denied = _scope_denied_for_turtle(manager_service.manager, turtle_id, sheet_name)
+        if denied:
+            return denied
         success, info = manager_service.manager.restore_turtle_image(
             turtle_id, path, sheet_name
         )
@@ -403,6 +440,9 @@ def register_turtle_routes(app):
             return jsonify({'error': 'turtle_id required'}), 400
         if not filename:
             return jsonify({'error': 'filename required'}), 400
+        denied = _scope_denied_for_turtle(manager_service.manager, turtle_id, sheet_name)
+        if denied:
+            return denied
         success, err = manager_service.manager.remove_additional_image_from_turtle(
             turtle_id, filename, sheet_name
         )
@@ -435,6 +475,11 @@ def register_turtle_routes(app):
         bio_id = (request.form.get('bio_id') or request.args.get('bio_id') or '').strip() or None
         if not turtle_id:
             return jsonify({'error': 'turtle_id required'}), 400
+        denied = _scope_denied_for_turtle(
+            manager_service.manager, turtle_id, sheet_name, primary_id
+        )
+        if denied:
+            return denied
         files_with_types = []
         try:
             files_with_types, rejections = collect_indexed_additional_uploads(
@@ -486,6 +531,11 @@ def register_turtle_routes(app):
             return jsonify({'error': 'turtle_id required'}), 400
         if photo_type not in ('plastron', 'carapace'):
             return jsonify({'error': "photo_type must be 'plastron' or 'carapace'"}), 400
+        denied = _scope_denied_for_turtle(
+            manager_service.manager, turtle_id, sheet_name, primary_id
+        )
+        if denied:
+            return denied
         f = request.files.get('file')
         if not f or not f.filename or not allowed_file(f.filename):
             return jsonify({
@@ -586,6 +636,12 @@ def register_turtle_routes(app):
                     'code': 'primary_id_required',
                 }), 400
 
+        denied = _scope_denied_for_turtle(
+            manager_service.manager, turtle_id, sheet_name, primary_id
+        )
+        if denied:
+            return denied
+
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
         f = request.files['file']
@@ -677,6 +733,13 @@ def register_turtle_routes(app):
             return jsonify({'error': 'keep_secondary_additional must be an array'}), 400
 
         manager = manager_service.manager
+        # Merge touches BOTH turtles' folders, so a scoped member must own both
+        # the primary (kept) and secondary (deleted) — fail closed on either.
+        for _pid, _sheet in ((primary_id, primary_sheet), (secondary_id, secondary_sheet)):
+            denied = _scope_denied_for_turtle(manager, _pid, _sheet, _pid)
+            if denied:
+                return denied
+
         ok, msg = manager.merge_turtles(
             primary_id, secondary_id,
             primary_sheet=primary_sheet,

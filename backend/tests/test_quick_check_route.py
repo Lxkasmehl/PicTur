@@ -14,6 +14,7 @@ import pytest
 
 import config
 from image_utils import UploadImageError
+from tests.scope_test_utils import role_aware_validate
 
 
 def _bearer(role):
@@ -56,7 +57,10 @@ def quick_check_env(tmp_path):
     mock_manager.review_queue_dir = str(review_dir)
     mock_manager.search_for_matches.return_value = ([], 0.42)
 
-    with patch("auth.check_auth_revocation", return_value=(True, None)), \
+    # require_admin now authorizes off validate_and_get_context (not
+    # check_auth_revocation); role_aware_validate mirrors the token's role so a
+    # community token still 403s and admin/staff pass.
+    with patch("auth.validate_and_get_context", side_effect=role_aware_validate), \
             patch("routes.upload.UPLOAD_FOLDER", str(upload_dir)), \
             patch("routes.upload.ingest_saved_upload", side_effect=lambda p, **kw: p), \
             patch("routes.upload.manager_service.manager", mock_manager), \

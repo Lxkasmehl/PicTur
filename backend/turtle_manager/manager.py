@@ -387,15 +387,27 @@ class TurtleManager(TurtleReferenceMixin, TurtleDeletionMixin, TurtleReviewMixin
         t_start = time.time()
         filename = os.path.basename(query_image_path)
 
-        # Build location filter: selected location always includes Community_Uploads + Incidental Places
-        raw_loc = (location_filter or '').strip() or None
-        if raw_loc and raw_loc != 'All Locations':
-            if raw_loc == 'Community_Uploads':
-                loc_filter = ['Community_Uploads']
+        # Build location filter: selected location always includes Community_Uploads + Incidental Places.
+        # A list/tuple (scoped-group areas, from effective_match_filter) is supported alongside the
+        # legacy single-string form; the string branch is byte-identical to before.
+        if isinstance(location_filter, (list, tuple)):
+            filters = [str(x).strip() for x in location_filter if x and str(x).strip()]
+            if not filters:
+                loc_filter = None
             else:
-                loc_filter = [raw_loc, 'Community_Uploads', 'Incidental Places']
+                loc_filter = []
+                for item in [*filters, 'Community_Uploads', 'Incidental Places']:
+                    if item not in loc_filter:  # dedupe, preserve order
+                        loc_filter.append(item)
         else:
-            loc_filter = None
+            raw_loc = (location_filter or '').strip() or None
+            if raw_loc and raw_loc != 'All Locations':
+                if raw_loc == 'Community_Uploads':
+                    loc_filter = ['Community_Uploads']
+                else:
+                    loc_filter = [raw_loc, 'Community_Uploads', 'Incidental Places']
+            else:
+                loc_filter = None
 
         scope = f" (Location: {loc_filter})" if loc_filter else " (all locations)"
         print(f"🔍 Searching {filename} (VRAM Cached Mode, {photo_type}){scope}...")

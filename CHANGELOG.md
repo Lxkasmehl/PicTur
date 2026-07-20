@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-07-20 — Scoped-group enforcement (backend)
+
+### Added
+
+- **Scoped-group enforcement in the backend (staff sub-areas)**: staff who belong to a **scoped** group now only see and act within their group's assigned areas (path prefixes like `Kansas` or `Kansas/North Topeka`), across the whole Flask API. Matching (photo upload, carapace quick check, and the review cross-check) is limited to the group's areas — an empty/`All Locations` scope is forced to those areas, requesting a broader sheet is narrowed to the owned sub-areas, and any candidate that falls outside scope is flagged (`in_scope` per candidate, `scope_expanded` on the response) rather than acted on silently. List endpoints (locations, sheet tabs, the turtle list, turtle names, the review queue, the release/flags page) return only the in-scope subset; a review packet with no location is visible to full-access users only. Every write (approve, classify, cross-check, add/remove review images, delete packet, clear release flag, create/update/mark-deceased/generate-ID in Sheets, and every turtle-record mutation including merge — which requires **both** turtles to be in scope) is refused with a 403 when its target falls outside the group's areas, failing closed when the target can't be resolved. **Operations (admins) and Primary (global staff) are completely unaffected** — every filter and gate is a no-op for a global member, so their behavior is byte-for-byte identical to before.
+- **Authorization now follows the live account, not the token**: staff/admin routes decide access from the auth service's fresh validate response (role + group areas) instead of the JWT's claims. A staff user who is promoted, moved between groups, or has their areas changed sees it take effect on their **next request — no logout/login required** — and a demotion still revokes immediately as before.
+
+### Changed
+
+- **General Location management is admin-only**: adding, deleting, or reconfiguring General Locations / fixed programs (and the "affected turtles" preview) now requires an admin. Staff keep read-only access to the General Location catalog (the turtle create/edit form still loads it). Creating a new Sheets tab defines a brand-new area, so it is restricted to **global** members (Operations admins and Primary staff keep it exactly as before); a scoped sub-area group can't create sheets outside its assigned locations. This is a capability change for scoped-group members only.
+
 ## [2.1.0] - 2026-07-20 — Staff groups foundation (auth-backend)
 
 ### Added

@@ -4,7 +4,7 @@ General location catalog endpoints.
 
 from flask import jsonify, request
 
-from auth import require_admin
+from auth import require_admin, require_admin_only
 from general_locations_catalog import (
     add_general_location,
     add_sheet_default,
@@ -87,13 +87,18 @@ def _get_affected_turtles_across_sheets(
 def register_general_location_routes(app):
     """Register general location catalog endpoints."""
 
-    @app.route('/api/general-locations', methods=['GET', 'POST'])
+    # GET is kept staff-visible (require_admin): the staff turtle create/edit form
+    # (useTurtleSheetsDataForm -> TurtleSheetsDataForm) reads this catalog for its
+    # General Location dropdown. All mutations below are admin-only.
+    @app.route('/api/general-locations', methods=['GET'])
     @require_admin
-    def general_locations():
-        if request.method == 'GET':
-            catalog = get_general_location_catalog()
-            return jsonify({'success': True, **_serialize_catalog(catalog)})
+    def general_locations_get():
+        catalog = get_general_location_catalog()
+        return jsonify({'success': True, **_serialize_catalog(catalog)})
 
+    @app.route('/api/general-locations', methods=['POST'])
+    @require_admin_only
+    def general_locations_post():
         data = request.get_json(silent=True) or {}
         state = (data.get('state') or '').strip()
         general_location = (data.get('general_location') or '').strip()
@@ -133,7 +138,7 @@ def register_general_location_routes(app):
         return jsonify(response)
 
     @app.route('/api/general-locations/affected-turtles', methods=['GET'])
-    @require_admin
+    @require_admin_only
     def general_locations_affected_turtles():
         general_location = (request.args.get('general_location') or '').strip()
         state = (request.args.get('state') or '').strip()
@@ -150,7 +155,7 @@ def register_general_location_routes(app):
         return jsonify({'success': True, 'total': total, 'sheets': sheets_summary})
 
     @app.route('/api/general-locations', methods=['DELETE'])
-    @require_admin
+    @require_admin_only
     def delete_general_location_endpoint():
         data = request.get_json(silent=True) or {}
         state = (data.get('state') or '').strip()
@@ -296,7 +301,7 @@ def register_general_location_routes(app):
         return jsonify(response)
 
     @app.route('/api/general-locations/sheet-defaults', methods=['POST'])
-    @require_admin
+    @require_admin_only
     def add_sheet_default_endpoint():
         """Create a fixed program (sheet default) or convert a selectable program to fixed."""
         data = request.get_json(silent=True) or {}
@@ -356,7 +361,7 @@ def register_general_location_routes(app):
         return jsonify(response)
 
     @app.route('/api/general-locations/sheet-defaults', methods=['DELETE'])
-    @require_admin
+    @require_admin_only
     def remove_sheet_default_endpoint():
         """Convert a fixed program to selectable by removing its sheet default."""
         data = request.get_json(silent=True) or {}
