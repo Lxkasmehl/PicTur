@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-07-20 — Scoped-group enforcement (backend)
+
 ### Added
 
 - **Scoped-group enforcement in the backend (staff sub-areas)**: staff who belong to a **scoped** group now only see and act within their group's assigned areas (path prefixes like `Kansas` or `Kansas/North Topeka`), across the whole Flask API. Matching (photo upload, carapace quick check, and the review cross-check) is limited to the group's areas — an empty/`All Locations` scope is forced to those areas, requesting a broader sheet is narrowed to the owned sub-areas, and any candidate that falls outside scope is flagged (`in_scope` per candidate, `scope_expanded` on the response) rather than acted on silently. List endpoints (locations, sheet tabs, the turtle list, turtle names, the review queue, the release/flags page) return only the in-scope subset; a review packet with no location is visible to full-access users only. Every write (approve, classify, cross-check, add/remove review images, delete packet, clear release flag, create/update/mark-deceased/generate-ID in Sheets, and every turtle-record mutation including merge — which requires **both** turtles to be in scope) is refused with a 403 when its target falls outside the group's areas, failing closed when the target can't be resolved. **Operations (admins) and Primary (global staff) are completely unaffected** — every filter and gate is a no-op for a global member, so their behavior is byte-for-byte identical to before.
