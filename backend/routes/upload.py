@@ -14,7 +14,8 @@ import uuid
 from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
-from auth import optional_auth, check_auth_revocation, require_admin
+from auth import optional_auth, validate_and_get_context, require_admin
+from scope import get_ctx, effective_match_filter, annotate_in_scope, is_global
 from image_utils import UploadImageError
 from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
 from upload_validation import ingest_saved_upload, log_upload_rejection, upload_error_response
@@ -224,7 +225,10 @@ def register_upload_routes(app):
                 return jsonify({'error': 'Failed to save file'}), 500
 
             if user_role in ('staff', 'admin'):
-                # Enforce revocation before privileged path (demotion must revoke immediately)
+                # Enforce revocation before privileged path (demotion must revoke
+                # immediately) and resolve the caller's scope context off the
+                # validate body (never the JWT claim). request.scope_ctx drives the
+                # scoped match filter below.
                 auth_header = request.headers.get('Authorization')
                 if not auth_header:
                     if os.path.exists(temp_path):
@@ -233,7 +237,7 @@ def register_upload_routes(app):
                         except OSError:
                             pass
                     return jsonify({'error': 'Staff or admin access requires a valid token'}), 403
-                allowed, revoke_error = check_auth_revocation(auth_header)
+                allowed, revoke_error, scope_ctx = validate_and_get_context(auth_header)
                 if not allowed:
                     if os.path.exists(temp_path):
                         try:
@@ -241,6 +245,7 @@ def register_upload_routes(app):
                         except OSError:
                             pass
                     return jsonify({'error': revoke_error or 'Token has been revoked'}), 403
+                request.scope_ctx = scope_ctx
                 # Admin/Staff: create a packet (so we can add additional images on match page) then run search
                 request_id = f"admin_{int(time.time())}_{filename}"
                 packet_dir = os.path.join(manager_service.manager.review_queue_dir, request_id)
@@ -272,10 +277,15 @@ def register_upload_routes(app):
                 match_sheet = (request.form.get('match_sheet') or '').strip() or None
                 candidates_dir = os.path.join(packet_dir, 'candidate_matches')
 
+                # Scoped-group members search only their areas; global users are
+                # unchanged. scope_forced marks that the requested scope was
+                # narrowed/overridden to the group's areas.
+                location_filter, scope_forced = effective_match_filter(scope_ctx, match_sheet)
+
                 try:
                     # Admin uploads are always plastron — photo_type is fixed
                     results = manager_service.manager.search_for_matches(
-                        query_save_path, location_filter=match_sheet, photo_type='plastron'
+                        query_save_path, location_filter=location_filter, photo_type='plastron'
                     )
 
                     # Safely unpack the tuple (matches, elapsed_time)
@@ -311,6 +321,12 @@ def register_upload_routes(app):
                             'filename': os.path.basename(image_path) if image_path else ''
                         })
 
+                    # Flag each candidate in/out of the caller's scope, and whether
+                    # the result set was expanded beyond scope (out-of-scope hits or
+                    # the requested scope was forced to the group's areas). Global
+                    # ctx => every candidate in_scope, scope_expanded False.
+                    scope_expanded = annotate_in_scope(scope_ctx, formatted_matches) or scope_forced
+
                     message = (
                         f'Photo processed successfully. {len(formatted_matches)} matches found.'
                         if len(formatted_matches) > 0
@@ -323,6 +339,16 @@ def register_upload_routes(app):
                     packet_metadata = {'photo_type': 'plastron'}
                     if match_sheet:
                         packet_metadata['match_sheet'] = match_sheet
+                    # Persist the scope outcome so a later cross-check / review of
+                    # this packet reuses the same scope, and so the review queue can
+                    # decide visibility for scoped members. scope_filter is the
+                    # effective (possibly narrowed) area list for a scoped uploader.
+                    packet_metadata['scope_expanded'] = scope_expanded
+                    if not is_global(scope_ctx):
+                        packet_metadata['scope_filter'] = (
+                            list(location_filter) if isinstance(location_filter, (list, tuple))
+                            else ([location_filter] if location_filter else [])
+                        )
                     # Persist the same flag / find-metadata fields the community
                     # path saves so admin uploads can carry them through approval
                     # the same way. The form extracts these above into local
@@ -353,6 +379,7 @@ def register_upload_routes(app):
                         'matches': formatted_matches,
                         'uploaded_image_path': query_save_path,
                         'photo_type': 'plastron',
+                        'scope_expanded': scope_expanded,
                         'message': message
                     })
                 except Exception as search_exc:
@@ -528,9 +555,13 @@ def register_upload_routes(app):
             except UploadImageError as img_err:
                 return upload_error_response(img_err)
 
+            # Scope the carapace search to the caller's areas (global unchanged).
+            scope_ctx = get_ctx()
+            location_filter, scope_forced = effective_match_filter(scope_ctx, match_sheet)
+
             results, elapsed = manager_service.manager.search_for_matches(
                 temp_path,
-                location_filter=match_sheet,
+                location_filter=location_filter,
                 photo_type='carapace',
                 expand_to_all_when_short=True,
             )
@@ -548,10 +579,14 @@ def register_upload_routes(app):
                     'image_path': find_image_for_pt(pt_path),
                 })
 
+            # Flag in/out of scope; persists nothing (quick check is read-only).
+            scope_expanded = annotate_in_scope(scope_ctx, formatted) or scope_forced
+
             return jsonify({
                 'success': True,
                 'photo_type': 'carapace',
                 'matches': formatted,
+                'scope_expanded': scope_expanded,
                 'elapsed': round(elapsed, 2),
             })
         except Exception as e:

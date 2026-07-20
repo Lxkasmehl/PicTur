@@ -9,6 +9,7 @@ import jwt
 import pytest
 
 import config
+from tests.scope_test_utils import global_admin_ctx
 
 
 def _admin_bearer():
@@ -34,7 +35,7 @@ def test_approve_research_match_does_not_call_community_sheets_service(app_clien
     mock_manager = MagicMock()
     mock_manager.approve_review_packet.return_value = (True, "approved")
 
-    with patch("auth.check_auth_revocation", return_value=(True, None)):
+    with patch("auth.validate_and_get_context", return_value=(True, None, global_admin_ctx())):
         with patch("routes.review.get_community_sheets_service") as get_comm:
             with patch("routes.review.manager_service.manager", mock_manager):
                 with patch("routes.review.manager_service.manager_ready") as ready:
@@ -59,7 +60,7 @@ def test_approve_community_to_admin_still_deletes_community_row(app_client):
     mock_manager = MagicMock()
     mock_manager.approve_review_packet.return_value = (True, "moved")
 
-    with patch("auth.check_auth_revocation", return_value=(True, None)):
+    with patch("auth.validate_and_get_context", return_value=(True, None, global_admin_ctx())):
         with patch(
             "routes.review.resolve_general_location_from_sheet_and_value",
             return_value="NT",

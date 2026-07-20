@@ -9,7 +9,14 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from flask import request, jsonify
-from auth import require_admin
+from auth import require_admin, require_admin_only
+from scope import (
+    get_ctx,
+    is_global,
+    scope_allows_location,
+    scope_allows_sheet,
+    SCOPE_DENIED_ERROR,
+)
 from services.manager_service import get_sheets_service, get_community_sheets_service, is_transient_sheets_error
 from general_locations_catalog import resolve_general_location_from_sheet_and_value
 from sheets import sheet_management
@@ -22,6 +29,20 @@ SHEETS_TURTLE_DATA_TIMEOUT_SEC = 25
 # Lock for list_turtle_names so concurrent requests don't trigger SSL errors (WRONG_VERSION_NUMBER)
 # when making many Google API calls in parallel.
 _turtle_names_lock = threading.Lock()
+
+
+def _scoped_sheet_location(sheet_name, general_location=None):
+    """Target location string for a sheets write, e.g. ``Kansas/North Topeka``.
+
+    Matches the VRAM/area path model (top-level tab == state folder). Falls back
+    to just the tab when no general location is known. Returns None for a blank
+    sheet_name so the write gate fails closed.
+    """
+    sn = (sheet_name or '').strip()
+    if not sn:
+        return None
+    gl = (general_location or '').strip()
+    return f"{sn}/{gl}" if gl else sn
 
 
 def _refresh_general_location_validation_for_sheet(service, sheet_name: str) -> None:
@@ -215,7 +236,14 @@ def register_sheets_routes(app):
             data = request.json or {}
             state = data.get('state', '')
             location = data.get('location', '')
-            
+
+            # Scoped-group members may only mint IDs within their sheet (the
+            # subsequent turtle write is gated too). No target sheet given =>
+            # a bare globally-unique id that writes nothing, so it is allowed.
+            ctx = get_ctx()
+            if not is_global(ctx) and (state or '').strip() and not scope_allows_sheet(ctx, state):
+                return jsonify({'error': SCOPE_DENIED_ERROR}), 403
+
             # State is no longer required - Primary IDs are globally unique
             service = get_sheets_service()
             if not service:
@@ -262,6 +290,12 @@ def register_sheets_routes(app):
 
             if not sheet_name:
                 return jsonify({'error': 'sheet_name is required for ID generation'}), 400
+
+            # Scoped-group members may only mint biology IDs for a sheet they own
+            # (this can create the tab, so fail closed for out-of-scope sheets).
+            ctx = get_ctx()
+            if not is_global(ctx) and not scope_allows_sheet(ctx, sheet_name):
+                return jsonify({'error': SCOPE_DENIED_ERROR}), 403
 
             if target_spreadsheet == 'community':
                 service = get_community_sheets_service()
@@ -337,6 +371,13 @@ def register_sheets_routes(app):
                     )
                 except ValueError as exc:
                     return jsonify({'error': str(exc)}), 400
+
+            # Scope gate: a scoped-group member may only create within its areas.
+            ctx = get_ctx()
+            if not is_global(ctx):
+                target_loc = _scoped_sheet_location(sheet_name, turtle_data.get('general_location'))
+                if not scope_allows_location(ctx, target_loc):
+                    return jsonify({'error': SCOPE_DENIED_ERROR}), 403
 
             # If sheet (tab) does not exist, create it with required headers
             existing_sheets = service.list_sheets()
@@ -423,6 +464,14 @@ def register_sheets_routes(app):
                     )
                 except ValueError as exc:
                     return jsonify({'error': str(exc)}), 400
+
+            # Scope gate: a scoped-group member may only write within its areas
+            # (gated on the destination sheet/general-location it is writing to).
+            ctx = get_ctx()
+            if not is_global(ctx):
+                target_loc = _scoped_sheet_location(sheet_name, turtle_data.get('general_location'))
+                if not scope_allows_location(ctx, target_loc):
+                    return jsonify({'error': SCOPE_DENIED_ERROR}), 403
 
             # If sheet (tab) does not exist, create it with required headers (e.g. when using backend locations like "Kansas")
             existing_sheets = service.list_sheets()
@@ -616,6 +665,12 @@ def register_sheets_routes(app):
             if not sheet_name:
                 return jsonify({'error': 'sheet_name is required'}), 400
 
+            # Coarse scope gate: reject sheets the scoped member has no claim on
+            # before any lookup. The exact row's location is re-checked below.
+            ctx = get_ctx()
+            if not is_global(ctx) and not scope_allows_sheet(ctx, sheet_name):
+                return jsonify({'error': SCOPE_DENIED_ERROR}), 403
+
             filled = sum(1 for x in (primary_id, biology_id, name) if x)
             if filled != 1:
                 return jsonify({
@@ -649,6 +704,14 @@ def register_sheets_routes(app):
                 }), 409
 
             row = matches[0]
+            # Fine scope gate: the matched row's general location must be inside
+            # the member's areas before we write (fail closed on an out-of-scope
+            # sub-location the coarse sheet gate let through).
+            if not is_global(ctx):
+                row_loc = _scoped_sheet_location(sheet_name, row.get('general_location'))
+                if not scope_allows_location(ctx, row_loc):
+                    return jsonify({'error': SCOPE_DENIED_ERROR}), 403
+
             resolved_primary = (row.get('primary_id') or '').strip()
             if not resolved_primary:
                 return jsonify({
@@ -691,73 +754,99 @@ def register_sheets_routes(app):
         out = re.sub(r'[/\\:*?"<>|]', '_', name.strip())
         return out or '_'
 
-    @app.route('/api/sheets/sheets', methods=['GET', 'POST'])
+    @app.route('/api/sheets/sheets', methods=['POST'])
+    @require_admin
+    def create_sheet():
+        """
+        Create a new sheet (tab) with headers.
+
+        Staff-or-admin, but restricted to GLOBAL-scope members: creating a new
+        top-level sheet defines a brand-new area, which is meaningless (and out of
+        bounds) for a scoped sub-area group confined to its assigned locations.
+        Global staff/admin (Operations, Primary) keep the pre-scoping capability.
+        Body may include target_spreadsheet: 'research' | 'community'.
+        """
+        ctx = get_ctx()
+        if not is_global(ctx):
+            return jsonify({'error': SCOPE_DENIED_ERROR}), 403
+        try:
+            data = request.json or {}
+            sheet_name = data.get('sheet_name', '').strip()
+            target = (data.get('target_spreadsheet') or 'research').strip().lower()
+            if target not in ('research', 'community'):
+                target = 'research'
+
+            if not sheet_name:
+                return jsonify({
+                    'success': False,
+                    'error': 'sheet_name is required'
+                }), 400
+
+            if target == 'community':
+                service = get_community_sheets_service()
+                if not service:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Community Google Sheets not configured',
+                        'sheets': []
+                    }), 503
+            else:
+                service = get_sheets_service()
+                if not service:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Google Sheets service not configured',
+                        'sheets': []
+                    }), 503
+
+            existing_sheets = service.list_sheets()
+            if sheet_name in existing_sheets:
+                return jsonify({
+                    'success': True,
+                    'message': f'Sheet "{sheet_name}" already exists',
+                    'sheets': service.list_sheets()
+                })
+
+            if service.create_sheet_with_headers(sheet_name):
+                if target == 'community':
+                    try:
+                        backend_base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                        data_dir = os.path.join(backend_base, 'data')
+                        community_dir = os.path.join(data_dir, 'Community_Uploads')
+                        safe_name = _safe_folder_name(sheet_name)
+                        os.makedirs(os.path.join(community_dir, safe_name), exist_ok=True)
+                    except Exception as folder_err:
+                        print(f"Warning: could not create Community_Uploads folder for new sheet: {folder_err}")
+                return jsonify({
+                    'success': True,
+                    'message': f'Sheet "{sheet_name}" created successfully',
+                    'sheets': service.list_sheets()
+                })
+            return jsonify({
+                'success': False,
+                'error': f'Failed to create sheet "{sheet_name}"'
+            }), 500
+        except Exception as e:
+            error_trace = traceback.format_exc()
+            try:
+                print(f"❌ Error creating sheet: {str(e)}")
+            except UnicodeEncodeError:
+                print(f"[ERROR] Error creating sheet: {str(e)}")
+            print(f"Traceback:\n{error_trace}")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to process request: {str(e)}',
+                'sheets': []
+            }), 500
+
+    @app.route('/api/sheets/sheets', methods=['GET'])
     @require_admin
     def list_sheets():
         """
-        List all available sheets (tabs) in the Google Spreadsheet (Admin only)
-        POST: Create a new sheet with headers. Body may include target_spreadsheet: 'research' | 'community'.
-        GET: List all sheets
+        List all available sheets (tabs) in the Google Spreadsheet (staff/admin).
+        Scoped-group members see only the tabs their areas belong to.
         """
         try:
-            if request.method == 'POST':
-                data = request.json or {}
-                sheet_name = data.get('sheet_name', '').strip()
-                target = (data.get('target_spreadsheet') or 'research').strip().lower()
-                if target not in ('research', 'community'):
-                    target = 'research'
-
-                if not sheet_name:
-                    return jsonify({
-                        'success': False,
-                        'error': 'sheet_name is required'
-                    }), 400
-
-                if target == 'community':
-                    service = get_community_sheets_service()
-                    if not service:
-                        return jsonify({
-                            'success': False,
-                            'error': 'Community Google Sheets not configured',
-                            'sheets': []
-                        }), 503
-                else:
-                    service = get_sheets_service()
-                    if not service:
-                        return jsonify({
-                            'success': False,
-                            'error': 'Google Sheets service not configured',
-                            'sheets': []
-                        }), 503
-
-                existing_sheets = service.list_sheets()
-                if sheet_name in existing_sheets:
-                    return jsonify({
-                        'success': True,
-                        'message': f'Sheet "{sheet_name}" already exists',
-                        'sheets': service.list_sheets()
-                    })
-
-                if service.create_sheet_with_headers(sheet_name):
-                    if target == 'community':
-                        try:
-                            backend_base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                            data_dir = os.path.join(backend_base, 'data')
-                            community_dir = os.path.join(data_dir, 'Community_Uploads')
-                            safe_name = _safe_folder_name(sheet_name)
-                            os.makedirs(os.path.join(community_dir, safe_name), exist_ok=True)
-                        except Exception as folder_err:
-                            print(f"Warning: could not create Community_Uploads folder for new sheet: {folder_err}")
-                    return jsonify({
-                        'success': True,
-                        'message': f'Sheet "{sheet_name}" created successfully',
-                        'sheets': service.list_sheets()
-                    })
-                return jsonify({
-                    'success': False,
-                    'error': f'Failed to create sheet "{sheet_name}"'
-                }), 500
-
             service = get_sheets_service()
             if not service:
                 return jsonify({
@@ -766,7 +855,6 @@ def register_sheets_routes(app):
                     'sheets': []
                 }), 503
 
-            # GET: List sheets
             try:
                 sheets = service.list_sheets()
                 if not isinstance(sheets, list):
@@ -780,12 +868,17 @@ def register_sheets_routes(app):
                     'error': f'Failed to list sheets: {str(list_error)}',
                     'sheets': []
                 }), 500
-            
+
+            # Scoped-group members only see tabs their areas belong to.
+            ctx = get_ctx()
+            if not is_global(ctx):
+                sheets = [s for s in sheets if scope_allows_sheet(ctx, s)]
+
             return jsonify({
                 'success': True,
                 'sheets': sheets
             })
-        
+
         except Exception as e:
             error_trace = traceback.format_exc()
             try:
@@ -938,7 +1031,23 @@ def register_sheets_routes(app):
                 except Exception as e:
                     print(f"Error reading sheet {sheet}: {e}")
                     continue
-            
+
+            # Scoped-group members: drop rows whose sheet is out of scope; where a
+            # row exposes a general location, refine to that sub-location (keep
+            # sheet-level rows when no general location resolves).
+            ctx = get_ctx()
+            if not is_global(ctx):
+                scoped = []
+                for t in all_turtles:
+                    sn = (t.get('sheet_name') or '').strip()
+                    if not scope_allows_sheet(ctx, sn):
+                        continue
+                    gl = (t.get('general_location') or '').strip()
+                    if gl and not scope_allows_location(ctx, f"{sn}/{gl}"):
+                        continue
+                    scoped.append(t)
+                all_turtles = scoped
+
             return jsonify({
                 'success': True,
                 'turtles': all_turtles,
@@ -983,6 +1092,11 @@ def register_sheets_routes(app):
             sheets_to_search = service.list_sheets()
             backup_sheet_names = ['Backup (Initial State)', 'Backup (Inital State)', 'Backup']
             sheets_to_search = [s for s in sheets_to_search if s not in backup_sheet_names]
+
+            # Scoped-group members only scan (and expose names from) their tabs.
+            ctx = get_ctx()
+            if not is_global(ctx):
+                sheets_to_search = [s for s in sheets_to_search if scope_allows_sheet(ctx, s)]
 
             all_names = []
             with _turtle_names_lock:
@@ -1058,7 +1172,7 @@ def register_sheets_routes(app):
             return jsonify({'error': f'Failed to list turtle names: {str(e)}'}), 500
 
     @app.route('/api/sheets/migrate-ids', methods=['POST'])
-    @require_admin
+    @require_admin_only
     def migrate_ids_to_primary_ids():
         """
         Migrate all turtles from "ID" column to "Primary ID" column.
