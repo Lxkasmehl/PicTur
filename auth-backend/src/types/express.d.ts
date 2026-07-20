@@ -13,6 +13,8 @@ declare global {
     }
     interface Request {
       user?: User;
+      /** Set by requireTeamLead: the calling lead's group id (JWT carries no group data). */
+      leadGroupId?: number;
     }
   }
 }
