@@ -163,6 +163,51 @@ def community_token(auth_url, integration_env):
 
 
 @pytest.fixture(scope="session")
+def teamlead_token(auth_url, integration_env):
+    """Obtain team-lead JWT (staff + KansasTeam, group_role='lead'). Requires seeded team-lead user."""
+    if not integration_env:
+        return None
+    try:
+        return _login_token(
+            auth_url,
+            os.environ.get("E2E_TEAMLEAD_EMAIL", "teamlead@test.com"),
+            os.environ.get("E2E_TEAMLEAD_PASSWORD", "testpassword123"),
+        )
+    except Exception as e:
+        pytest.skip(f"Cannot get team-lead token from auth-backend at {auth_url}/auth/login: {e}")
+
+
+@pytest.fixture(scope="session")
+def scoped_staff_token(auth_url, integration_env):
+    """Obtain scoped-staff JWT (staff + KansasTeam, group_role='member'). Requires seeded scoped-staff user."""
+    if not integration_env:
+        return None
+    try:
+        return _login_token(
+            auth_url,
+            os.environ.get("E2E_SCOPED_STAFF_EMAIL", "scoped-staff@test.com"),
+            os.environ.get("E2E_SCOPED_STAFF_PASSWORD", "testpassword123"),
+        )
+    except Exception as e:
+        pytest.skip(f"Cannot get scoped-staff token from auth-backend at {auth_url}/auth/login: {e}")
+
+
+@pytest.fixture(scope="session")
+def unassigned_token(auth_url, integration_env):
+    """Obtain unassigned-community JWT (no group). Requires seeded unassigned test user."""
+    if not integration_env:
+        return None
+    try:
+        return _login_token(
+            auth_url,
+            os.environ.get("E2E_UNASSIGNED_EMAIL", "unassigned@test.com"),
+            os.environ.get("E2E_UNASSIGNED_PASSWORD", "testpassword123"),
+        )
+    except Exception as e:
+        pytest.skip(f"Cannot get unassigned token from auth-backend at {auth_url}/auth/login: {e}")
+
+
+@pytest.fixture(scope="session")
 def api_client(backend_url, admin_token, integration_env):
     """HTTP client for backend API with admin auth. Skip integration tests if BACKEND_URL/AUTH_URL not set."""
     if not integration_env or not admin_token:

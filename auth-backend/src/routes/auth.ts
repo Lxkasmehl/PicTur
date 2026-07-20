@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import db from '../db/database.js';
+import { getMembershipContext } from '../db/groupsRepo.js';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import { validatePassword } from '../utils/passwordPolicy.js';
 import { sendVerificationEmail } from '../services/email.js';
@@ -290,6 +291,9 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
       return;
     }
 
+    // Additive group fields (PR-2's Flask consumer reads these; existing clients ignore them).
+    const membership = getMembershipContext(user.id);
+
     res.json({
       success: true,
       user: {
@@ -298,6 +302,9 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
         name: user.name,
         role: user.role,
         email_verified: Boolean(user.email_verified),
+        group: membership.group,
+        group_role: membership.group_role,
+        areas: membership.areas,
       },
     });
   } catch (error) {
@@ -307,13 +314,37 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
 });
 
 // Validate token (signature + revocation). Used by Flask backend to enforce demotion revocation.
+// role is re-read fresh from the DB (not the JWT claim) and the group fields are additive, so PR-2's
+// Flask consumer can authorize off this body while the JWT stays identity-only.
 router.post('/validate', authenticateToken, (req: Request, res: Response) => {
   const authUser = (req as AuthRequest).user;
   if (!authUser) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-  res.json({ valid: true, user: authUser });
+
+  const user = db
+    .prepare('SELECT id, email, role, email_verified FROM users WHERE id = ?')
+    .get(authUser.id) as User | undefined;
+  if (!user) {
+    res.status(401).json({ error: 'Token has been revoked' });
+    return;
+  }
+
+  const membership = getMembershipContext(user.id);
+
+  res.json({
+    valid: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      email_verified: Boolean(user.email_verified),
+      group: membership.group,
+      group_role: membership.group_role,
+      areas: membership.areas,
+    },
+  });
 });
 
 // Logout (client-side token removal, but we can track it here if needed)
