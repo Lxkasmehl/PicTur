@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-07-20 — Staff groups foundation (auth-backend)
+
 ### Added
 
 - **Groups foundation for staff management (auth-backend)**: new `groups` and `group_areas` tables plus `users.group_id` / `users.group_role` columns (idempotent migrations; the `users.role` CHECK stays `community|staff|admin`). Two system super-groups are seeded — **Operations** (global, holds admins) and **Primary** (global today, re-scopable later) — and a one-time backfill routes every existing admin into Operations (as lead) and every existing staff into Primary (as member); community users stay unassigned. A Team Lead is simply a staff user whose membership carries `group_role='lead'`.
