@@ -14,7 +14,45 @@ const UNASSIGNED_USER = process.env.E2E_UNASSIGNED_EMAIL ?? 'unassigned@test.com
 const TEAMLEAD_EMAIL = process.env.E2E_TEAMLEAD_EMAIL ?? 'teamlead@test.com';
 const SCOPED_STAFF_EMAIL = process.env.E2E_SCOPED_STAFF_EMAIL ?? 'scoped-staff@test.com';
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@test.com';
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'testpassword123';
 const GLOBAL_STAFF_EMAIL = process.env.E2E_STAFF_EMAIL ?? 'staff@test.com';
+const AUTH_API = process.env.E2E_AUTH_URL ?? 'http://localhost:3001/api';
+
+/**
+ * Force the shared seeded user back to community + Unassigned, and drop any leftover
+ * E2E-Team-* groups, via the admin API. Both flows below need the user to START as an
+ * unassigned community member; a prior interrupted run could leave it in a group. This
+ * makes the suite idempotent against a persistent (non-reseeded) backend.
+ */
+async function resetSharedState(request: import('@playwright/test').APIRequestContext): Promise<void> {
+  const login = await request.post(`${AUTH_API}/auth/login`, {
+    data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+  });
+  const token = (await login.json()).token as string;
+  const headers = { Authorization: `Bearer ${token}` };
+
+  const users = (await (await request.get(`${AUTH_API}/admin/users`, { headers })).json()).users as Array<{
+    id: number;
+    email: string;
+  }>;
+  const target = users.find((u) => u.email === UNASSIGNED_USER);
+  if (target) {
+    await request.patch(`${AUTH_API}/admin/users/${target.id}/membership`, {
+      headers,
+      data: { group_id: null },
+    });
+    await request.patch(`${AUTH_API}/admin/users/${target.id}/role`, {
+      headers,
+      data: { role: 'community' },
+    });
+  }
+
+  const groups = (await (await request.get(`${AUTH_API}/admin/groups`, { headers })).json())
+    .groups as Array<{ id: number; name: string }>;
+  for (const g of groups.filter((g) => /^E2E-Team-/.test(g.name))) {
+    await request.delete(`${AUTH_API}/admin/groups/${g.id}`, { headers });
+  }
+}
 
 /** The seeded scoped group the team lead runs. */
 const TEAM_GROUP_NAME = 'KansasTeam';
@@ -55,6 +93,13 @@ test.describe('Staff groups — access redirects', () => {
 
 // Serial: these two tests mutate the same seeded user and must not overlap.
 test.describe.serial('Staff groups — management flows', () => {
+  // Idempotent precondition: start each flow with the shared user unassigned + community
+  // and no leftover E2E groups, so a re-run against a persistent backend is deterministic.
+  test.beforeEach(async ({ request }) => {
+    await resetSharedState(request);
+  });
+
+
   test('Admin creates a scoped group, assigns an area, moves a user in, and cannot delete it while non-empty', async ({
     page,
   }) => {
@@ -96,6 +141,9 @@ test.describe.serial('Staff groups — management flows', () => {
     await page.goto('/admin/users');
     const unassignedSection = page.getByTestId('unassigned-users-section');
     await expect(unassignedSection).toBeVisible();
+    // Scope the Move Select to its section: Mantine gives the portaled options listbox the
+    // same aria-label as the input, so a page-level getByLabel would match both. The listbox
+    // portals to document.body (outside this section), so scoping resolves to the input alone.
     const moveSelect = unassignedSection.getByLabel(`Move ${UNASSIGNED_USER} to a group`);
     await moveSelect.click();
     const moveResp = page.waitForResponse(
@@ -115,8 +163,12 @@ test.describe.serial('Staff groups — management flows', () => {
     await expect(page.locator('tr', { hasText: groupName })).toBeVisible();
 
     // --- Cleanup: release the user, then delete the now-empty group -------------------
+    // The user is now in the group, so their Move Select is in the "by role" section (not
+    // Unassigned). Scope to it so getByLabel doesn't also match the portaled options listbox.
     await page.goto('/admin/users');
-    const backSelect = page.getByLabel(`Move ${UNASSIGNED_USER} to a group`);
+    const backSelect = page
+      .getByTestId('users-by-role-section')
+      .getByLabel(`Move ${UNASSIGNED_USER} to a group`);
     await backSelect.click();
     const backResp = page.waitForResponse(
       (r) => /\/admin\/users\/\d+\/membership/.test(r.url()) && r.request().method() === 'PATCH',
@@ -143,14 +195,20 @@ test.describe.serial('Staff groups — management flows', () => {
     await page.goto('/admin/my-team');
 
     // --- Own group + members only -----------------------------------------------------
+    // Scope to the members table: the lead's own email also renders in the nav header, so a
+    // page-level exact getByText for TEAMLEAD_EMAIL would match twice.
     await expect(page.getByRole('heading', { name: 'My Team' })).toBeVisible();
     await expect(page.getByRole('heading', { name: TEAM_GROUP_NAME })).toBeVisible();
-    await expect(page.getByText(SCOPED_STAFF_EMAIL, { exact: true })).toBeVisible();
-    await expect(page.getByText(TEAMLEAD_EMAIL, { exact: true })).toBeVisible();
+    const membersTable = page.getByTestId('team-members-table');
+    // Presence by row: the lead's own row carries a "you" badge in the email cell, so an
+    // exact getByText on the email would miss it. Row hasText tolerates the badge; the full
+    // emails are unambiguous per row.
+    await expect(membersTable.locator('tr').filter({ hasText: SCOPED_STAFF_EMAIL })).toBeVisible();
+    await expect(membersTable.locator('tr').filter({ hasText: TEAMLEAD_EMAIL })).toBeVisible();
     // A lead never sees other groups' members (Primary staff) or admins. Exact match so
     // 'staff@test.com' does not substring-match 'scoped-staff@test.com'.
-    await expect(page.getByText(ADMIN_EMAIL, { exact: true })).toHaveCount(0);
-    await expect(page.getByText(GLOBAL_STAFF_EMAIL, { exact: true })).toHaveCount(0);
+    await expect(membersTable.getByText(ADMIN_EMAIL, { exact: true })).toHaveCount(0);
+    await expect(membersTable.getByText(GLOBAL_STAFF_EMAIL, { exact: true })).toHaveCount(0);
 
     // --- Claim an unassigned community user ------------------------------------------
     await page.getByLabel('Email').fill(UNASSIGNED_USER);

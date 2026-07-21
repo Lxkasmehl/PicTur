@@ -409,7 +409,7 @@ export default function AdminUserManagementPage() {
           )}
         </Paper>
 
-        <Paper shadow='sm' p={{ base: 'md', sm: 'xl' }} radius='md' withBorder>
+        <Paper shadow='sm' p={{ base: 'md', sm: 'xl' }} radius='md' withBorder data-testid='users-by-role-section'>
           <Title order={2} size='h3'>
             <Group gap='xs'>
               <IconUsers size={20} />

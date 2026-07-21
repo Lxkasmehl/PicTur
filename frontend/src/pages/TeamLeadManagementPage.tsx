@@ -295,7 +295,7 @@ export default function TeamLeadManagementPage() {
                 </Group>
               </Title>
               <Table.ScrollContainer minWidth={640} mt='md'>
-                <Table striped highlightOnHover verticalSpacing='sm'>
+                <Table striped highlightOnHover verticalSpacing='sm' data-testid='team-members-table'>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Email</Table.Th>
