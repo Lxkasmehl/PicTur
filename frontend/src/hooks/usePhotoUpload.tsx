@@ -228,10 +228,19 @@ export function usePhotoUpload({
                   }),
               }
             : undefined;
+          // Carry the backend scope flags through localStorage — the match page does
+          // not re-fetch, so this is the only channel that survives the navigation.
+          // Absent flags default to in-scope / not-expanded, so a global user's payload
+          // (and any pre-PR-4 stored payload) behaves exactly as before.
+          const scopedMatches = (response.matches || []).map((m) => ({
+            ...m,
+            inScope: m.in_scope ?? true,
+          }));
           const matchData = {
             request_id: response.request_id,
             uploaded_image_path: response.uploaded_image_path || '',
-            matches: response.matches || [], // Empty array if no matches
+            matches: scopedMatches, // Empty array if no matches
+            scopeExpanded: response.scope_expanded ?? false,
             ...(find_metadata_from_upload && Object.keys(find_metadata_from_upload).length > 0 && {
               find_metadata_from_upload,
             }),

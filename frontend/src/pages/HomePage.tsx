@@ -35,7 +35,7 @@ import { MAX_RAW_FILE_BYTES } from '../utils/uploadConstants';
 import { dropzoneRejectionMessage } from '../utils/uploadErrorMessages';
 import { useUser } from '../hooks/useUser';
 import { usePhotoUpload } from '../hooks/usePhotoUpload';
-import { isStaffRole } from '../services/api/auth';
+import { isStaffRole, isScopedUser } from '../services/api/auth';
 import { PreviewCard } from '../components/PreviewCard';
 import { CarapaceQuickCheckResults } from '../components/CarapaceQuickCheckResults';
 import { useCarapaceQuickCheck } from '../hooks/useCarapaceQuickCheck';
@@ -62,6 +62,23 @@ import {
 
 const MATCH_ALL_VALUE = '__all__';
 const SYSTEM_FOLDERS = ['Community_Uploads', 'Review_Queue', 'Incidental_Finds', 'Incidental Places', 'benchmarks'];
+
+/**
+ * Mirrors the backend `area_covers` / `scope_allows_sheet` prefix rule (PR-4): a
+ * scope option is visible to a scoped Sub-Area member when it equals an owned area,
+ * sits under one, OR is a parent of one — so a `Kansas/Topeka` owner still sees the
+ * top-level `Kansas` entry (selecting it narrows to their sub-area, editable). Global
+ * users bypass this entirely.
+ */
+function areaAllowsOption(areas: string[], option: string): boolean {
+  const opt = option.trim();
+  if (!opt) return false;
+  return areas.some((raw) => {
+    const area = (raw || '').trim();
+    if (!area) return false;
+    return opt === area || opt.startsWith(area + '/') || area.startsWith(opt + '/');
+  });
+}
 
 function isComboboxItemGroup(x: ComboboxData[number]): x is ComboboxItemGroup {
   return typeof x === 'object' && x !== null && 'group' in x && 'items' in x;
@@ -90,7 +107,7 @@ function flattenMatchScopeOptions(data: ComboboxData): ComboboxItem[] {
 export default function HomePage() {
   const dispatch = useAppDispatch();
   const pendingRewards = useAppSelector((s) => s.communityGame.pendingRewards);
-  const { role, isLoggedIn, authChecked } = useUser();
+  const { role, isLoggedIn, authChecked, user } = useUser();
   const isStaff = isStaffRole(role);
   const quickCheck = useCarapaceQuickCheck();
   const carapaceMode = isStaff && quickCheck.enabled;
@@ -217,12 +234,24 @@ export default function HomePage() {
     );
     const options: ComboboxItem[] = [];
 
+    // Scoped Sub-Area members only get the states/locations their group owns; the
+    // predicate is a no-op for global users, so their list is byte-identical to
+    // before. Community_Uploads and the explicit "All locations" entry are ALWAYS
+    // kept — selecting "All locations" now yields a read-only, scope-expanded result
+    // (enforced by the backend) rather than being blocked client-side.
+    const scoped = isScopedUser(user);
+    const ownedAreas = scoped ? (user?.areas ?? []) : [];
+    const optionAllowed = (opt: string) => !scoped || areaAllowsOption(ownedAreas, opt);
+
     for (const state of orderedStates) {
-      const stateLocations = Array.from(byState.get(state) ?? []).sort((a, b) =>
-        a.localeCompare(b, undefined, { sensitivity: 'base' }),
-      );
+      const stateLocations = Array.from(byState.get(state) ?? [])
+        .filter((loc) => optionAllowed(loc))
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+      // Show the state when the state itself is in scope OR any of its sub-locations
+      // are (a Kansas/Topeka owner sees "Kansas" even though "Kansas" ≠ their area).
+      if (!optionAllowed(state) && stateLocations.length === 0) continue;
       options.push({ value: state, label: state });
-      // Only expand sub-locations when a state has multiple locations.
+      // Only expand sub-locations when more than one is available.
       // Single-location states (e.g. NebraskaCPBS with just CPBS) don't
       // need a redundant child entry — the state-level prefix match covers it.
       if (stateLocations.length > 1) {
@@ -235,7 +264,7 @@ export default function HomePage() {
     options.push({ value: 'Community_Uploads', label: 'Community Turtles only' });
     options.push({ value: MATCH_ALL_VALUE, label: 'All locations (everything)' });
     return options;
-  }, [availableLocations]);
+  }, [availableLocations, user]);
 
   const matchScopeOptions = useMemo((): ComboboxData => {
     const canonical = canonicalMatchScopeOptions;
@@ -633,6 +662,7 @@ export default function HomePage() {
               matches={quickCheck.matches}
               elapsed={quickCheck.elapsed}
               selectedIndex={quickCheck.selectedIndex}
+              scopeExpanded={quickCheck.scopeExpanded}
               onSelect={quickCheck.select}
               onBack={handleQuickCheckExit}
             />

@@ -16,6 +16,8 @@ type MatchCandidateCardProps = {
   imagePath?: string | null;
   summary?: CandidateSummary;
   badgeColor?: 'blue' | 'teal';
+  /** PR-4: mark this candidate as outside the caller's assigned areas. */
+  outOfScope?: boolean;
   onSelect?: () => void;
 };
 
@@ -27,6 +29,7 @@ export function MatchCandidateCard({
   imagePath,
   summary,
   badgeColor = 'blue',
+  outOfScope = false,
   onSelect,
 }: MatchCandidateCardProps) {
   const showSecondaryId = summary?.primary_id && summary.primary_id !== turtleId;
@@ -108,6 +111,17 @@ export function MatchCandidateCard({
       <Text size='xs' c='dimmed' truncate>
         {location}
       </Text>
+      {outOfScope && (
+        <Badge
+          color='orange'
+          size='xs'
+          variant='light'
+          mt={6}
+          data-testid='candidate-out-of-scope'
+        >
+          Outside your areas
+        </Badge>
+      )}
     </Card>
   );
 }

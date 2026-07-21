@@ -265,6 +265,14 @@ Staff are organized into **groups**. Two system groups are seeded — **Operatio
 
 Scoped Sub-Area staff cannot create new Google Sheets tabs (a new tab defines a new area), so the "+ Create New Sheet" option is hidden for them; global staff and admins keep it.
 
+**Scoped matching (photo upload + review).** The match experience adapts to a scoped member's areas:
+
+- The **"Which location to test against?"** dropdown on the photo-upload screen only lists the states/locations the member's group owns (an owned area, anything under it, or the parent sheet of an owned sub-area). **"Community Turtles only"** and **"All locations"** always remain — picking "All locations" is allowed, but the backend then forces the search back to the member's areas and flags the result as *scope-expanded*.
+- When a match result includes turtles outside the member's areas (an out-of-scope/All-Locations request that was forced back to scope, or a matcher fallback that pulled in distant turtles), the match page switches to a **read-only** mode: a yellow banner explains why, every save/approve/create/cross-check/replace-reference control is disabled, and each out-of-scope candidate card is badged "Outside your areas". The read-only carapace quick check shows the same banner. This is UX only — the backend independently refuses (403) any write whose target is outside the group's areas, so a scoped member can never save an out-of-scope turtle even if a control were reachable.
+- In the **Review Queue**, out-of-scope packets are already hidden from scoped members by the backend; the rare packet that is visible but flagged scope-expanded gets the same read-only banner and disabled actions.
+
+Global members (Operations admins and Primary staff) see the full dropdown and a fully editable match page exactly as before — every filter and gate is a no-op for them.
+
 ### Community Users
 
 1. **Photo Upload**:

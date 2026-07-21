@@ -23,10 +23,16 @@ export function MatchGridView() {
     crossCheckResults,
     crossCheckLoading,
     candidateSummaries,
+    readOnly,
+    candidateInScope,
     handleSelectMatch,
     handleCreateNewTurtle,
     handleCrossCheckCarapace,
   } = useAdminTurtleMatchContext();
+
+  const readOnlyTitle = readOnly
+    ? 'Read-only — results include turtles outside your assigned areas'
+    : undefined;
 
   if (!matchData) return null;
 
@@ -99,6 +105,8 @@ export function MatchGridView() {
                 variant='light'
                 loading={crossCheckLoading}
                 onClick={handleCrossCheckCarapace}
+                disabled={readOnly}
+                title={readOnlyTitle}
               >
                 Cross-check Carapace
               </Button>
@@ -122,6 +130,8 @@ export function MatchGridView() {
             variant='light'
             leftSection={<IconPlus size={16} />}
             onClick={handleCreateNewTurtle}
+            disabled={readOnly}
+            title={readOnlyTitle}
           >
             Create New Turtle
           </Button>
@@ -152,6 +162,7 @@ export function MatchGridView() {
                   confidence={match.confidence}
                   imagePath={match.file_path}
                   summary={candidateSummaries[candidateSummaryKey(match.turtle_id, match.location || '')]}
+                  outOfScope={!candidateInScope(match)}
                   onSelect={() => handleSelectMatch(match.turtle_id)}
                 />
               ))}

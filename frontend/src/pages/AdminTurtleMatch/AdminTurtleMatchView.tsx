@@ -5,9 +5,10 @@ import { MatchDetailView } from './MatchDetailView';
 import { MatchGridView } from './MatchGridView';
 import { NoMatchesView } from './NoMatchesView';
 import { useAdminTurtleMatchContext } from './AdminTurtleMatchContext';
+import { ScopeAlert } from '../../components/ScopeAlert';
 
 export function AdminTurtleMatchView() {
-  const { loading, matchData, showDetail } = useAdminTurtleMatchContext();
+  const { loading, matchData, showDetail, readOnly } = useAdminTurtleMatchContext();
 
   const hasMatches = matchData?.matches && matchData.matches.length > 0;
 
@@ -15,6 +16,8 @@ export function AdminTurtleMatchView() {
     <Container size='xl' py={{ base: 'md', sm: 'xl' }} px={{ base: 'xs', sm: 'md' }}>
       <Stack gap='lg'>
         <AdminTurtleMatchHeader />
+
+        {readOnly && <ScopeAlert />}
 
         {loading ? (
           <Center py='xl'>

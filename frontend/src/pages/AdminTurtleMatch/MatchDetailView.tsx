@@ -40,6 +40,8 @@ export function MatchDetailView() {
     replaceCarapaceReference,
     setReplaceCarapaceReference,
     isMatchFromCommunity,
+    readOnly,
+    candidateInScope,
     navigate,
     handleSelectMatch,
     handleSaveSheetsData,
@@ -51,6 +53,14 @@ export function MatchDetailView() {
   } = useAdminTurtleMatchContext();
 
   const compareSectionRef = useRef<HTMLDivElement>(null);
+
+  // PR-4: the whole page is read-only when the result set was scope-expanded; a
+  // single candidate can also fall outside scope. Either disables the save path.
+  const candidateOutOfScope = !candidateInScope(selectedMatch);
+  const writeBlocked = readOnly || candidateOutOfScope;
+  const writeBlockedTitle = writeBlocked
+    ? 'Read-only — results include turtles outside your assigned areas'
+    : undefined;
 
   useEffect(() => {
     window.requestAnimationFrame(() => {
@@ -106,9 +116,16 @@ export function MatchDetailView() {
             >
               Back to matches
             </Button>
-            <Badge color='blue' size='lg'>
-              Rank {rank}
-            </Badge>
+            <Group gap='xs'>
+              {candidateOutOfScope && (
+                <Badge color='orange' size='lg' variant='light' data-testid='detail-out-of-scope'>
+                  Outside your areas
+                </Badge>
+              )}
+              <Badge color='blue' size='lg'>
+                Rank {rank}
+              </Badge>
+            </Group>
           </Group>
           <Divider />
 
@@ -207,7 +224,7 @@ export function MatchDetailView() {
               }))}
               requestId={imageId}
               onRefresh={refreshPacketItem}
-              disabled={!!processing}
+              disabled={!!processing || readOnly}
             />
           )}
           {selectedMatch && (
@@ -224,7 +241,7 @@ export function MatchDetailView() {
               turtleId={selectedMatch}
               sheetName={dataPathHintFromMatchLocation(selectedMatchData.location)}
               onRefresh={refreshSelectedMatchImages}
-              disabled={!!processing}
+              disabled={!!processing || readOnly}
             />
           )}
         </Stack>
@@ -237,7 +254,7 @@ export function MatchDetailView() {
             description='The current plastron reference will be archived to loose_images'
             checked={replaceReference}
             onChange={(e) => setReplaceReference(e.currentTarget.checked)}
-            disabled={!!processing}
+            disabled={!!processing || writeBlocked}
           />
           {replaceReference && (
             <Alert icon={<IconAlertTriangle size={16} />} color='orange' radius='md'>
@@ -251,7 +268,7 @@ export function MatchDetailView() {
               description='The current carapace reference will be archived'
               checked={replaceCarapaceReference}
               onChange={(e) => setReplaceCarapaceReference(e.currentTarget.checked)}
-              disabled={!!processing}
+              disabled={!!processing || writeBlocked}
             />
           )}
           {replaceCarapaceReference && (
@@ -287,7 +304,8 @@ export function MatchDetailView() {
             variant='subtle'
             leftSection={<IconPlus size={16} />}
             onClick={handleCreateNewTurtle}
-            disabled={processing}
+            disabled={processing || readOnly}
+            title={readOnly ? writeBlockedTitle : undefined}
           >
             Create New Turtle Instead
           </Button>
@@ -297,7 +315,8 @@ export function MatchDetailView() {
             </Button>
             <Button
               onClick={handleCombinedButtonClick}
-              disabled={!selectedMatch || processing}
+              disabled={!selectedMatch || processing || writeBlocked}
+              title={writeBlockedTitle}
               loading={processing}
               leftSection={<IconCheck size={16} />}
             >

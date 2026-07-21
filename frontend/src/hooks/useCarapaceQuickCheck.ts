@@ -18,6 +18,10 @@ export function useCarapaceQuickCheck() {
   const [elapsed, setElapsed] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  // PR-4: true when a scoped member's quick check pulled in carapace refs outside
+  // their assigned areas (the read-only flow writes nothing regardless, but the
+  // banner tells them why distant turtles appear). Global users: always false.
+  const [scopeExpanded, setScopeExpanded] = useState(false);
 
   const run = useCallback(async (file: File, matchSheet: string) => {
     setStatus('running');
@@ -25,10 +29,12 @@ export function useCarapaceQuickCheck() {
     setMatches([]);
     setElapsed(null);
     setSelectedIndex(null);
+    setScopeExpanded(false);
     try {
       const response = await quickCheckCarapaceMatch(file, matchSheet);
       setMatches(response.matches ?? []);
       setElapsed(response.elapsed ?? null);
+      setScopeExpanded(response.scope_expanded ?? false);
       setStatus('done');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Quick check failed.');
@@ -48,6 +54,7 @@ export function useCarapaceQuickCheck() {
     setElapsed(null);
     setError(null);
     setSelectedIndex(null);
+    setScopeExpanded(false);
   }, []);
 
   return {
@@ -58,6 +65,7 @@ export function useCarapaceQuickCheck() {
     elapsed,
     error,
     selectedIndex,
+    scopeExpanded,
     run,
     select,
     reset,
