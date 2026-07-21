@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-07-21 — Staff group management UI
+
 ### Added
 
 - **Group management UI (admin)**: a new **Groups** admin page (`/admin/groups`) lists every group with its scope (global/scoped), live member count, and a tag for the seeded Operations/Primary system groups. Admins can create Sub-Area groups, rename them, flip a group's scope (Primary and Sub-Areas can change; Operations stays global), assign each scoped group one or more areas (a `State` folder or a `State/Location` prefix) from the backend location list, and delete an empty Sub-Area group — deletion is blocked with a "reassign first" message while the group still has members, and system groups can never be deleted.
