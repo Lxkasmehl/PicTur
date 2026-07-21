@@ -27,6 +27,20 @@ export {
   deleteUser,
   isStaffRole,
   isAdminRole,
+  isTeamLead,
+  isGlobalScope,
+  isScopedUser,
+  getGroups,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+  setGroupAreas,
+  setUserMembership,
+  getMyGroup,
+  claimMember,
+  setMemberRank,
+  releaseMember,
+  ApiError,
 } from './api/auth';
 export { fetchCommunityGameState, saveCommunityGameState } from './api/communityGame';
 export { getBackupWindow, type BackupWindow } from './api/backup';
@@ -44,6 +58,13 @@ export type {
   InvitationDetails,
   PromoteToAdminResponse,
   GetUsersResponse,
+  AdminUserRow,
+  Group,
+  GroupBase,
+  GroupMember,
+  MyGroupResponse,
+  SetMembershipBody,
+  MemberRankAction,
 } from './api/auth';
 
 export {

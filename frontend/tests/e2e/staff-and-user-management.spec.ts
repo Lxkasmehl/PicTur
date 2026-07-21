@@ -45,7 +45,11 @@ test.describe('Staff role and User Management', () => {
     // Use dedicated role-test user so community@test.com is never mutated (other tests expect Community badge)
     const roleTestEmail =
       process.env.E2E_ROLE_TEST_EMAIL ?? 'role-test-community@test.com';
-    let row = page.locator('table tbody tr').filter({ hasText: roleTestEmail });
+    // Scope to the "All users by role" section — an unassigned user also appears in the
+    // separate "Unassigned users" quick-view table, so an unscoped `table tbody tr` would
+    // match two rows. The role Select lives only in this section.
+    const byRole = page.getByTestId('users-by-role-section');
+    let row = byRole.locator('tbody tr').filter({ hasText: roleTestEmail });
     await expect(row).toBeVisible({ timeout: 10000 });
 
     const roleTrigger = () => row.getByRole('combobox').or(row.locator('input')).first();
@@ -82,7 +86,7 @@ test.describe('Staff role and User Management', () => {
       ).toBeVisible({
         timeout: 15000,
       });
-      row = page.locator('table tbody tr').filter({ hasText: roleTestEmail });
+      row = byRole.locator('tbody tr').filter({ hasText: roleTestEmail });
     }
 
     // Change to Staff and assert row appears in Staff section

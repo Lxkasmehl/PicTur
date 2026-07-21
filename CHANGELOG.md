@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-07-21 — Staff group management UI
+
+### Added
+
+- **Group management UI (admin)**: a new **Groups** admin page (`/admin/groups`) lists every group with its scope (global/scoped), live member count, and a tag for the seeded Operations/Primary system groups. Admins can create Sub-Area groups, rename them, flip a group's scope (Primary and Sub-Areas can change; Operations stays global), assign each scoped group one or more areas (a `State` folder or a `State/Location` prefix) from the backend location list, and delete an empty Sub-Area group — deletion is blocked with a "reassign first" message while the group still has members, and system groups can never be deleted.
+- **Group membership on the User Management page**: every user row now shows its group (or "Unassigned") plus a **Lead** chip for Team Leads, and a one-step **Move to group** control (with a Member/Lead rank picker where applicable) reassigns a user between any two groups in a single action. A dedicated **Unassigned users** section makes stray accounts easy to spot.
+- **My Team page for Team Leads (`/admin/my-team`)**: a staff Team Lead can view their own group (name, scope, assigned areas) and its members, claim an unassigned community user by email, walk a member up or down the ladder (community ↔ staff ↔ lead), and release a member back to Unassigned — all scoped to their own group. Admins who are not leads of a specific group get an explanatory pointer to the Groups / User Management pages instead. A distinct **Team Lead** badge appears in the header next to the role badge, and "Groups" (admins) / "My Team" (leads + admins) are added to the navigation.
+
+### Changed
+
+- **The "+ Create New Sheet" option is hidden for scoped-group members**: creating a new Google Sheets tab defines a brand-new area, which the backend already refuses to scoped Sub-Area staff, so the affordance no longer appears for them in the turtle data form. Global staff and admins keep it exactly as before.
+
 ## [2.1.1] - 2026-07-20 — Scoped-group enforcement (backend)
 
 ### Added

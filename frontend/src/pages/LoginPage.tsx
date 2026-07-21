@@ -196,13 +196,22 @@ export default function LoginPage({
       } else {
         // Login
         const response = await apiLogin({ email, password });
-        setUserLogin(response.user);
-        const needsVerification = !isEmailVerified(response.user);
+        // The login response is identity-only; enrich with group membership (used by the
+        // Groups / My Team nav + create-sheet gate) so it is present without a page reload.
+        let sessionUser = response.user;
+        try {
+          const fullUser = await getCurrentUser();
+          if (fullUser) sessionUser = fullUser;
+        } catch {
+          // Keep the identity-only user; group-aware UI populates on the next load.
+        }
+        setUserLogin(sessionUser);
+        const needsVerification = !isEmailVerified(sessionUser);
         notifications.show({
           title: 'Successfully logged in!',
           message: needsVerification
             ? 'Please verify your email to access all features.'
-            : `Welcome back, ${response.user.name || response.user.email}!`,
+            : `Welcome back, ${sessionUser.name || sessionUser.email}!`,
           color: 'green',
           icon: <IconCheck size={18} />,
         });

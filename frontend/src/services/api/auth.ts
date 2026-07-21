@@ -8,6 +8,7 @@ import {
   setToken,
   removeToken,
 } from './config';
+import type { GroupRole, GroupScope, UserGroup } from '../../types/User';
 
 /** community (default) | staff (admin-like, no user management) | admin (full) */
 export type UserRole = 'community' | 'staff' | 'admin';
@@ -18,7 +19,19 @@ export interface User {
   name: string | null;
   role: UserRole;
   email_verified?: boolean;
+  /** Resolved group membership (null/absent = unassigned). Present on /auth/me + /auth/validate. */
+  group?: UserGroup | null;
+  /** Membership rank within the group; 'lead' marks a Team Lead (staff only). */
+  group_role?: GroupRole;
+  /** Assigned area path prefixes (empty for global-scope groups and unassigned users). */
+  areas?: string[];
 }
+
+/** Anything carrying the membership fields — accepts both the API `User` and the store `UserInfo`. */
+type MembershipLike =
+  | { role?: UserRole; group?: UserGroup | null; group_role?: GroupRole }
+  | null
+  | undefined;
 
 /** True if user can access turtle records, release, sheets, review (staff or admin). */
 export function isStaffRole(role: string | undefined): role is UserRole {
@@ -28,6 +41,24 @@ export function isStaffRole(role: string | undefined): role is UserRole {
 /** True only for full admin (user management, offline backup download). */
 export function isAdminRole(role: string | undefined): boolean {
   return role === 'admin';
+}
+
+/** True for a staff user acting as a Team Lead (staff + group_role 'lead'). */
+export function isTeamLead(u: MembershipLike): boolean {
+  return u?.role === 'staff' && u?.group_role === 'lead';
+}
+
+/**
+ * True when the user has full, unscoped access: no group at all, or a global-scope group
+ * (Operations / Primary). Scoped Sub-Area members are the only ones this returns false for.
+ */
+export function isGlobalScope(u: MembershipLike): boolean {
+  return !u?.group || u.group.scope === 'global';
+}
+
+/** True for a staff/admin user who belongs to a scoped (Sub-Area) group. */
+export function isScopedUser(u: MembershipLike): boolean {
+  return (u?.role === 'staff' || u?.role === 'admin') && !!u?.group && u.group.scope === 'scoped';
 }
 
 export interface AuthResponse {
@@ -249,9 +280,21 @@ export const promoteToAdmin = async (
 };
 
 // Get all users (admin only)
+export interface AdminUserRow {
+  id: number;
+  email: string;
+  name: string | null;
+  role: UserRole;
+  created_at: string;
+  /** Group membership (null = Unassigned). */
+  group_id: number | null;
+  group_role: GroupRole;
+  group_name: string | null;
+}
+
 export interface GetUsersResponse {
   success: boolean;
-  users: Array<{ id: number; email: string; name: string | null; role: UserRole; created_at: string }>;
+  users: AdminUserRow[];
 }
 
 export const getUsers = async (): Promise<GetUsersResponse> => {
@@ -295,5 +338,217 @@ export const deleteUser = async (
     throw new Error(error.error || 'Failed to delete user');
   }
 
+  return await response.json();
+};
+
+// ---------------------------------------------------------------------------
+// Groups (admin only) — /api/admin/groups
+// ---------------------------------------------------------------------------
+
+/** A group row from the list endpoint (includes derived areas + member count). */
+export interface Group {
+  id: number;
+  name: string;
+  scope: GroupScope;
+  /** Non-null for the seeded system groups ('operations' / 'primary'); null for Sub-Areas. */
+  system_key: string | null;
+  areas: string[];
+  member_count: number;
+  created_at: string;
+}
+
+/** Base group returned by create/update (no derived areas/member_count). */
+export interface GroupBase {
+  id: number;
+  name: string;
+  scope: GroupScope;
+  system_key: string | null;
+}
+
+/** An error carrying the HTTP status, so callers can branch on 403/409 etc. */
+export class ApiError extends Error {
+  status: number;
+  /** Present on a 409 delete-group conflict. */
+  memberCount?: number;
+  constructor(message: string, status: number, memberCount?: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.memberCount = memberCount;
+  }
+}
+
+export const getGroups = async (): Promise<{ success: boolean; groups: Group[] }> => {
+  const response = await apiRequest('/admin/groups', { method: 'GET' });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to load groups');
+  }
+  return await response.json();
+};
+
+export const createGroup = async (
+  name: string,
+  scope: GroupScope = 'scoped',
+): Promise<{ success: boolean; group: GroupBase }> => {
+  const response = await apiRequest('/admin/groups', {
+    method: 'POST',
+    body: JSON.stringify({ name, scope }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to create group');
+  }
+  return await response.json();
+};
+
+export const updateGroup = async (
+  id: number,
+  changes: { name?: string; scope?: GroupScope },
+): Promise<{ success: boolean; group: GroupBase }> => {
+  const response = await apiRequest(`/admin/groups/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(changes),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to update group');
+  }
+  return await response.json();
+};
+
+/** Delete a group. A 409 (non-empty group) surfaces the member count so the UI can prompt a reassign. */
+export const deleteGroup = async (
+  id: number,
+): Promise<{ success: boolean; message: string }> => {
+  const response = await apiRequest(`/admin/groups/${id}`, { method: 'DELETE' });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    if (response.status === 409 && typeof error.member_count === 'number') {
+      const n = error.member_count as number;
+      throw new ApiError(`${n} member${n === 1 ? '' : 's'} — reassign first`, 409, n);
+    }
+    throw new ApiError(error.error || 'Failed to delete group', response.status);
+  }
+  return await response.json();
+};
+
+export const setGroupAreas = async (
+  id: number,
+  areas: string[],
+): Promise<{ success: boolean; areas: string[] }> => {
+  const response = await apiRequest(`/admin/groups/${id}/areas`, {
+    method: 'PUT',
+    body: JSON.stringify({ areas }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to save areas');
+  }
+  return await response.json();
+};
+
+// ---------------------------------------------------------------------------
+// Membership (admin only) — one-step stray-user correction
+// ---------------------------------------------------------------------------
+
+export interface SetMembershipBody {
+  group_id: number | null;
+  group_role?: GroupRole;
+}
+
+export const setUserMembership = async (
+  userId: number,
+  body: SetMembershipBody,
+): Promise<{
+  success: boolean;
+  user: { id: number; email: string; role: UserRole; group_id: number | null; group_role: GroupRole };
+}> => {
+  const response = await apiRequest(`/admin/users/${userId}/membership`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to update membership');
+  }
+  return await response.json();
+};
+
+// ---------------------------------------------------------------------------
+// Team Lead (staff leads only) — /api/lead
+// ---------------------------------------------------------------------------
+
+export interface GroupMember {
+  id: number;
+  email: string;
+  name: string | null;
+  role: UserRole;
+  group_role: GroupRole;
+  created_at: string;
+}
+
+export interface MyGroupResponse {
+  success: boolean;
+  group: { id: number; name: string; scope: GroupScope; system_key: string | null };
+  areas: string[];
+  members: GroupMember[];
+}
+
+/** The lead's own group. Throws an {@link ApiError} with status 403 when the caller is not a lead. */
+export const getMyGroup = async (): Promise<MyGroupResponse> => {
+  const response = await apiRequest('/lead/group', { method: 'GET' });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new ApiError(error.error || 'Failed to load your group', response.status);
+  }
+  return await response.json();
+};
+
+export const claimMember = async (
+  email: string,
+): Promise<{
+  success: boolean;
+  user: { id: number; email: string; role: UserRole; group_id: number; group_role: GroupRole };
+}> => {
+  const response = await apiRequest('/lead/members/claim', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to claim member');
+  }
+  return await response.json();
+};
+
+export type MemberRankAction = 'promote' | 'demote';
+
+export const setMemberRank = async (
+  userId: number,
+  action: MemberRankAction,
+): Promise<{
+  success: boolean;
+  user: { id: number; email: string; role: UserRole; group_role: GroupRole };
+}> => {
+  const response = await apiRequest(`/lead/members/${userId}/rank`, {
+    method: 'PATCH',
+    body: JSON.stringify({ action }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to change rank');
+  }
+  return await response.json();
+};
+
+export const releaseMember = async (
+  userId: number,
+): Promise<{ success: boolean; message: string }> => {
+  const response = await apiRequest(`/lead/members/${userId}`, { method: 'DELETE' });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to release member');
+  }
   return await response.json();
 };

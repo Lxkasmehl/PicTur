@@ -15,6 +15,8 @@ import {
 } from '@mantine/core';
 import { useImperativeHandle, forwardRef } from 'react';
 import { IconInfoCircle, IconSkull } from '@tabler/icons-react';
+import { useUser } from '../hooks/useUser';
+import { isGlobalScope } from '../services/api/auth';
 import { useTurtleSheetsDataForm } from '../hooks/useTurtleSheetsDataForm';
 import type { UseTurtleSheetsDataFormReturn } from './TurtleSheetsDataForm.types';
 import {
@@ -58,6 +60,11 @@ export const TurtleSheetsDataForm = forwardRef<
   },
   ref,
 ) {
+  // Only global staff/admins may create brand-new sheets (a new sheet defines a new area).
+  // PR-2's POST /api/sheets/sheets 403s scoped-group members, so hide the affordance for them.
+  const { user } = useUser();
+  const canCreateNewSheet = isGlobalScope(user);
+
   const hook: UseTurtleSheetsDataFormReturn = useTurtleSheetsDataForm({
     initialData,
     sheetName: initialSheetName,
@@ -157,7 +164,7 @@ export const TurtleSheetsDataForm = forwardRef<
                 setSelectedSheetName={hook.setSelectedSheetName}
                 availableSheets={hook.availableSheets}
                 setShowCreateSheetModal={hook.setShowCreateSheetModal}
-                allowCreateNewSheet
+                allowCreateNewSheet={canCreateNewSheet}
               />
               {requireNewSheetForCommunityMatch && (
                 <Text size="xs" c="dimmed" mt={4}>
