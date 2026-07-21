@@ -242,6 +242,29 @@ You need to run **all three services** simultaneously:
    - The modal polls the backend's health endpoint every 5 seconds and dismisses itself the moment the server is back up *and* the expected duration has elapsed. After 10 minutes of stalled maintenance it surfaces a contact-admin hint.
    - Schedule and duration are configurable via the backend env vars `BACKUP_SCHEDULE_HOUR`, `BACKUP_SCHEDULE_MINUTE`, and `BACKUP_DURATION_SECONDS`. Window times come from the new `GET /api/backup/window` endpoint, so the server is the source of truth — client clock drift cannot skew the countdown.
 
+### Staff Groups & Team Leads
+
+Staff are organized into **groups**. Two system groups are seeded — **Operations** (holds admins) and **Primary** (global staff) — both *global*, so their members see and act everywhere. Admins can also create **Sub-Area** groups that are *scoped* to one or more areas (a `State` folder or a `State/Location` path); a scoped group's members only see and act within those areas (enforced by the backend). A **Team Lead** is a staff member who leads one group.
+
+1. **Group Management** (`/admin/groups`, admin only):
+
+   - Lists every group with its scope (global/scoped), live member count, and a tag for the seeded system groups.
+   - Create, rename, and delete admin-made Sub-Area groups; deletion is blocked with a "reassign first" prompt while a group still has members, and system groups can never be deleted.
+   - Flip a group's scope (Primary and Sub-Areas can change; Operations always stays global) and assign each scoped group its areas from the backend location list.
+
+2. **Group membership on User Management** (`/admin/users`, admin only):
+
+   - Every user row shows its group (or "Unassigned") and a **Lead** chip for Team Leads.
+   - A one-step **Move to group** control reassigns a user between any two groups (with a Member/Lead rank picker where applicable); a dedicated **Unassigned users** section surfaces stray accounts.
+
+3. **My Team** (`/admin/my-team`, Team Leads and admins):
+
+   - A Team Lead manages only their own group: claim an unassigned community user by email, promote/demote a member one rung along the ladder (community ↔ staff ↔ lead), and release a member back to Unassigned.
+   - Admins who are not leads of a specific group get a pointer to the Groups / User Management pages instead.
+   - A distinct **Team Lead** badge shows in the header, and "Groups" / "My Team" appear in the navigation for the appropriate roles.
+
+Scoped Sub-Area staff cannot create new Google Sheets tabs (a new tab defines a new area), so the "+ Create New Sheet" option is hidden for them; global staff and admins keep it.
+
 ### Community Users
 
 1. **Photo Upload**:

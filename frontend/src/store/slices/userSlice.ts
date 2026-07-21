@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import { type UserRole } from '../../types/User';
+import { type UserRole, type GroupRole, type UserGroup } from '../../types/User';
 
 export interface UserInfo {
   id: number;
@@ -7,6 +7,12 @@ export interface UserInfo {
   name: string | null;
   role: UserRole;
   email_verified?: boolean;
+  /** Resolved group membership (null/absent = unassigned). */
+  group?: UserGroup | null;
+  /** Membership rank within the group; 'lead' marks a Team Lead (staff only). */
+  group_role?: GroupRole;
+  /** Assigned area path prefixes (empty for global-scope groups and unassigned users). */
+  areas?: string[];
 }
 
 interface UserState {

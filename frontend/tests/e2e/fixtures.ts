@@ -8,6 +8,10 @@ const STAFF_EMAIL = process.env.E2E_STAFF_EMAIL ?? 'staff@test.com';
 const STAFF_PASSWORD = process.env.E2E_STAFF_PASSWORD ?? 'testpassword123';
 const COMMUNITY_EMAIL = process.env.E2E_COMMUNITY_EMAIL ?? 'community@test.com';
 const COMMUNITY_PASSWORD = process.env.E2E_COMMUNITY_PASSWORD ?? 'testpassword123';
+const TEAMLEAD_EMAIL = process.env.E2E_TEAMLEAD_EMAIL ?? 'teamlead@test.com';
+const TEAMLEAD_PASSWORD = process.env.E2E_TEAMLEAD_PASSWORD ?? 'testpassword123';
+const SCOPED_STAFF_EMAIL = process.env.E2E_SCOPED_STAFF_EMAIL ?? 'scoped-staff@test.com';
+const SCOPED_STAFF_PASSWORD = process.env.E2E_SCOPED_STAFF_PASSWORD ?? 'testpassword123';
 
 /** About / Contact / Feedback live in the app footer (not the header drawer). */
 export async function clickFooterNav(
@@ -88,6 +92,31 @@ export async function loginAsStaff(page: Page): Promise<void> {
   await page.goto('/login');
   await page.getByLabel('Email').fill(STAFF_EMAIL);
   await page.getByLabel('Password').fill(STAFF_PASSWORD);
+  await page.getByRole('button', { name: 'Sign In' }).click();
+  await page.waitForURL('/', { timeout: 10000 });
+  await expect(page.getByTestId('role-badge')).toHaveText(/Staff/);
+}
+
+/**
+ * Login as a staff Team Lead (staff role + group_role 'lead' of the seeded KansasTeam).
+ * Asserts the Staff role badge and the presence of the Team Lead badge (which only renders once the
+ * enriched membership is loaded).
+ */
+export async function loginAsTeamLead(page: Page): Promise<void> {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(TEAMLEAD_EMAIL);
+  await page.getByLabel('Password').fill(TEAMLEAD_PASSWORD);
+  await page.getByRole('button', { name: 'Sign In' }).click();
+  await page.waitForURL('/', { timeout: 10000 });
+  await expect(page.getByTestId('role-badge')).toHaveText(/Staff/);
+  await expect(page.getByTestId('team-lead-badge')).toBeVisible();
+}
+
+/** Login as a scoped (Sub-Area) staff member — staff role, member rank in the seeded KansasTeam. */
+export async function loginAsScopedStaff(page: Page): Promise<void> {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(SCOPED_STAFF_EMAIL);
+  await page.getByLabel('Password').fill(SCOPED_STAFF_PASSWORD);
   await page.getByRole('button', { name: 'Sign In' }).click();
   await page.waitForURL('/', { timeout: 10000 });
   await expect(page.getByTestId('role-badge')).toHaveText(/Staff/);

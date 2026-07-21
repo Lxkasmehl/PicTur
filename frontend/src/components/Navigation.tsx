@@ -25,13 +25,15 @@ import {
   IconShield,
   IconPhoto,
   IconUsers,
+  IconUsersGroup,
   IconFlag,
   IconCompass,
   IconMapPin,
+  IconCrown,
 } from '@tabler/icons-react';
 import { useUser } from '../hooks/useUser';
 import { logout as apiLogout } from '../services/api';
-import { isStaffRole } from '../services/api/auth';
+import { isStaffRole, isTeamLead } from '../services/api/auth';
 import { notifications } from '@mantine/notifications';
 
 interface NavigationProps {
@@ -59,6 +61,9 @@ export default function Navigation({ children }: NavigationProps) {
 
   const isStaff = isStaffRole(role);
   const isAdmin = role === 'admin';
+  const isTeamLeadUser = isTeamLead(user);
+  // "My Team" is for staff Team Leads (their own group) and admins (empty-state → admin pages).
+  const showMyTeam = isTeamLeadUser || isAdmin;
   // Theme/UI color per role: community=blue, staff=orange, admin=red
   const roleColor = role === 'admin' ? 'red' : role === 'staff' ? 'orange' : 'blue';
   const roleColorHex =
@@ -90,11 +95,23 @@ export default function Navigation({ children }: NavigationProps) {
           icon: IconUsers,
         });
         items.splice(5, 0, {
+          label: 'Groups',
+          path: '/admin/groups',
+          icon: IconUsersGroup,
+        });
+        items.splice(6, 0, {
           label: 'Locations',
           path: '/admin/locations',
           icon: IconMapPin,
         });
       }
+    }
+    if (showMyTeam) {
+      items.push({
+        label: 'My Team',
+        path: '/admin/my-team',
+        icon: IconUsersGroup,
+      });
     }
     return items;
   };
@@ -105,8 +122,10 @@ export default function Navigation({ children }: NavigationProps) {
   const dynamicBreakpoint = useMemo(() => {
     const baseBreakpoint = 1000; // Base breakpoint for customer view with normal name
 
-    // Home + Observer HQ (+ staff/admin ops); About/Contact are in the footer
-    const itemCount = isAdmin ? 6 : isStaff ? 4 : 2;
+    // Home + Observer HQ (+ staff/admin ops + My Team); About/Contact are in the footer.
+    // admin: Home, Observer, Turtle Records, Release, User Management, Groups, Locations, My Team = 8
+    // staff lead: Home, Observer, Turtle Records, Release, My Team = 5; staff: 4; community: 2
+    const itemCount = isAdmin ? 8 : isStaff ? (isTeamLeadUser ? 5 : 4) : 2;
 
     // Admin has 2 extra items, increase breakpoint by ~167px per extra item
     // This makes drawer appear earlier when there are more nav items
@@ -122,7 +141,7 @@ export default function Navigation({ children }: NavigationProps) {
 
     // Calculate final breakpoint (higher = drawer appears at larger screen width)
     return baseBreakpoint + itemAdjustment + userNameAdjustment;
-  }, [isStaff, isAdmin, user?.name, user?.email]);
+  }, [isStaff, isAdmin, isTeamLeadUser, user?.name, user?.email]);
 
   // Use dynamic breakpoint; on mobile (< 768px) always show drawer for best touch UX
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -225,6 +244,17 @@ export default function Navigation({ children }: NavigationProps) {
             >
               {role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Community'}
             </Badge>
+            {isTeamLeadUser && (
+              <Badge
+                data-testid='team-lead-badge'
+                color='grape'
+                leftSection={<IconCrown size={12} />}
+                size='sm'
+                style={{ flexShrink: 0 }}
+              >
+                Team Lead
+              </Badge>
+            )}
           </Group>
 
           {/* Center - Desktop Navigation */}
