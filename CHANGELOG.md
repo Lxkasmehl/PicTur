@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-07-21 — Scoped match flow + read-only fallback
+
+### Added
+
+- **Scoped match flow + read-only fallback (frontend)**: the photo-match experience now honours a scoped Sub-Area staff member's assigned areas end-to-end. The **"Which location to test against?"** dropdown lists only the states/locations the member's group owns (an owned area, anything under it, or the parent sheet of an owned sub-area), while **"Community Turtles only"** and **"All locations"** always remain — selecting "All locations" is permitted and simply yields a backend-forced, scope-limited result. When a match set includes turtles outside the member's areas (a forced/expanded scope, or a matcher fallback pulling in distant turtles), the match page enters a clearly-marked **read-only** mode: a warning banner explains why, every write control (Save to Sheets & Confirm, Create New Turtle, Cross-check Carapace, replace-reference, add-photos) is disabled, each out-of-scope candidate card is badged "Outside your areas", and each gated handler also short-circuits before any network call. The read-only carapace quick check surfaces the same banner, and the Review Queue applies the same treatment to any visible-but-flagged out-of-scope packet. This is UX only — the backend independently 403s any out-of-scope write, so the guarantees do not depend on the client. **Global members (Operations admins, Primary staff) are completely unaffected**: they keep the full dropdown and a fully editable match page.
+
 ## [2.1.2] - 2026-07-21 — Staff group management UI
 
 ### Added

@@ -49,16 +49,22 @@ export function isTeamLead(u: MembershipLike): boolean {
 }
 
 /**
- * True when the user has full, unscoped access: no group at all, or a global-scope group
- * (Operations / Primary). Scoped Sub-Area members are the only ones this returns false for.
+ * True when the user has full, unscoped access. Mirrors the backend rule
+ * (`is_global = role=='admin' OR group.scope=='global'`, backend/auth.py): an admin
+ * is ALWAYS global regardless of group, plus anyone with no group or a global-scope
+ * group (Operations / Primary). Only a non-admin in a scoped Sub-Area group is false.
  */
 export function isGlobalScope(u: MembershipLike): boolean {
-  return !u?.group || u.group.scope === 'global';
+  return u?.role === 'admin' || !u?.group || u.group.scope === 'global';
 }
 
-/** True for a staff/admin user who belongs to a scoped (Sub-Area) group. */
+/**
+ * True for a member who is actually confined to a scoped (Sub-Area) group — i.e. NOT
+ * global. Admins are never scoped (they are global server-side even inside a scoped
+ * group), so this is effectively a non-admin staff user in a scoped group.
+ */
 export function isScopedUser(u: MembershipLike): boolean {
-  return (u?.role === 'staff' || u?.role === 'admin') && !!u?.group && u.group.scope === 'scoped';
+  return !isGlobalScope(u) && !!u?.group && u.group.scope === 'scoped';
 }
 
 export interface AuthResponse {

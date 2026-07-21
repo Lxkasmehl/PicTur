@@ -14,6 +14,7 @@ import {
 import { IconArrowLeft, IconEyeCheck, IconAlertCircle } from '@tabler/icons-react';
 import { MatchCandidateCard } from '../pages/AdminTurtleMatch/MatchCandidateCard';
 import { TurtleImageComparePair } from './TurtleImageComparePair';
+import { ScopeAlert } from './ScopeAlert';
 import { getImageUrl } from '../services/api';
 import type { QuickCheckMatch } from '../services/api';
 import type { QuickCheckStatus } from '../hooks/useCarapaceQuickCheck';
@@ -26,6 +27,8 @@ interface CarapaceQuickCheckResultsProps {
   matches: QuickCheckMatch[];
   elapsed: number | null;
   selectedIndex: number | null;
+  /** PR-4: results include carapace refs outside the caller's assigned areas. */
+  scopeExpanded?: boolean;
   onSelect: (index: number | null) => void;
   onBack: () => void;
 }
@@ -33,6 +36,11 @@ interface CarapaceQuickCheckResultsProps {
 /** True when the backend found no sibling image for the reference tensor. */
 function hasNoImage(match: QuickCheckMatch): boolean {
   return !match.image_path || match.image_path.endsWith('.pt');
+}
+
+/** PR-4: absent `in_scope` means in scope (global users / legacy). */
+function isOutOfScope(match: QuickCheckMatch): boolean {
+  return match.in_scope === false;
 }
 
 /**
@@ -47,6 +55,7 @@ export function CarapaceQuickCheckResults({
   matches,
   elapsed,
   selectedIndex,
+  scopeExpanded = false,
   onSelect,
   onBack,
 }: CarapaceQuickCheckResultsProps) {
@@ -88,6 +97,7 @@ export function CarapaceQuickCheckResults({
     return (
       <Paper shadow='sm' p='md' radius='md' withBorder>
         <Stack gap='sm'>
+          {scopeExpanded && <ScopeAlert message='This carapace match includes references outside your assigned areas. The quick check is read-only.' />}
           <Group justify='space-between'>
             <Button
               variant='light'
@@ -148,6 +158,9 @@ export function CarapaceQuickCheckResults({
   return (
     <Paper shadow='sm' p='md' radius='md' withBorder>
       <Stack gap='md'>
+        {scopeExpanded && (
+          <ScopeAlert message='These carapace matches include references outside your assigned areas. The quick check is read-only.' />
+        )}
         <Alert icon={<IconEyeCheck size={18} />} color='orange' radius='md'>
           Read-only result — nothing was saved. Click a match to compare side by
           side.
@@ -173,6 +186,7 @@ export function CarapaceQuickCheckResults({
                   confidence={match.confidence}
                   imagePath={hasNoImage(match) ? null : match.image_path}
                   badgeColor='teal'
+                  outOfScope={isOutOfScope(match)}
                   onSelect={() => onSelect(index)}
                 />
               ))}

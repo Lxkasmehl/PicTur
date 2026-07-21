@@ -72,6 +72,34 @@ export function useAdminTurtleMatch(
 
   const showDetail = !!(selectedMatch && selectedMatchData);
 
+  // PR-4: a scope-expanded result set (candidates outside the caller's assigned
+  // areas, or an out-of-scope / All-Locations request forced back to the group's
+  // areas) is READ-ONLY. Every write handler short-circuits before its network call
+  // and the views disable their write affordances. The backend 403s independently,
+  // so this is purely UX. Absent flags => editable (global users / legacy payloads).
+  const readOnly = !!matchData?.scopeExpanded;
+
+  const candidateInScope = useCallback(
+    (candidate?: { inScope?: boolean } | string | null): boolean => {
+      if (candidate == null) return true;
+      if (typeof candidate === 'string') {
+        const m = matchData?.matches.find((x) => x.turtle_id === candidate);
+        return m?.inScope ?? true;
+      }
+      return candidate.inScope ?? true;
+    },
+    [matchData],
+  );
+
+  const notifyReadOnly = useCallback(() => {
+    notifications.show({
+      title: 'Read-only',
+      message:
+        'Read-only — results include turtles outside your assigned areas. Saves and approvals are disabled.',
+      color: 'yellow',
+    });
+  }, []);
+
   const refreshPacketItem = useCallback(async () => {
     if (!imageId) return;
     try {
@@ -294,6 +322,10 @@ export function useAdminTurtleMatch(
   };
 
   const handleSaveSheetsData = async (data: TurtleSheetsData, sheetName: string) => {
+    if (readOnly || !candidateInScope(selectedMatch)) {
+      notifyReadOnly();
+      throw new Error('Read-only: results include turtles outside your assigned areas');
+    }
     if (!selectedMatch) throw new Error('No turtle selected');
 
     const match = matchData?.matches.find((m) => m.turtle_id === selectedMatch);
@@ -325,6 +357,10 @@ export function useAdminTurtleMatch(
   };
 
   const handleSaveAndConfirm = async (data: TurtleSheetsData, sheetName: string) => {
+    if (readOnly || !candidateInScope(selectedMatch)) {
+      notifyReadOnly();
+      throw new Error('Read-only: results include turtles outside your assigned areas');
+    }
     if (!selectedMatch || !imageId) throw new Error('Please select a match first');
     if (!matchData?.uploaded_image_path) throw new Error('Missing image path');
 
@@ -392,6 +428,10 @@ export function useAdminTurtleMatch(
     sheetName: string,
     backendLocationPath?: string,
   ) => {
+    if (readOnly) {
+      notifyReadOnly();
+      return;
+    }
     setNewTurtleSheetsData(data);
     setNewTurtleSheetName(sheetName);
     setNewTurtleBackendPath(backendLocationPath);
@@ -426,6 +466,10 @@ export function useAdminTurtleMatch(
     backendPathOverride?: string,
     primaryIdOverride?: string,
   ) => {
+    if (readOnly) {
+      notifyReadOnly();
+      return;
+    }
     const effectiveSheetName = sheetNameOverride || newTurtleSheetName;
     const effectiveSheetsData = sheetsDataOverride || newTurtleSheetsData;
     const effectiveBackendPath = backendPathOverride ?? newTurtleBackendPath;
@@ -548,6 +592,10 @@ export function useAdminTurtleMatch(
   };
 
   const handleCrossCheckCarapace = async () => {
+    if (readOnly) {
+      notifyReadOnly();
+      return;
+    }
     if (!imageId) return;
     setCrossCheckLoading(true);
     const carapaceImg = packetItem?.additional_images?.find((img) => img.type === 'carapace');
@@ -604,6 +652,8 @@ export function useAdminTurtleMatch(
     setReplaceCarapaceReference,
     isMatchFromCommunity,
     showDetail,
+    readOnly,
+    candidateInScope,
     navigate,
     handleSelectMatch,
     handleSaveSheetsData,

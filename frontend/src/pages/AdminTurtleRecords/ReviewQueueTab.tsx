@@ -37,6 +37,7 @@ import { DeleteQueueItemModal } from './DeleteQueueItemModal';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
 import { useAdminTurtleRecordsContext } from './AdminTurtleRecordsContext';
 import { TurtleImageComparePair } from '../../components/TurtleImageComparePair';
+import { ScopeAlert } from '../../components/ScopeAlert';
 
 export function ReviewQueueTab() {
   const compareSectionRef = useRef<HTMLDivElement>(null);
@@ -85,6 +86,12 @@ export function ReviewQueueTab() {
   const location = selectedItem?.metadata.location || '';
   const fullSheetName =
     state && location ? `${state}/${location}` : state || location || null;
+
+  // PR-4: PR-2 already server-filters the queue for scoped members, so out-of-scope
+  // packets rarely reach here. If one that IS visible was flagged scope-expanded at
+  // upload time, treat its detail view as read-only (banner + disabled write actions).
+  // The backend 403s these writes independently — this is defensive UX only.
+  const itemReadOnly = !!selectedItem?.metadata?.scope_expanded;
 
   const isAdminUpload = (requestId: string | undefined) =>
     Boolean(requestId?.startsWith('admin_'));
@@ -246,10 +253,14 @@ export function ReviewQueueTab() {
               size='sm'
               leftSection={<IconTrash size={16} />}
               onClick={(e) => onOpenDeleteModal(selectedItem, e)}
+              disabled={itemReadOnly}
+              title={itemReadOnly ? 'Read-only — this item is outside your assigned areas' : undefined}
             >
               Delete this upload
             </Button>
           </Group>
+
+          {itemReadOnly && <ScopeAlert />}
 
           {loadingTurtleData && selectedCandidate && (
             <div
@@ -305,6 +316,8 @@ export function ReviewQueueTab() {
                       size='sm'
                       variant='filled'
                       color={matchingConfirm === 'trash' ? 'red' : 'blue'}
+                      disabled={itemReadOnly}
+                      title={itemReadOnly ? 'Read-only — this item is outside your assigned areas' : undefined}
                       onClick={async () => {
                         const action = matchingConfirm;
                         setMatchingConfirm(null);
@@ -356,15 +369,15 @@ export function ReviewQueueTab() {
                 <Stack gap='xs'>
                   <Text fw={500} size='sm'>Community upload — review the photo and proceed when ready.</Text>
                   <Group gap='sm'>
-                    <Button size='sm' variant='filled' onClick={() => setMatchingConfirm('match')}>
+                    <Button size='sm' variant='filled' onClick={() => setMatchingConfirm('match')} disabled={itemReadOnly} title={itemReadOnly ? 'Read-only — this item is outside your assigned areas' : undefined}>
                       Proceed with matching
                     </Button>
                     {selectedItem.additional_images?.some(img => img.type === 'plastron') && (
-                      <Button size='sm' variant='filled' color='grape' onClick={() => setMatchingConfirm('crosscheck')}>
+                      <Button size='sm' variant='filled' color='grape' onClick={() => setMatchingConfirm('crosscheck')} disabled={itemReadOnly} title={itemReadOnly ? 'Read-only — this item is outside your assigned areas' : undefined}>
                         Cross-check with plastron
                       </Button>
                     )}
-                    <Button size='sm' variant='filled' color='red' leftSection={<IconTrash size={14} />} onClick={() => setMatchingConfirm('trash')}>
+                    <Button size='sm' variant='filled' color='red' leftSection={<IconTrash size={14} />} onClick={() => setMatchingConfirm('trash')} disabled={itemReadOnly} title={itemReadOnly ? 'Read-only — this item is outside your assigned areas' : undefined}>
                       Delete
                     </Button>
                   </Group>
@@ -388,6 +401,8 @@ export function ReviewQueueTab() {
                       size='sm'
                       variant='light'
                       loading={crossCheckLoading}
+                      disabled={itemReadOnly}
+                      title={itemReadOnly ? 'Read-only — this item is outside your assigned areas' : undefined}
                       onClick={async () => {
                         setCrossCheckLoading(true);
                         try {
@@ -754,7 +769,7 @@ export function ReviewQueueTab() {
                 }))}
                 requestId={selectedItem.request_id}
                 onRefresh={() => refreshQueueItem(selectedItem.request_id)}
-                disabled={!!processing || selectedItem.match_search_pending === true}
+                disabled={!!processing || itemReadOnly || selectedItem.match_search_pending === true}
               />
               {selectedCandidate && (
                 <AdditionalImagesSection
@@ -774,7 +789,7 @@ export function ReviewQueueTab() {
                     const res = await getTurtleImages(selectedCandidate, fullSheetName);
                     setSelectedCandidateTurtleImages(res);
                   }}
-                  disabled={!!processing}
+                  disabled={!!processing || itemReadOnly}
                 />
               )}
             </Stack>
@@ -851,14 +866,16 @@ export function ReviewQueueTab() {
                     variant='subtle'
                     leftSection={<IconPlus size={16} />}
                     onClick={onCreateNewTurtle}
-                    disabled={!!processing}
+                    disabled={!!processing || itemReadOnly}
+                    title={itemReadOnly ? 'Read-only — this item is outside your assigned areas' : undefined}
                   >
                     Create New Turtle Instead
                   </Button>
                   <Button
                     onClick={onCombinedButtonClick}
                     loading={processing === selectedItem.request_id}
-                    disabled={processing === selectedItem.request_id}
+                    disabled={processing === selectedItem.request_id || itemReadOnly}
+                    title={itemReadOnly ? 'Read-only — this item is outside your assigned areas' : undefined}
                     leftSection={<IconCheck size={16} />}
                   >
                     Save to Sheets & Approve Match
@@ -887,6 +904,8 @@ export function ReviewQueueTab() {
                     leftSection={<IconPlus size={16} />}
                     onClick={onCreateNewTurtle}
                     variant='light'
+                    disabled={itemReadOnly}
+                    title={itemReadOnly ? 'Read-only — this item is outside your assigned areas' : undefined}
                   >
                     Create New Turtle
                   </Button>
@@ -908,6 +927,8 @@ export function ReviewQueueTab() {
                     leftSection={<IconPlus size={16} />}
                     onClick={onCreateNewTurtle}
                     variant='light'
+                    disabled={itemReadOnly}
+                    title={itemReadOnly ? 'Read-only — this item is outside your assigned areas' : undefined}
                   >
                     Create New Turtle
                   </Button>

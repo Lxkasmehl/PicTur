@@ -6,6 +6,12 @@ export interface TurtleMatch {
   confidence: number;
   file_path: string;
   filename: string;
+  /**
+   * Scoped-group flag (PR-4): true when this candidate's location is within the
+   * caller's assigned areas. Absent for global users and legacy payloads — callers
+   * MUST treat absent as in-scope.
+   */
+  in_scope?: boolean;
 }
 
 export type PhotoType = 'plastron' | 'carapace' | 'unclassified';
@@ -16,6 +22,12 @@ export interface UploadPhotoResponse {
   matches?: TurtleMatch[];
   uploaded_image_path?: string;
   photo_type?: PhotoType;
+  /**
+   * Scoped-group flag (PR-4): true when the match result set was expanded beyond the
+   * caller's areas (out-of-scope candidates, or an out-of-scope / All-Locations
+   * request forced back to scope). Always false / absent for global users.
+   */
+  scope_expanded?: boolean;
   message: string;
 }
 
@@ -27,12 +39,16 @@ export interface QuickCheckMatch {
   score: number;
   /** May still be a `.pt` path when no sibling image exists — treat as "no image". */
   image_path: string;
+  /** Scoped-group flag (PR-4): absent = in scope (see {@link TurtleMatch.in_scope}). */
+  in_scope?: boolean;
 }
 
 export interface QuickCheckResponse {
   success: boolean;
   photo_type: 'carapace';
   matches: QuickCheckMatch[];
+  /** Scoped-group flag (PR-4): see {@link UploadPhotoResponse.scope_expanded}. */
+  scope_expanded?: boolean;
   elapsed: number;
 }
 
@@ -83,6 +99,13 @@ export interface ReviewQueueItem {
     digital_flag_lat?: number;
     digital_flag_lon?: number;
     digital_flag_source?: 'gps' | 'manual';
+    /**
+     * Scoped-group flag (PR-4): persisted at admin/staff upload time. True when this
+     * packet's match set was expanded beyond the uploader's areas — the review-queue
+     * detail view treats such an item as read-only. Absent for community uploads and
+     * for global uploaders.
+     */
+    scope_expanded?: boolean;
   };
   /** Microhabitat / condition photos uploaded with this find */
   additional_images?: AdditionalImage[];
