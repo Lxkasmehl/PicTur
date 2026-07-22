@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The permanent turtle dataset is now undeletable by the app.** A new `turtle_manager/safe_fs.py` guard treats any *turtle folder* (one holding a `plastron/`, `carapace/`, or legacy `ref_data/` reference directory) — and every `State/`, `State/Location/`, combo-sheet (`NebraskaCPBS/`), or `Incidental Places/` directory that *contains* one at any depth, including community turtle folders under `Community_Uploads/` — as protected: it may be moved, renamed, or archived, but never deleted, by an admin or by accident. Legitimate deletes are unaffected (temp files, `.pt` tensors, `Review_Queue` packets, staged files, and the reference-swap archive-then-remove all keep working). The guard fails closed: a path it cannot prove safe (any error while probing) is treated as protected. Archived / merged-away turtles are moved into a new `data/_Archive/` area, which is excluded from both the location dropdowns and the matching index so they stop being matched.
+
+### Changed
+
+- **Merges and new-turtle rollbacks are now reversible — they archive instead of delete.** Merging a duplicate turtle moves the absorbed (secondary) folder into `data/_Archive/…` instead of `rmtree`-ing it, so a mistaken merge can be recovered. A new-turtle approval that then fails its Google Sheets sync now *archives* the just-created folder (with a guard so it only ever touches a folder that approval created) rather than destroying it on a transient outage. Deleting a single curated additional image is now a **soft-delete** — the image moves into the turtle's `Deleted/` folder (recoverable, listed by the existing deleted-images view) instead of an irreversible remove.
+- **The backend reset scripts fail closed on the dataset.** `reset_complete_backend.py` and `clear_uploads.py` route their folder deletes through the guard, so they refuse to destroy turtle folders (including community turtle folders) and print a clear message pointing at the override. Wiping the dataset now requires an explicit, clearly-named opt-in — `--force-destroy-dataset` (or `FORCE_DESTROY_DATASET=1`) — which exists only on these CLI tools and is never reachable from any HTTP path.
+
 ## [2.0.22] - 2026-07-10 — Carapace quick check opened to staff
 
 ### Changed

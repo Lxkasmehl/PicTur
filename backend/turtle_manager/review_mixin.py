@@ -25,6 +25,7 @@ from .path_utils import (
     DRIVE_STATE_NAME_MAP, LOCATION_NAME_MAP,
     _resolve_drive_state_name, _resolve_drive_location_name,
 )
+from .safe_fs import archive_turtle_folder, guarded_rmtree
 
 try:
     from turtles.image_processing import brain
@@ -589,7 +590,9 @@ class TurtleReviewMixin:
         """Remove a processed packet directory or temp file."""
         if packet_dir and os.path.exists(packet_dir):
             try:
-                shutil.rmtree(packet_dir)
+                # Review_Queue packets carry no turtle folder, so the guard passes;
+                # routing through it fails closed if a path bug ever aimed here.
+                guarded_rmtree(packet_dir, self.base_dir)
                 print(f"🗑️ Queue Item {request_id or 'unknown'} deleted (Processed).")
             except Exception as e:
                 print(f"⚠️ Error deleting packet: {e}")
@@ -604,19 +607,35 @@ class TurtleReviewMixin:
                     print(f"⚠️ Error deleting temp file: {e}")
 
     def rollback_new_turtle(self, turtle_id, location, photo_type="plastron"):
-        """Roll back a new turtle creation — removes folder from disk and evicts from VRAM cache."""
+        """Roll back a new turtle creation — archives the folder and evicts it from VRAM.
+
+        The folder is *archived* (moved under ``_Archive/``), never destroyed: a
+        transient Sheets outage must not permanently delete a freshly-created —
+        possibly already-populated — turtle folder. A pre-existing-folder guard
+        ensures we only ever touch a folder this approval created: the target must
+        resolve safely under ``base_dir`` and its basename must match
+        ``turtle_id``. (A populated pre-existing turtle cannot reach here anyway —
+        ``_process_single_turtle`` returns ``'skipped'`` when a reference already
+        exists, so the approval aborts before the Sheets sync that triggers this
+        rollback.)
+        """
         parts = [p.strip() for p in location.split('/') if p.strip()]
         if len(parts) >= 2:
-            turtle_dir = os.path.join(self.base_dir, parts[0], parts[1], turtle_id)
+            turtle_dir = _resolved_path_under_base(self.base_dir, parts[0], parts[1], turtle_id)
+        elif parts:
+            turtle_dir = _resolved_path_under_base(self.base_dir, parts[0], turtle_id)
         else:
-            turtle_dir = os.path.join(self.base_dir, parts[0], turtle_id) if parts else None
+            turtle_dir = None
 
-        if turtle_dir and os.path.exists(turtle_dir):
+        if (turtle_dir and os.path.isdir(turtle_dir)
+                and _basename_matches_turtle_id(os.path.basename(turtle_dir), turtle_id)):
             try:
-                shutil.rmtree(turtle_dir)
-                print(f"🔙 Rolled back turtle folder: {turtle_dir}")
-            except Exception as e:
+                archived_to = archive_turtle_folder(turtle_dir, self.base_dir)
+                print(f"🔙 Rolled back new turtle → archived to {archived_to}")
+            except (OSError, shutil.Error) as e:
                 print(f"⚠️ Failed to roll back turtle folder: {e}")
+        elif turtle_dir and os.path.exists(turtle_dir):
+            print(f"⚠️ Rollback skipped: {turtle_dir} is not a folder this approval created")
 
         # Evict from VRAM cache (check both new 'plastron' and legacy 'ref_data' paths)
         subdirs_to_check = ['carapace'] if photo_type == 'carapace' else ['plastron', 'ref_data']
@@ -637,7 +656,7 @@ class TurtleReviewMixin:
             if not packet_dir or not os.path.exists(packet_dir) or not os.path.isdir(packet_dir):
                 return False, "Request not found"
             try:
-                shutil.rmtree(packet_dir)
+                guarded_rmtree(packet_dir, self.base_dir)
                 print(f"🗑️ Queue Item {request_id} deleted (Rejected/Discarded).")
                 return True, "Deleted"
             except Exception as e:

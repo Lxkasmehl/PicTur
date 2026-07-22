@@ -8,10 +8,39 @@ Clear all uploaded data from the server
 import sys as _sys, os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))  # scripts/ for ingest_common etc.
+# turtle_manager/ on path for the pure delete guard (never loads SuperPoint).
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), 'turtle_manager'))
 import os
 import shutil
 import tempfile
 from pathlib import Path
+
+from safe_fs import guarded_rmtree, UndeletableTurtleDataError
+
+# Bypass the undeletable-dataset guard ONLY when explicitly opted in. CLI only —
+# never wired to any HTTP path.
+FORCE_DESTROY = False
+
+
+def _destroy_tree(path, guard_base):
+    """rmtree that fails closed on protected turtle data unless FORCE_DESTROY.
+
+    Returns True when removed, False when the guard blocked it (message printed).
+    OSErrors propagate to the caller's existing handler.
+    """
+    if FORCE_DESTROY:
+        shutil.rmtree(path)
+        return True
+    try:
+        guarded_rmtree(path, guard_base)
+        return True
+    except UndeletableTurtleDataError:
+        print(
+            f"   🛑 Refusing to delete protected turtle dataset folder: {path}\n"
+            f"      Re-run with --force-destroy-dataset (or env FORCE_DESTROY_DATASET=1) "
+            f"to override -- this PERMANENTLY DESTROYS dataset photos."
+        )
+        return False
 
 
 def clear_all_uploads():
@@ -32,7 +61,8 @@ def clear_all_uploads():
             item_path = os.path.join(review_queue_dir, item)
             try:
                 if os.path.isdir(item_path):
-                    shutil.rmtree(item_path)
+                    if not _destroy_tree(item_path, data_dir):
+                        continue
                     deleted_count += 1
                     print(f"   🗑️  Deleted: {item}")
                 else:
@@ -54,9 +84,12 @@ def clear_all_uploads():
             try:
                 if os.path.isdir(finder_path):
                     # Count files in this directory
-                    file_count = len([f for f in os.listdir(finder_path) 
+                    file_count = len([f for f in os.listdir(finder_path)
                                      if os.path.isfile(os.path.join(finder_path, f))])
-                    shutil.rmtree(finder_path)
+                    # A Community_Uploads turtle folder holds real photos and is
+                    # protected unless --force-destroy-dataset is set.
+                    if not _destroy_tree(finder_path, data_dir):
+                        continue
                     community_count += file_count
                     print(f"   🗑️  Deleted {finder_dir} ({file_count} files)")
             except Exception as e:
@@ -116,11 +149,13 @@ def clear_review_queue_only():
         return
     
     deleted_count = 0
+    guard_base = os.path.join(base_dir, 'data')
     for item in os.listdir(review_queue_dir):
         item_path = os.path.join(review_queue_dir, item)
         try:
             if os.path.isdir(item_path):
-                shutil.rmtree(item_path)
+                if not _destroy_tree(item_path, guard_base):
+                    continue
                 deleted_count += 1
                 print(f"   🗑️  Deleted: {item}")
         except Exception as e:
@@ -130,9 +165,23 @@ def clear_review_queue_only():
 
 
 if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) > 1 and sys.argv[1] == '--review-only':
+    import argparse
+    parser = argparse.ArgumentParser(description="Clear uploaded data")
+    parser.add_argument('--review-only', action='store_true',
+                        help='Only clear the Review Queue')
+    parser.add_argument('--force-destroy-dataset', action='store_true',
+                        help='DANGER: bypass the undeletable-dataset guard so '
+                             'Community_Uploads turtle folders are deleted too. Off by default.')
+    args = parser.parse_args()
+
+    FORCE_DESTROY = (
+        args.force_destroy_dataset
+        or os.environ.get('FORCE_DESTROY_DATASET', '').strip().lower() in ('1', 'true', 'yes')
+    )
+    if FORCE_DESTROY:
+        print("⚠️  --force-destroy-dataset set: the turtle-dataset guard is DISABLED.")
+
+    if args.review_only:
         # Only clear review queue
         clear_review_queue_only()
     else:
@@ -142,7 +191,7 @@ if __name__ == "__main__":
         print("   - Community Uploads")
         print("   - Temporary uploaded files")
         print("\n   This does NOT delete official turtle data or trained models.\n")
-        
+
         confirmation = input("Type 'yes' to continue: ")
         if confirmation.lower() == 'yes':
             clear_all_uploads()
