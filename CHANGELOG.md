@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Scoped offline-backup download (team leads + admins)**: the offline-backup ZIP is no longer admin-only — a staff **Team Lead** can now download a backup too, but only of their group's assigned areas. A new **"What to download"** dropdown next to the Offline backup button offers **Everything**, a **State**, or a **Location**, limited to the caller's scope: a global caller (admin, Operations, or a global-scope group) sees every State/Location, while a scoped team lead sees only the States/Locations within their areas (an owned area, or a sub-location of a whole owned State) — never a target the server would refuse. The requested scope is resolved and **CLAMPED against the caller's areas at token-mint time**, and the short-lived download token is a self-contained, signed **capability**: it embeds the concrete data roots and the sheet-tab filter, so the download streams exactly that slice and tampering the URL's `scope`/`area` can never widen the archive. A scoped backup's `sheets_export/` snapshot contains only the caller's sheet tabs (research + community), and each area folder is mirrored under `data/<area>/` in the ZIP. The global admin **Everything** archive (whole `data/` tree + all sheets) is unchanged.
+
+### Changed
+
+- **Backup access + scope model**: `POST /api/backup/archive/token` and `GET /api/backup/archive` now admit admins **and** team leads (regular staff and community are refused), authorizing off the live account (the auth-service validate body) rather than the JWT claim. The scope parameters changed from `scope=all|sheet` (+`sheet`) to `scope=all|area` (+`area`, a `State` or `State/Location` path); the backup button and dropdown render only for team leads and admins.
+
 ## [2.1.3] - 2026-07-21 — Scoped match flow + read-only fallback
 
 ### Added

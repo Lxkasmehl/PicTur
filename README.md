@@ -242,6 +242,11 @@ You need to run **all three services** simultaneously:
    - The modal polls the backend's health endpoint every 5 seconds and dismisses itself the moment the server is back up *and* the expected duration has elapsed. After 10 minutes of stalled maintenance it surfaces a contact-admin hint.
    - Schedule and duration are configurable via the backend env vars `BACKUP_SCHEDULE_HOUR`, `BACKUP_SCHEDULE_MINUTE`, and `BACKUP_DURATION_SECONDS`. Window times come from the new `GET /api/backup/window` endpoint, so the server is the source of truth — client clock drift cannot skew the countdown.
 
+8. **Offline backup download (ZIP) — team leads + admins**:
+   - In the **Google Sheets Browser** the **Offline backup (ZIP)** button downloads a disaster-recovery archive: a mirror of the backend `data/` folder(s) plus CSV + JSON snapshots of the matching Google Sheets tabs (research + community). The archive is **streamed in constant memory**, so a multi-GB `data/` tree downloads straight to disk in the background.
+   - A **"What to download"** dropdown chooses the scope: **Everything**, one **State**, or one **Location**. The options are limited to what the caller may access — a global caller (admin, or a global-scope staff group) sees every State and Location; a scoped **Team Lead** sees only the States/Locations within their group's assigned areas.
+   - Access is limited to **team leads and admins** — regular staff and community users don't see the button. A team lead's download is always **clamped to their group's areas**: the server resolves and locks the exact `data/` roots and sheet-tab filter into the short-lived download token (a signed capability), so a scoped backup can never include another group's turtles, even if the download URL is tampered with. The admin **Everything** archive (the whole `data/` tree + every sheet) is unchanged.
+
 ### Staff Groups & Team Leads
 
 Staff are organized into **groups**. Two system groups are seeded — **Operations** (holds admins) and **Primary** (global staff) — both *global*, so their members see and act everywhere. Admins can also create **Sub-Area** groups that are *scoped* to one or more areas (a `State` folder or a `State/Location` path); a scoped group's members only see and act within those areas (enforced by the backend). A **Team Lead** is a staff member who leads one group.
