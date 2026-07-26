@@ -348,7 +348,9 @@ class TurtleAdditionalImagesMixin:
         if not q and not kind_filter:
             return []
 
-        skip_top = {'Review_Queue', 'benchmarks'}
+        # Skip system areas AND _Archive: an archived (merged-away / rolled-back)
+        # turtle's additional_images must not resurface in the curated-image search.
+        skip_top = {'Review_Queue', 'benchmarks', '_Archive'}
         # Names that mark "this manifest is inside a turtle's data area".
         # The turtle dir is one path component above the first such name we
         # encounter walking down from base_dir.
@@ -468,16 +470,44 @@ class TurtleAdditionalImagesMixin:
         def try_delete(target_dir):
             file_path = os.path.join(target_dir, filename)
             if os.path.isfile(file_path):
+                # Soft-delete: move the curated research image into
+                # {turtle_dir}/Deleted/<original_rel_path> (mirrors
+                # deletion_mixin.soft_delete_turtle_image) so it stays recoverable
+                # via list_deleted_turtle_images, instead of an irreversible remove.
+                rel = os.path.relpath(file_path, turtle_dir)
+                dest = os.path.join(turtle_dir, 'Deleted', rel)
+                if os.path.exists(dest):
+                    # Collision in Deleted/ — suffix a ms stamp to preserve history.
+                    stem, ext = os.path.splitext(dest)
+                    dest = f"{stem}_{int(time.time() * 1000)}{ext}"
+                # Hard-remove only a companion .pt (additional images normally have
+                # none, but mirror soft_delete so a stale .pt never dangles).
+                companion_pt = os.path.splitext(file_path)[0] + '.pt'
+                if os.path.isfile(companion_pt):
+                    try:
+                        os.remove(companion_pt)
+                    except OSError:
+                        pass
+                try:
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    shutil.move(file_path, dest)
+                except OSError:
+                    return False
+                # Tags follow the image into Deleted/ BEFORE the source manifest
+                # entry is pruned — migrate reads the label from the source manifest,
+                # so pruning the entry first would drop the labels instead of moving
+                # them (it also clears the source entry's labels itself).
+                migrate_labels_to_archive(
+                    os.path.dirname(file_path), os.path.basename(file_path),
+                    os.path.dirname(dest), os.path.basename(dest),
+                )
+                # Now drop the moved file's entry from the source manifest.
                 manifest_path = os.path.join(target_dir, 'manifest.json')
                 if os.path.isfile(manifest_path):
                     with open(manifest_path, 'r') as f: manifest = json.load(f)
                     new_manifest = [e for e in manifest if e.get('filename') != filename]
                     with open(manifest_path, 'w') as f: json.dump(new_manifest, f, indent=4)
-                try:
-                    os.remove(file_path)
-                    return True
-                except OSError:
-                    return False
+                return True
             return False
 
         if try_delete(additional_dir): return True, None

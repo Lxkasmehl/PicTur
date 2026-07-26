@@ -11,6 +11,7 @@ import shutil
 import time
 
 from .path_utils import _find_image_in_dir, _IMAGE_EXTENSIONS
+from .safe_fs import archive_turtle_folder
 
 try:
     from turtles.image_processing import brain
@@ -467,12 +468,14 @@ class TurtleMergeMixin:
                     print(f"   ⚠️ Could not delete secondary Sheets row: {e}")
                     return False, f"Merge partially applied: Sheets deletion failed ({e}). Secondary folder was NOT removed."
 
-            # 11. Remove secondary folder
+            # 11. Archive secondary folder — delete becomes reversible. The merge
+            # is complete and the secondary Sheets row is gone, but the secondary
+            # folder is preserved under _Archive/ instead of being destroyed.
             try:
-                shutil.rmtree(secondary_dir)
-                print(f"   🗑️ Removed secondary folder: {secondary_dir}")
-            except OSError as e:
-                print(f"   ⚠️ Could not remove secondary folder: {e}")
+                archived_to = archive_turtle_folder(secondary_dir, self.base_dir)
+                print(f"   🗄️ Archived secondary folder → {archived_to}")
+            except (OSError, shutil.Error) as e:
+                print(f"   ⚠️ Could not archive secondary folder: {e}")
 
             # 12. Refresh database index
             self.refresh_database_index()

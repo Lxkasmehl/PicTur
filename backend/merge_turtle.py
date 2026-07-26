@@ -4,7 +4,7 @@ merge_turtle.py — merge SOURCE turtle folder into TARGET turtle folder.
 Usage (inside the container, from /app):
     python merge_turtle.py <source_id> <target_id> [--execute]
 
-Default is dry-run. Pass --execute to actually move/delete files.
+Default is dry-run. Pass --execute to actually move/archive files.
 
 What it does:
   - Moves plastron/carapace reference images to target's Other Plastrons/
@@ -12,7 +12,7 @@ What it does:
   - Merges additional_images/ date-folders into target
   - Merges find_metadata.json (target wins on conflicts)
   - Deletes source .pt tensors (stale after merge)
-  - Deletes source folder
+  - Archives the source folder (moved under data/_Archive/, recoverable — never deleted)
 
 After running with --execute, restart the backend so the VRAM cache is rebuilt:
     docker restart turtleproject-backend-1
@@ -23,6 +23,12 @@ import json
 import os
 import shutil
 import sys
+
+# Import the shared archive primitive without pulling in turtle_manager's
+# package __init__ (which loads SuperPoint/torch). safe_fs is pure; putting the
+# turtle_manager/ dir on sys.path lets us import it standalone.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'turtle_manager'))
+from safe_fs import archive_turtle_folder
 
 
 IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'}
@@ -76,10 +82,11 @@ def delete_file(path: str, dry_run: bool) -> None:
         os.remove(path)
 
 
-def delete_tree(path: str, dry_run: bool) -> None:
-    print(f'  RMDIR {path}')
+def archive_tree(path: str, dry_run: bool, base_dir: str) -> None:
+    print(f'  ARCHIVE {path}')
     if not dry_run:
-        shutil.rmtree(path)
+        dest = archive_turtle_folder(path, base_dir)
+        print(f'       ->  {dest}')
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +204,7 @@ def main() -> None:
     parser.add_argument('source_id', help='Biology ID of the turtle to absorb, e.g. U521')
     parser.add_argument('target_id', help='Biology ID of the turtle to merge into, e.g. M521')
     parser.add_argument('--execute', action='store_true',
-                        help='Actually move/delete files (default is dry-run)')
+                        help='Actually migrate images and archive the source folder (default is dry-run)')
     args = parser.parse_args()
 
     dry_run = not args.execute
@@ -234,8 +241,8 @@ def main() -> None:
     merge_find_metadata(src_dir, target_dir, dry_run)
     print()
 
-    print(f'--- remove source folder ---')
-    delete_tree(src_dir, dry_run)
+    print(f'--- archive source folder ---')
+    archive_tree(src_dir, dry_run, base_dir)
     print()
 
     if dry_run:
