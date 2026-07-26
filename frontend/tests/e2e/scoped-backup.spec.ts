@@ -67,7 +67,9 @@ async function openSheetsBrowser(page: Page): Promise<void> {
 }
 
 async function readBackupOptions(page: Page): Promise<string[]> {
-  await page.getByLabel('What to download').click();
+  // Target the Select input by testid, not getByLabel: Mantine gives the portaled
+  // options listbox the same aria-label association, so getByLabel matches both.
+  await page.getByTestId('offline-backup-select').click();
   await page.getByRole('option').first().waitFor({ state: 'visible', timeout: 10_000 });
   return page.getByRole('option').allTextContents();
 }
