@@ -247,26 +247,33 @@ export const generateTurtleId = async (
 // ---------------------------------------------------------------------------
 
 
+/** What to download: everything the caller may see, or one area (a State folder
+ *  or a `State/Location` path). The server resolves + CLAMPS this against the
+ *  caller's group areas at token-mint time, so a team lead can only ever get
+ *  their own areas. */
+export type BackupScope = { scope: 'all' } | { scope: 'area'; area: string };
+
 /**
- * Admin-only: download a ZIP of the backend data/ mirror + Google Sheets
- * CSV/JSON exports.
+ * Team-lead/admin: download a ZIP of (part of) the backend data/ mirror + the
+ * matching Google Sheets CSV/JSON exports.
  *
  * The archive is multi-GB, so we do NOT buffer it (no fetch -> blob): the
  * server streams it in constant memory. Because a navigation/anchor download
- * can't send the Authorization header, we first mint a short-lived
- * token (authenticated via the header) and then hand the ?dl= URL to the
- * browser's own download manager, which streams straight to disk in the
- * background. `timeoutMs` bounds only the small token request.
+ * can't send the Authorization header, we first mint a short-lived capability
+ * token (authenticated via the header; the token embeds the resolved+clamped
+ * scope) and then hand the ?dl= URL to the browser's own download manager,
+ * which streams straight to disk in the background. `timeoutMs` bounds only the
+ * small token request.
  */
 export async function downloadAdminBackupArchive(
-  options: { scope: 'all' } | { scope: 'sheet'; sheet: string },
+  options: BackupScope,
   timeoutMs = 30000,
 ): Promise<void> {
   const token = getToken();
   if (!token) throw new Error('Not authenticated');
 
   const params = new URLSearchParams({ scope: options.scope });
-  if (options.scope === 'sheet') params.set('sheet', options.sheet);
+  if (options.scope === 'area') params.set('area', options.area);
 
   // 1) Mint a short-lived download token (authenticated via the header).
   const controller = new AbortController();

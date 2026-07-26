@@ -65,6 +65,15 @@ def scoped_ctx(areas=None, role='staff', group_role='member'):
     }
 
 
+def team_lead_ctx(areas=None):
+    """A scoped-group staff **Team Lead** (group_role='lead') restricted to ``areas``.
+
+    The persona allowed to download a scoped offline backup: not global, so the
+    download is clamped to ``areas``, but privileged enough to mint the token.
+    """
+    return scoped_ctx(areas=areas, role='staff', group_role='lead')
+
+
 def community_ctx():
     """A community (non-staff) user — no group, no areas, not global."""
     return {

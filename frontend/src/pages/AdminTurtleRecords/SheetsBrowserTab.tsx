@@ -12,7 +12,6 @@ import {
   Group,
   Image,
   Loader,
-  Menu,
   Modal,
   Paper,
   ScrollArea,
@@ -37,8 +36,11 @@ import { notifications } from '@mantine/notifications';
 import {
   downloadAdminBackupArchive,
   getImageUrl,
+  getLocations,
   getTurtleImages,
   isAdminRole,
+  isGlobalScope,
+  isTeamLead,
   searchTurtleImagesByLabel,
   setTurtleImageLabels,
   type TurtleAdditionalLabelSearchMatch,
@@ -49,6 +51,11 @@ import {
   turtleDiskFolderId,
   type TurtleSheetsData,
 } from '../../services/api/sheets';
+import {
+  backupTargetForValue,
+  buildBackupScopeOptions,
+  BACKUP_ALL_VALUE,
+} from './backupScopeOptions';
 import { useUser } from '../../hooks/useUser';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
@@ -138,7 +145,7 @@ function findTurtleForMatch(
 }
 
 export function SheetsBrowserTab() {
-  const { role } = useUser();
+  const { role, user } = useUser();
   const ctx = useAdminTurtleRecordsContext();
   const [turtleImages, setTurtleImages] = useState<TurtleImagesResponse | null>(null);
   const [listMode, setListMode] = useState<'records' | 'tags'>('records');
@@ -151,6 +158,8 @@ export function SheetsBrowserTab() {
   const [selectedMatchPath, setSelectedMatchPath] = useState<string | null>(null);
   const [tagSearchLightbox, setTagSearchLightbox] = useState<string | null>(null);
   const [backupLoading, setBackupLoading] = useState(false);
+  const [backupTarget, setBackupTarget] = useState<string>(BACKUP_ALL_VALUE);
+  const [backupLocations, setBackupLocations] = useState<string[]>([]);
   const [mergeTurtlesModalOpen, setMergeTurtlesModalOpen] = useState(false);
   const {
     selectedSheetFilter,
@@ -169,6 +178,58 @@ export function SheetsBrowserTab() {
     handleSaveTurtleFromBrowser: onSaveTurtle,
     setSelectedSheetFilterAndLoad: onSheetFilterChange,
   } = ctx;
+
+  // --- Offline backup (team leads + admins) ---
+  // Team leads are scoped: the server clamps the download to their group areas,
+  // so the "What to download" dropdown offers only their States/Locations.
+  const canDownloadBackup = isAdminRole(role) || isTeamLead(user);
+  const backupIsGlobal = isGlobalScope(user);
+  const backupScopeOptions = useMemo(
+    () =>
+      buildBackupScopeOptions({
+        isGlobal: backupIsGlobal,
+        areas: user?.areas ?? [],
+        locations: backupLocations,
+      }),
+    [backupIsGlobal, user?.areas, backupLocations],
+  );
+
+  useEffect(() => {
+    if (!canDownloadBackup) return;
+    let cancelled = false;
+    getLocations()
+      .then((res) => {
+        if (!cancelled) setBackupLocations(res.locations ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [canDownloadBackup]);
+
+  const handleBackupDownload = async () => {
+    const target = backupTargetForValue(backupTarget);
+    setBackupLoading(true);
+    try {
+      await downloadAdminBackupArchive(target);
+      notifications.show({
+        title: 'Download started',
+        message:
+          target.scope === 'all'
+            ? 'The backup is streaming to your downloads folder. Large backups keep downloading in the background.'
+            : `Backup for "${target.area}" is streaming to your downloads folder.`,
+        color: 'teal',
+      });
+    } catch (e) {
+      notifications.show({
+        title: 'Backup failed',
+        message: e instanceof Error ? e.message : 'Unknown error',
+        color: 'red',
+      });
+    } finally {
+      setBackupLoading(false);
+    }
+  };
 
   /** Biology ID when present — matches on-disk folder names (e.g. F439); else primary id. */
   const diskTurtleId = selectedTurtle ? turtleDiskFolderId(selectedTurtle) : '';
@@ -461,80 +522,33 @@ export function SheetsBrowserTab() {
                 >
                   Refresh
                 </Button>
-                {isAdminRole(role) && (
+                {canDownloadBackup && (
                   <>
-                    <Menu shadow='md' width={320} withinPortal>
-                      <Menu.Target>
-                        <Button
-                          variant='light'
-                          color='teal'
-                          fullWidth
-                          leftSection={<IconDownload size={16} />}
-                          loading={backupLoading}
-                        >
-                          Offline backup (ZIP)
-                        </Button>
-                      </Menu.Target>
-                      <Menu.Dropdown>
-                        <Menu.Label>Server data folder + Google Sheets</Menu.Label>
-                        <Menu.Item
-                          onClick={async () => {
-                            setBackupLoading(true);
-                            try {
-                              await downloadAdminBackupArchive({ scope: 'all' });
-                              notifications.show({
-                                title: 'Download started',
-                                message:
-                                  'The full archive is streaming to your downloads folder. Large backups keep downloading in the background.',
-                                color: 'teal',
-                              });
-                            } catch (e) {
-                              notifications.show({
-                                title: 'Backup failed',
-                                message: e instanceof Error ? e.message : 'Unknown error',
-                                color: 'red',
-                              });
-                            } finally {
-                              setBackupLoading(false);
-                            }
-                          }}
-                        >
-                          Full archive — entire data directory and all sheet tabs
-                        </Menu.Item>
-                        <Menu.Item
-                          disabled={!selectedSheetFilter}
-                          onClick={async () => {
-                            const sheet = selectedSheetFilter;
-                            if (!sheet) return;
-                            setBackupLoading(true);
-                            try {
-                              await downloadAdminBackupArchive({ scope: 'sheet', sheet });
-                              notifications.show({
-                                title: 'Download started',
-                                message: `Backup for tab "${sheet}" is streaming to your downloads folder.`,
-                                color: 'teal',
-                              });
-                            } catch (e) {
-                              notifications.show({
-                                title: 'Backup failed',
-                                message: e instanceof Error ? e.message : 'Unknown error',
-                                color: 'red',
-                              });
-                            } finally {
-                              setBackupLoading(false);
-                            }
-                          }}
-                        >
-                          Current location tab only
-                          {selectedSheetFilter
-                            ? ` (${selectedSheetFilter})`
-                            : ' — pick a location above'}
-                        </Menu.Item>
-                      </Menu.Dropdown>
-                    </Menu>
+                    <Select
+                      label='What to download'
+                      data={backupScopeOptions}
+                      value={backupTarget}
+                      onChange={(v) => setBackupTarget(v ?? BACKUP_ALL_VALUE)}
+                      allowDeselect={false}
+                      clearable={false}
+                      searchable
+                      data-testid='offline-backup-select'
+                    />
+                    <Button
+                      variant='light'
+                      color='teal'
+                      fullWidth
+                      leftSection={<IconDownload size={16} />}
+                      loading={backupLoading}
+                      onClick={handleBackupDownload}
+                      data-testid='offline-backup-button'
+                    >
+                      Offline backup (ZIP)
+                    </Button>
                     <Text size='xs' c='dimmed'>
-                      Admin only. ZIP includes on-disk data and CSV/JSON sheet snapshots
-                      for disaster recovery.
+                      {backupIsGlobal
+                        ? 'On-disk data plus CSV/JSON sheet snapshots for disaster recovery.'
+                        : "You can back up your group's areas — on-disk data plus CSV/JSON sheet snapshots."}
                     </Text>
                   </>
                 )}

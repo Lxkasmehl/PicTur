@@ -36,47 +36,71 @@ def verify_jwt_token(token):
         return False, None, f'Invalid token: {str(e)}'
 
 
-def mint_download_token(user_id, scope, sheet, ttl_seconds=120):
-    """Mint a short-lived, single-purpose token for a streaming backup download.
+def mint_download_token(user_id, resolved, ttl_seconds=120):
+    """Mint a short-lived, single-purpose *capability* token for a backup download.
 
-    A browser navigation/anchor download can't carry the Authorization header,
-    so the frontend first calls the (header-authenticated) token endpoint and
-    then puts this token in the download URL. Signed with JWT_SECRET; it carries
-    the scope/sheet it authorizes so it can't be replayed for a different one.
+    A browser navigation/anchor download can't carry the Authorization header, so
+    the frontend first calls the (header-authenticated) token endpoint and then
+    puts this token in the download URL. The token is a SIGNED CAPABILITY for
+    exactly one resolved+clamped slice: it embeds the concrete data ``roots`` and
+    the ``sheets`` tab filter, so the download authorizes off the token alone —
+    a tampered ``?scope=``/``?area=`` on the URL can never widen the archive.
+    Signed with JWT_SECRET.
+
+    ``resolved`` is the dict produced by
+    ``routes.admin_backup.resolve_backup_scope``::
+
+        {'roots': [rel_path, ...], 'sheets': [tab, ...] | '*', 'label': str,
+         'scope': 'all'|'area', 'area': str}
     """
     now = int(time.time())
+    resolved = resolved or {}
+    sheets = resolved.get('sheets')
     payload = {
         'purpose': 'backup_dl',
         'uid': user_id,
-        'scope': scope,
-        'sheet': sheet or '',
+        'roots': list(resolved.get('roots') or []),
+        'sheets': '*' if sheets == '*' else list(sheets or []),
+        'label': resolved.get('label') or '',
+        'scope': resolved.get('scope') or '',
+        'area': resolved.get('area') or '',
         'iat': now,
         'exp': now + int(ttl_seconds),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
 
 
-def verify_download_token(token, scope, sheet):
-    """Validate a backup-download token and confirm it authorizes (scope, sheet).
+def verify_download_token(token):
+    """Validate a backup-download capability token and return its embedded scope.
 
-    Returns True only for an unexpired token minted by mint_download_token whose
-    embedded scope/sheet match the request. Note: this intentionally does NOT
-    re-run the auth-service revocation check — the token is issued immediately
-    after a full admin+revocation check and lives only ~120s.
+    Returns the resolved dict
+    ``{'roots', 'sheets', 'label', 'scope', 'area', 'uid'}`` for an unexpired token
+    minted by :func:`mint_download_token`, or ``None`` for anything else (bad
+    signature, wrong purpose, expired). The download streams exactly the
+    roots/sheets baked in here — never off the request URL — so the token is a
+    tamper-proof capability. This intentionally does NOT re-run the auth-service
+    revocation check: the token is issued immediately after a full
+    admin/team-lead + revocation check and lives only ~120s.
     """
     if not token:
-        return False
+        return None
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
     except jwt.InvalidTokenError:
-        return False
+        return None
     if payload.get('purpose') != 'backup_dl':
-        return False
-    if payload.get('scope') != scope:
-        return False
-    if (payload.get('sheet') or None) != (sheet or None):
-        return False
-    return True
+        return None
+    sheets = payload.get('sheets')
+    if sheets != '*':
+        sheets = list(sheets) if isinstance(sheets, list) else []
+    return {
+        'roots': list(payload.get('roots') or []),
+        'sheets': sheets,
+        'label': payload.get('label') or '',
+        'scope': payload.get('scope') or '',
+        'area': payload.get('area') or '',
+        'uid': payload.get('uid'),
+    }
 
 
 def get_user_from_request():
