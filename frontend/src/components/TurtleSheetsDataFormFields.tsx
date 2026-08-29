@@ -103,7 +103,11 @@ export function TurtleSheetsDataFormFields({
                   field='dates_refound'
                   label={cfg.label}
                   placeholder={cfg.placeholder}
-                  description={cfg.description}
+                  description={
+                    mode === 'edit'
+                      ? "Today's date is auto-filled since confirming this match records today as the date refound. Edit if the turtle was actually found on a different date."
+                      : cfg.description
+                  }
                   value={formData.dates_refound || ''}
                   onChange={(v) => handleChange('dates_refound', v)}
                   type={cfg.type}

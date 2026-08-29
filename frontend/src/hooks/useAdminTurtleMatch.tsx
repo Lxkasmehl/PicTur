@@ -19,6 +19,7 @@ import {
 import { isStaffRole } from '../services/api/auth';
 import { notifications } from '@mantine/notifications';
 import { IconCheck } from '@tabler/icons-react';
+import { appendTodayToDatesRefound } from '../utils/usDateFormat';
 import type { TurtleSheetsDataFormRef } from '../components/TurtleSheetsDataForm';
 import {
   lookupIdFromTurtleId,
@@ -220,6 +221,15 @@ export function useAdminTurtleMatch(
     loadMatchData();
   }, [imageId, authChecked, role, navigate]);
 
+  const notifyDateRefoundAutoFilled = () => {
+    notifications.show({
+      title: 'Date Refound auto-filled',
+      message: "Today's date was added to Dates Refound since confirming this match records today as the date the turtle was refound. Edit the field if that's not correct.",
+      color: 'blue',
+      icon: <IconCheck size={18} />,
+    });
+  };
+
   const handleSelectMatch = async (turtleId: string) => {
     if (!turtleId) {
       setSelectedMatch(null);
@@ -274,19 +284,29 @@ export function useAdminTurtleMatch(
 
       if (response.success && response.data) {
         if (response.exists) {
-          setSheetsData(response.data);
+          const { value: dates_refound, added } = appendTodayToDatesRefound(
+            response.data.dates_refound,
+          );
+          setSheetsData({ ...response.data, dates_refound });
           setPrimaryId(response.data.primary_id || turtleId);
+          if (added) notifyDateRefoundAutoFilled();
         } else {
+          const { value: dates_refound } = appendTodayToDatesRefound(undefined);
           setPrimaryId(turtleId);
-          setSheetsData({ primary_id: turtleId });
+          setSheetsData({ primary_id: turtleId, dates_refound });
+          notifyDateRefoundAutoFilled();
         }
       } else {
+        const { value: dates_refound } = appendTodayToDatesRefound(undefined);
         setPrimaryId(turtleId);
-        setSheetsData({ primary_id: turtleId });
+        setSheetsData({ primary_id: turtleId, dates_refound });
+        notifyDateRefoundAutoFilled();
       }
     } catch {
+      const { value: dates_refound } = appendTodayToDatesRefound(undefined);
       setPrimaryId(turtleId);
-      setSheetsData({ primary_id: turtleId });
+      setSheetsData({ primary_id: turtleId, dates_refound });
+      notifyDateRefoundAutoFilled();
     } finally {
       window.clearTimeout(timeoutId);
       setLoadingTurtleData(false);

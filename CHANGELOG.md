@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Auto-fill Date Refound on match confirmation**: when an admin selects a match (or confirms a new turtle) in Admin Turtle Match / Records, today's date is automatically appended to "Dates Refound" if not already present, with a notification and an inline hint explaining why the field was pre-filled.
+
 ## [2.0.19] - 2026-06-30 — Merge duplicate turtle records; turtle_manager package refactor
 
 ### Added

@@ -111,6 +111,24 @@ export function formatCommaSeparatedDatesToUs(raw: string): string {
   return tokens.map((p) => formatSingleDateTokenToUs(p)).join(', ');
 }
 
+/**
+ * Append today's local date to a "dates refound" list (US slash form), so admins confirming a
+ * match don't have to remember to log the refind date themselves. Returns the merged string and
+ * whether today's date was newly added (false if it was already present).
+ */
+export function appendTodayToDatesRefound(existing: string | undefined): {
+  value: string;
+  added: boolean;
+} {
+  const today = formatLocalDateUsSlash(new Date());
+  const normalizedExisting = existing?.trim() ? formatCommaSeparatedDatesToUs(existing) : '';
+  const tokens = normalizedExisting ? normalizedExisting.split(', ').filter(Boolean) : [];
+  if (tokens.includes(today)) {
+    return { value: normalizedExisting, added: false };
+  }
+  return { value: [...tokens, today].join(', '), added: true };
+}
+
 export function normalizeTurtleSheetsDateFieldsToUs(data: TurtleSheetsData): TurtleSheetsData {
   const out: TurtleSheetsData = { ...data };
   for (const key of TURTLE_SHEETS_DATE_FIELD_KEYS) {
