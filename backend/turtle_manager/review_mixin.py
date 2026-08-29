@@ -315,9 +315,7 @@ class TurtleReviewMixin:
                 # one. Use ref_stem (folder basename) as the cached site_id so
                 # the incremental insert matches what refresh_database_index
                 # would produce on a full reload.
-                cache_attr = 'vram_cache_carapace' if photo_type == 'carapace' else 'vram_cache_plastron'
-                cache = getattr(brain, cache_attr, [])
-                setattr(brain, cache_attr, [c for c in cache if c['file_path'] != old_pt_path])
+                self._evict_from_vram(old_pt_path, photo_type)
                 rel_path = os.path.relpath(ref_dir, self.base_dir)
                 loc_parts = rel_path.split(os.sep)[:-2]
                 location_name = "/".join(loc_parts)
@@ -532,8 +530,7 @@ class TurtleReviewMixin:
                                 if old_img_path and os.path.exists(old_img_path) and old_img_path != dest_img:
                                     try: os.remove(old_img_path)
                                     except OSError: pass
-                                cache = getattr(brain, 'vram_cache_carapace', [])
-                                brain.vram_cache_carapace = [c for c in cache if c['file_path'] != old_pt_path]
+                                self._evict_from_vram(old_pt_path, 'carapace')
                                 rel = os.path.relpath(target_dir, self.base_dir)
                                 loc = os.path.dirname(rel).replace(os.sep, "/")
                                 brain.add_single_to_vram(dest_pt, target_ref_stem, loc, photo_type='carapace')
@@ -624,12 +621,13 @@ class TurtleReviewMixin:
         # Evict from VRAM cache (check both new 'plastron' and legacy 'ref_data' paths)
         subdirs_to_check = ['carapace'] if photo_type == 'carapace' else ['plastron', 'ref_data']
         pt_path_fragments = [os.path.join(turtle_id, sd, f"{turtle_id}.pt") for sd in subdirs_to_check]
-        for cache_attr in ('vram_cache_plastron', 'vram_cache_carapace'):
-            cache = getattr(brain, cache_attr, [])
-            before = len(cache)
-            filtered = [c for c in cache if not any(c['file_path'].endswith(frag) for frag in pt_path_fragments)]
-            if len(filtered) < before:
-                setattr(brain, cache_attr, filtered)
+        for cache_attr, ptype in (('vram_cache_plastron', 'plastron'),
+                                  ('vram_cache_carapace', 'carapace')):
+            removed = brain.filter_vram_cache(
+                lambda c: not any(c['file_path'].endswith(frag) for frag in pt_path_fragments),
+                photo_type=ptype,
+            )
+            if removed:
                 print(f"🔙 Evicted {turtle_id} from {cache_attr}")
 
     def reject_review_packet(self, request_id):

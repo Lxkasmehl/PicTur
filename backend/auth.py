@@ -4,6 +4,7 @@ JWT Authentication utilities and decorators
 
 import json
 import ssl
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -33,6 +34,49 @@ def verify_jwt_token(token):
         return False, None, 'Token has expired'
     except jwt.InvalidTokenError as e:
         return False, None, f'Invalid token: {str(e)}'
+
+
+def mint_download_token(user_id, scope, sheet, ttl_seconds=120):
+    """Mint a short-lived, single-purpose token for a streaming backup download.
+
+    A browser navigation/anchor download can't carry the Authorization header,
+    so the frontend first calls the (header-authenticated) token endpoint and
+    then puts this token in the download URL. Signed with JWT_SECRET; it carries
+    the scope/sheet it authorizes so it can't be replayed for a different one.
+    """
+    now = int(time.time())
+    payload = {
+        'purpose': 'backup_dl',
+        'uid': user_id,
+        'scope': scope,
+        'sheet': sheet or '',
+        'iat': now,
+        'exp': now + int(ttl_seconds),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
+
+
+def verify_download_token(token, scope, sheet):
+    """Validate a backup-download token and confirm it authorizes (scope, sheet).
+
+    Returns True only for an unexpired token minted by mint_download_token whose
+    embedded scope/sheet match the request. Note: this intentionally does NOT
+    re-run the auth-service revocation check — the token is issued immediately
+    after a full admin+revocation check and lives only ~120s.
+    """
+    if not token:
+        return False
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+    except jwt.InvalidTokenError:
+        return False
+    if payload.get('purpose') != 'backup_dl':
+        return False
+    if payload.get('scope') != scope:
+        return False
+    if (payload.get('sheet') or None) != (sheet or None):
+        return False
+    return True
 
 
 def get_user_from_request():

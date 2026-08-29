@@ -485,7 +485,7 @@ export function SheetsBrowserTab() {
                               notifications.show({
                                 title: 'Download started',
                                 message:
-                                  'Save the ZIP from your browser downloads folder.',
+                                  'The full archive is streaming to your downloads folder. Large backups keep downloading in the background.',
                                 color: 'teal',
                               });
                             } catch (e) {
@@ -511,7 +511,7 @@ export function SheetsBrowserTab() {
                               await downloadAdminBackupArchive({ scope: 'sheet', sheet });
                               notifications.show({
                                 title: 'Download started',
-                                message: `Backup for tab "${sheet}" is saving to your downloads folder.`,
+                                message: `Backup for tab "${sheet}" is streaming to your downloads folder.`,
                                 color: 'teal',
                               });
                             } catch (e) {

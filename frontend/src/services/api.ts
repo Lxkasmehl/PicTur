@@ -48,6 +48,7 @@ export type {
 
 export {
   uploadTurtlePhoto,
+  quickCheckCarapaceMatch,
   getReviewQueue,
   uploadReviewPacketAdditionalImages,
   getReviewPacket,
@@ -77,6 +78,8 @@ export type {
   PhotoType,
   TurtleMatch,
   UploadPhotoResponse,
+  QuickCheckMatch,
+  QuickCheckResponse,
   LocationHint,
   AdditionalImage,
   ReviewQueueItem,

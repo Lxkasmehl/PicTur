@@ -14,7 +14,7 @@ import uuid
 from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
-from auth import optional_auth, check_auth_revocation
+from auth import optional_auth, check_auth_revocation, require_admin
 from image_utils import UploadImageError
 from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
 from upload_validation import ingest_saved_upload, log_upload_rejection, upload_error_response
@@ -455,3 +455,117 @@ def register_upload_routes(app):
                 'code': 'processing_failed',
                 'details': error_trace if app.debug else None,
             }), 500
+
+    @app.route('/api/match/quick-check', methods=['POST'])
+    @require_admin
+    def quick_check_match():
+        """Carapace-only quick check (staff + admin, strictly read-only).
+
+        Runs a fresh photo against the carapace VRAM cache and returns the
+        ranked candidates. Unlike /api/upload, this persists NOTHING: no
+        review-queue packet, no metadata.json, no candidate copies — the
+        temp upload is deleted in the finally block.
+        """
+        if not manager_service.manager_ready.wait(timeout=30):
+            return jsonify({'error': 'TurtleManager is still initializing. Please try again in a moment.'}), 503
+
+        if manager_service.manager is None:
+            return jsonify({'error': 'TurtleManager is not ready. Please try again in a moment.'}), 503
+
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+
+        file = request.files['file']
+        if not file.filename:
+            return jsonify({'error': 'No file selected'}), 400
+
+        if not allowed_file(file.filename):
+            log_upload_rejection(
+                context='api/match/quick-check',
+                path=None,
+                code='invalid_extension',
+                message='Invalid file type',
+                filename=file.filename,
+            )
+            return jsonify({
+                'error': 'Invalid file type. Allowed: JPEG, PNG, GIF, WEBP, HEIC.',
+                'code': 'invalid_extension',
+            }), 400
+
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
+        if file_size > MAX_FILE_SIZE:
+            log_upload_rejection(
+                context='api/match/quick-check',
+                path=None,
+                code='file_too_large',
+                message=f'File exceeds {MAX_FILE_SIZE} bytes',
+                filename=file.filename,
+            )
+            return jsonify({
+                'error': 'File too large (max 8MB after optimization).',
+                'code': 'file_too_large',
+            }), 400
+
+        match_sheet = (request.form.get('match_sheet') or '').strip() or None
+
+        # Unique temp prefix: the backend serves requests concurrently
+        # (threaded=True), so the bare secure_filename pattern used by
+        # /api/upload could collide across simultaneous quick checks. The
+        # prefix also drives cleanup: ingest may RENAME the temp (e.g.
+        # .HEIC/.JPG → .jpg) before failing, so deleting only temp_path
+        # could orphan the converted sibling.
+        filename = secure_filename(file.filename)
+        temp_prefix = f"quickcheck_{uuid.uuid4().hex[:8]}_"
+        temp_path = os.path.join(UPLOAD_FOLDER, temp_prefix + filename)
+        try:
+            file.save(temp_path)
+            try:
+                temp_path = ingest_saved_upload(
+                    temp_path, context='api/match/quick-check', filename=file.filename,
+                )
+            except UploadImageError as img_err:
+                return upload_error_response(img_err)
+
+            results, elapsed = manager_service.manager.search_for_matches(
+                temp_path,
+                location_filter=match_sheet,
+                photo_type='carapace',
+                expand_to_all_when_short=True,
+            )
+
+            formatted = []
+            for match in results:
+                pt_path = match.get('file_path', '') or ''
+                formatted.append({
+                    'turtle_id': match.get('site_id', 'Unknown'),
+                    'location': (match.get('location') or 'Unknown').strip() or 'Unknown',
+                    'confidence': float(match.get('confidence', 0.0)),
+                    'score': int(match.get('score', 0)),
+                    # Case-insensitive .pt→image lookup (Linux prod is
+                    # case-sensitive; carapace refs are often .JPG).
+                    'image_path': find_image_for_pt(pt_path),
+                })
+
+            return jsonify({
+                'success': True,
+                'photo_type': 'carapace',
+                'matches': formatted,
+                'elapsed': round(elapsed, 2),
+            })
+        except Exception as e:
+            error_trace = traceback.format_exc()
+            sys.stderr.write(f"[QUICK CHECK 500] {str(e)}\n{error_trace}")
+            sys.stderr.flush()
+            return jsonify({'error': f'Quick check failed: {str(e)}'}), 500
+        finally:
+            try:
+                for fname in os.listdir(UPLOAD_FOLDER):
+                    if fname.startswith(temp_prefix):
+                        try:
+                            os.remove(os.path.join(UPLOAD_FOLDER, fname))
+                        except OSError:
+                            pass
+            except OSError:
+                pass

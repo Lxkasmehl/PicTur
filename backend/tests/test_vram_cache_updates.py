@@ -31,6 +31,24 @@ def _make_mock_brain():
     mock.load_database_to_vram = MagicMock()
     mock.extract_query_features = MagicMock(return_value=["fake_feats"])
     mock.match_against_cache = MagicMock(return_value=[])
+
+    # Faithfully simulate the brain's locked eviction helpers so the cache lists
+    # actually shrink (the real brain.filter_vram_cache / evict_from_vram do the
+    # filter-swap under _gpu_lock; the manager now delegates eviction to them
+    # instead of mutating brain.vram_cache_* directly).
+    def _filter_vram_cache(keep_fn, photo_type="plastron"):
+        attr = "vram_cache_carapace" if photo_type == "carapace" else "vram_cache_plastron"
+        cache = getattr(mock, attr)
+        kept = [c for c in cache if keep_fn(c)]
+        removed = len(cache) - len(kept)
+        setattr(mock, attr, kept)
+        return removed
+
+    def _evict_from_vram(pt_path, photo_type="plastron"):
+        return _filter_vram_cache(lambda c: c.get("file_path") != pt_path, photo_type)
+
+    mock.filter_vram_cache = MagicMock(side_effect=_filter_vram_cache)
+    mock.evict_from_vram = MagicMock(side_effect=_evict_from_vram)
     return mock
 
 

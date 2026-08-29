@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Auto-fill Date Refound on match confirmation**: when an admin selects a match (or confirms a new turtle) in Admin Turtle Match / Records, today's date is automatically appended to "Dates Refound" if not already present, with a notification and an inline hint explaining why the field was pre-filled.
 
+## [2.0.22] - 2026-07-10 — Carapace quick check opened to staff
+
+### Changed
+
+- **Carapace-only quick check is now available to staff accounts** (was admin-only in 2.0.21): the toggle on the photo-upload screen now shows for every staff and admin user, and the backend `POST /api/match/quick-check` endpoint accepts staff tokens (community and anonymous still rejected). The mode itself is unchanged — strictly read-only, carapace pool only.
+
+## [2.0.21] - 2026-07-07 — Carapace-only quick check
+
+### Added
+
+- **Carapace-only quick check (admin)**: a new switch on the photo-upload screen, just below "Mortality without plastron ID", puts the page into a clearly-marked read-only carapace mode. The admin picks a location scope and uploads a photo exactly like normal, but matching runs against **only the carapace reference pool** and returns the usual ranked candidates; clicking a candidate opens the same enlarged side-by-side comparison used on the match page. The whole mode is strictly read-only — no review-queue packet is created, the query photo is never stored (server temp deleted immediately after matching), and no select/approve/create-turtle/replace-reference/add-images action exists anywhere in the flow. Backing out returns to the normal plastron flow (mode and results reset; the chosen location is kept). Backend: new admin-only `POST /api/match/quick-check` endpoint that reuses the existing carapace matcher and the case-insensitive `.pt`→image lookup.
+
+## [2.0.20] - 2026-07-07 — Streaming offline-backup ZIP download
+
+### Fixed
+
+- **Admin "Offline backup (ZIP)" download now works**: the Sheets Browser backup button built the entire multi-GB archive (the full `data/` tree + Google Sheets snapshots) in server memory before sending a single byte, which ran out of memory / timed out, so the download never started. The ZIP is now **streamed** in constant server memory (compressed on the fly and flushed chunk-by-chunk) and the browser's own download manager writes it **progressively to disk** — so even the full ~9 GB archive downloads reliably. The walk tolerates files changing or vanishing mid-stream (a concurrent approval, relocation, soft-delete, or nightly rename can no longer abort the download), skips in-flight `*_staged_*` and OS-junk files, and preserves the existing archive layout (`data/` + `sheets_export/`). Because a browser navigation download cannot carry the `Authorization` header, the client first mints a short-lived (~2 min) download token, so the long-lived admin JWT is never placed in the URL.
+
+### Changed
+
+- **Backend serves requests concurrently (`threaded=True`)**: a working multi-minute backup download would otherwise hold the single Flask request thread and stall matching/upload/review for everyone else. The server now handles requests on separate threads, so a large download (or any long request) no longer starves other users. This is safe because the hot shared resources were already lock-guarded (GPU/VRAM cache, approvals, Google Sheets API, rate-limiting, locations catalog) and the app already ran concurrent background upload threads. As part of this, two in-memory VRAM-cache operations that previously mutated state without the GPU lock were hardened: the search-index rebuild now swaps an atomically-built index, and every cache eviction goes through one lock-guarded path so a concurrent add can't lose an update — including the two eviction sites introduced by the merge-turtles feature (2.0.19). These are match-cache-consistency fixes only — no change to on-disk data — and a stale entry would already self-heal on the next index refresh.
+
 ## [2.0.19] - 2026-06-30 — Merge duplicate turtle records; turtle_manager package refactor
 
 ### Added
@@ -609,7 +631,10 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.19...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.22...HEAD
+[2.0.22]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.21...v2.0.22
+[2.0.21]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.20...v2.0.21
+[2.0.20]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.19...v2.0.20
 [2.0.19]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.18...v2.0.19
 [2.0.18]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.17...v2.0.18
 [2.0.17]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.16...v2.0.17

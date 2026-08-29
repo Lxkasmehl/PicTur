@@ -208,29 +208,35 @@ You need to run **all three services** simultaneously:
    - If a carapace photo is attached as an additional image, a **Cross-check carapace** button runs a parallel carapace search and displays both result sets side-by-side, flagging disagreements
    - Admin selects the best match (optionally marking the upload as the new reference) or creates a new turtle
 
-2. **Review Queue**:
+2. **Carapace-only quick check (read-only, staff + admin)**:
+
+   - A switch below "Mortality without plastron ID" puts the upload page into a clearly-marked carapace-only mode (orange banner); available to staff and admin accounts (everyone except community)
+   - Pick a location scope and upload a carapace photo like normal — matching runs against **only the carapace reference pool** and returns the ranked candidates; clicking one opens the same enlarged side-by-side comparison as the match page
+   - Strictly read-only: nothing is saved (no review-queue packet, no stored query photo) and no select/approve/create/replace action exists in this mode; backing out returns to the normal plastron flow
+
+3. **Review Queue**:
 
    - Admin sees all community uploads, ordered by upload date
    - Community photos arrive as `unclassified` — admin classifies each as **Plastron** or **Carapace** (or trashes it) before matching runs against the correct VRAM cache
    - Each upload lists its top 5 suggested matches and any additional photos the community user included
    - Cross-check flow: if the community upload also has a plastron additional image, **Cross-check with plastron** runs both searches
 
-3. **Google Sheets Browser (Turtle Records)**:
+4. **Google Sheets Browser (Turtle Records)**:
    - Browse all turtles from Google Sheets with primary plastron thumbnails
    - Select a turtle to edit its sheet data and manage its photos end-to-end
    - **Additional Turtle Photos** section: drop new plastron, carapace, microhabitat, condition, or generic additional photos onto a turtle. *Every* photo-type button routes through the **Pending photos (uncommitted)** box first — nothing is written to the turtle until the admin presses **Update Turtle**. Plastron and Carapace uploads additionally open a modal asking whether to replace the existing reference (**Yes, replace** archives the old reference to `plastron/Old References/` or `carapace/Old References/`; **No, save as Other** routes the photo to the Other folder). The pending box has a reserved slot for the tagging UI (rename-on-commit).
    - The Additional pane resets every calendar day — it only lists uploads from the current local date. Older day-folders remain visible via **View Old Turtle Photos** below.
    - **View Old Turtle Photos** section: a date dropdown lists every date this turtle has a photo on file (EXIF "when taken" dates preferred, upload dates as fallback). Selecting a date shows all thumbnails from that day alongside their source (`Old Plastron Ref`, `Other Carapace`, `Microhabitat`, etc.). Active plastron and carapace references are included under their capture date with a **(active)** badge.
 
-4. **Create New Turtle** (from either the Admin Match page or the Sheets Browser):
+5. **Create New Turtle** (from either the Admin Match page or the Sheets Browser):
    - Between the auto-generated Primary ID and the Google Sheets form, a **Photos for this upload** panel offers Microhabitat / Condition / Carapace / Additional upload buttons and displays any photos already attached to the packet. Admins can correct a forgotten photo at creation time instead of discovering the gap post-approval.
    - All sheet-data fields start **fully editable** — the per-field click-to-unlock flow only applies when *editing* an existing turtle.
 
-5. **Admin Match Page — Match Selected view**:
+6. **Admin Match Page — Match Selected view**:
    - Order top-to-bottom: uploaded-vs-candidate comparison → **Additional Photos** panel → **Replace plastron / carapace reference** checkboxes → Google Sheets data form → action buttons (Cancel / Save to Sheets & Confirm Match / Create New Turtle Instead). The replace-reference decision sits directly under the photos it affects.
    - Each candidate card (plastron and cross-checked carapace) shows the on-disk biology id, the turtle's **chosen name** from Google Sheets when set, and the auto-generated **Primary ID** when distinct from the biology id, plus location and confidence. Per-candidate name/Primary ID is read from Sheets in parallel after the match list resolves; Sheets writes are never made from this page.
 
-6. **Backup countdown overlay (staff + admin only)**:
+7. **Backup countdown overlay (staff + admin only)**:
    - Five minutes before the nightly chronodrop kicks off (`03:00` server time by default), an orange floating badge appears bottom-right on every admin page with a live `mm:ss` countdown and the message *"Server backup in X:XX — please save your work."*
    - At T-0 the overlay flips to a full-screen un-dismissable modal (*"Nightly backup is running — the system will resume automatically"*) that blocks interaction while the chronodrop runs and, when needed, while the backend container restarts to pick up renamed turtle folders.
    - The modal polls the backend's health endpoint every 5 seconds and dismisses itself the moment the server is back up *and* the expected duration has elapsed. After 10 minutes of stalled maintenance it surfaces a contact-admin hint.

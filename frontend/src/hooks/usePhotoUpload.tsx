@@ -60,6 +60,8 @@ interface UsePhotoUploadReturn {
   handleDrop: (acceptedFiles: FileWithPath[]) => void;
   handleUpload: () => Promise<void>;
   handleRemove: () => void;
+  /** Clear a finished (success/error) upload result but keep the staged photo. */
+  resetUploadStatus: () => void;
 }
 
 export function usePhotoUpload({
@@ -349,6 +351,15 @@ export function usePhotoUpload({
     setExtraFiles([]);
   }, []);
 
+  const resetUploadStatus = useCallback((): void => {
+    setUploadState('idle');
+    setUploadProgress(0);
+    setUploadResponse(null);
+    setImageId(null);
+    setIsDuplicate(false);
+    setPreviousUploadDate(null);
+  }, []);
+
   // Clear any in-progress upload state when the session ends so a logged-out
   // user (or whoever logs in next on this device) doesn't inherit the previous
   // session's file, preview, flags, and extra photos. Only fires on the
@@ -382,6 +393,7 @@ export function usePhotoUpload({
     setPhysicalFlag,
     extraFiles,
     setExtraFiles,
+    resetUploadStatus,
     handleDrop,
     handleUpload,
     handleRemove,

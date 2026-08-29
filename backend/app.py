@@ -121,7 +121,13 @@ if __name__ == '__main__':
         sys.stdout.flush()
 
     try:
-        app.run(debug=debug_mode, host='0.0.0.0', port=port, use_reloader=False)
+        # threaded=True so a long-running streaming response (e.g. the admin
+        # offline-backup ZIP) runs on its own thread instead of holding the
+        # single request thread and starving matching/upload/review for other
+        # users. Shared resources are already lock-guarded (brain._gpu_lock,
+        # TurtleManager._approval_lock, Sheets _api_lock, rate-limit/catalog
+        # locks) and the app already runs concurrent daemon upload threads.
+        app.run(debug=debug_mode, host='0.0.0.0', port=port, use_reloader=False, threaded=True)
     except Exception as e:
         print(f"[ERROR] Exception during app.run(): {str(e)}", flush=True)
         sys.stdout.flush()

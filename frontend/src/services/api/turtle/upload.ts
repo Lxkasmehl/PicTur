@@ -4,6 +4,7 @@ import { parseUploadApiErrorBody } from '../../../utils/uploadErrorMessages';
 import { authHeaders } from './http';
 import type {
   LocationHint,
+  QuickCheckResponse,
   UploadExtraFile,
   UploadFlagOptions,
   UploadPhotoResponse,
@@ -86,6 +87,40 @@ export const uploadTurtlePhoto = async (
     if (import.meta.env.DEV && code) {
       console.error('Upload error code:', code);
     }
+    throw new Error(message);
+  }
+
+  return await response.json();
+};
+
+/**
+ * Read-only carapace quick check (admin only). Matches the photo against the
+ * carapace pool and returns ranked candidates; the backend persists nothing.
+ */
+export const quickCheckCarapaceMatch = async (
+  file: File,
+  /** Sheet/location scope; '' = test against all locations */
+  matchSheet: string,
+): Promise<QuickCheckResponse> => {
+  const prepared = await prepareImageForUpload(file);
+
+  const formData = new FormData();
+  formData.append('file', prepared);
+  formData.append('match_sheet', matchSheet);
+
+  const response = await fetch(`${TURTLE_API_BASE_URL}/match/quick-check`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: formData,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      removeToken();
+      throw new Error('Authentication failed. Please try again.');
+    }
+    const body = await response.json().catch(() => ({}));
+    const { message } = parseUploadApiErrorBody(body);
     throw new Error(message);
   }
 
