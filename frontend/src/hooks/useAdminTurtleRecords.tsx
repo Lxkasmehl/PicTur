@@ -549,6 +549,10 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
     data: TurtleSheetsData,
     sheetName: string,
   ) => {
+    const { value: dates_refound, added } = appendTodayToDatesRefound(data.dates_refound);
+    data = { ...data, dates_refound };
+    if (added) notifyDateRefoundAutoFilled();
+
     setNewTurtleSheetsData(data);
     setNewTurtleSheetName(sheetName);
     const state = data.general_location || '';

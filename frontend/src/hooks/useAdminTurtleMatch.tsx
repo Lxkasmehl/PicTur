@@ -412,6 +412,10 @@ export function useAdminTurtleMatch(
     sheetName: string,
     backendLocationPath?: string,
   ) => {
+    const { value: dates_refound, added } = appendTodayToDatesRefound(data.dates_refound);
+    data = { ...data, dates_refound };
+    if (added) notifyDateRefoundAutoFilled();
+
     setNewTurtleSheetsData(data);
     setNewTurtleSheetName(sheetName);
     setNewTurtleBackendPath(backendLocationPath);
