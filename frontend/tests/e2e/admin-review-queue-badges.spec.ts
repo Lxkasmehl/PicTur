@@ -40,6 +40,7 @@ test.describe('Admin Review Queue – upload source badges', () => {
     await navClick(page, 'Turtle Records');
     await expect(page).toHaveURL('/admin/turtle-records');
     await expect(page.getByRole('tab', { name: /Review Queue/ })).toBeVisible();
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
 
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     await tabPanel.waitFor({ state: 'visible', timeout: 5000 });
@@ -84,6 +85,7 @@ test.describe('Admin Review Queue – upload source badges', () => {
 
     await loginAsAdmin(page);
     await navClick(page, 'Turtle Records');
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     await tabPanel.waitFor({ state: 'visible', timeout: 5000 });
 

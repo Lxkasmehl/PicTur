@@ -20,11 +20,23 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
     await expect(page.getByRole('button', { name: 'Turtle Records' })).not.toBeVisible();
   });
 
-  test('Turtle Records opens Review Queue', async ({ page }) => {
+  test('Turtle Records opens Google Sheets Browser by default', async ({ page }) => {
     await loginAsAdmin(page);
     await navClick(page, 'Turtle Records');
     await expect(page).toHaveURL('/admin/turtle-records');
+
+    // Sheets Browser tab panel is active without any tab click.
+    await expect(
+      page.getByRole('tabpanel', { name: /Google Sheets Browser/ }),
+    ).toBeVisible();
+    await expect(page.getByRole('textbox', { name: /Location \(Spreadsheet\)/i })).toBeVisible();
+
+    // Review Queue tab is still present and not the active panel until clicked.
     await expect(page.getByRole('tab', { name: /Review Queue/ })).toBeVisible();
+    await expect(page.getByRole('tabpanel', { name: /Review Queue/ })).not.toBeVisible();
+
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
+    await expect(page.getByRole('tabpanel', { name: /Review Queue/ })).toBeVisible();
   });
 
   test('Empty queue: "No pending reviews" or Pending badge visible', async ({ page }) => {
@@ -38,6 +50,7 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
 
     await loginAsAdmin(page);
     await navClick(page, 'Turtle Records');
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
 
     const emptyOrBadge = page
       .getByText('No pending reviews')
@@ -49,6 +62,7 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
     await loginAsAdmin(page);
     await navClick(page, 'Turtle Records');
     await expect(page.getByRole('tab', { name: /Review Queue/ })).toBeVisible();
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
 
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     await tabPanel.waitFor({ state: 'visible', timeout: 5000 });
@@ -84,6 +98,7 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
     await loginAsAdmin(page);
     await navClick(page, 'Turtle Records');
     await expect(page.getByRole('tab', { name: /Review Queue/ })).toBeVisible();
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
 
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     await tabPanel.waitFor({ state: 'visible', timeout: 5000 });
@@ -115,6 +130,7 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
     await loginAsAdmin(page);
     await navClick(page, 'Turtle Records');
     await expect(page.getByRole('tab', { name: /Review Queue/ })).toBeVisible();
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
 
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     // Wait for queue content to settle (either items or empty state) before branching.

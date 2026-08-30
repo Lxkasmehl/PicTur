@@ -67,6 +67,7 @@ test.describe('Admin Review Queue – match search pending', () => {
 
     await loginAsAdmin(page);
     await navClick(page, 'Turtle Records');
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     await tabPanel.waitFor({ state: 'visible', timeout: 10_000 });
 
@@ -103,6 +104,7 @@ test.describe('Admin Review Queue – match search pending', () => {
 
     await loginAsAdmin(page);
     await navClick(page, 'Turtle Records');
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     await tabPanel.waitFor({ state: 'visible', timeout: 10_000 });
     await tabPanel.getByText(/Finding matches/i).click();
@@ -142,6 +144,7 @@ test.describe('Admin Review Queue – match search pending', () => {
 
     await loginAsAdmin(page);
     await navClick(page, 'Turtle Records');
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     await tabPanel.waitFor({ state: 'visible', timeout: 10_000 });
 
@@ -167,6 +170,7 @@ test.describe('Admin Review Queue – match search pending', () => {
 
     await loginAsAdmin(page);
     await navClick(page, 'Turtle Records');
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     await tabPanel.waitFor({ state: 'visible', timeout: 10_000 });
 
@@ -204,6 +208,7 @@ test.describe('Admin Review Queue – match search pending', () => {
 
     await loginAsAdmin(page);
     await navClick(page, 'Turtle Records');
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     await tabPanel.waitFor({ state: 'visible', timeout: 10_000 });
     await tabPanel.getByText(/Match search failed/i).click();
