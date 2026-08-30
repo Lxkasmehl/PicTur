@@ -93,6 +93,68 @@ export function parseFlexibleDateToken(raw: string): Date | null {
   return null;
 }
 
+/**
+ * Live-typing input mask: strips non-digits and re-inserts slashes as MM/DD/YYYY
+ * (e.g. "01272026" while typing → "01/27/2026"). Used for single-date text inputs.
+ */
+export function maskUsDateInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 8);
+  let out = digits.slice(0, 2);
+  if (digits.length > 2) out += `/${digits.slice(2, 4)}`;
+  if (digits.length > 4) out += `/${digits.slice(4, 8)}`;
+  return out;
+}
+
+/**
+ * Live-typing input mask for comma-separated fields (e.g. "Dates refound", or
+ * "DNA Extracted?" which mixes dates with free text like "Yes"/"No"). Each
+ * comma-separated segment is masked to MM/DD/YYYY unless it contains letters,
+ * in which case it's left untouched so words like "Yes"/"No"/"N/A" still work.
+ */
+export function maskUsMultiDateInput(raw: string): string {
+  return raw
+    .split(',')
+    .map((segment) => {
+      const trimmed = segment.replace(/^\s+/, '');
+      if (/[a-zA-Z]/.test(trimmed)) return trimmed;
+      return maskUsDateInput(trimmed);
+    })
+    .join(', ');
+}
+
+/**
+ * Cursor-position helpers for the mask functions above.
+ * A masked string keeps the same digits/letters/commas in the same relative
+ * order as the raw input — each comma the user types maps to exactly one
+ * comma in the output; only slashes and the space after a comma get added or
+ * removed. So to keep the caret in place across a re-mask, count how many of
+ * these "kept" characters (alphanumeric or comma) precede the caret in the
+ * raw value, then place the caret right after that same count of kept
+ * characters in the masked value — landing after a just-typed comma instead
+ * of before it.
+ */
+const KEPT_CHAR = /[a-zA-Z0-9,]/;
+
+function countKeptChars(s: string): number {
+  return (s.match(new RegExp(KEPT_CHAR, 'g')) || []).length;
+}
+
+export function cursorPosForAlnumCount(masked: string, count: number): number {
+  if (count <= 0) return 0;
+  let seen = 0;
+  for (let i = 0; i < masked.length; i++) {
+    if (KEPT_CHAR.test(masked[i])) {
+      seen++;
+      if (seen === count) return i + 1;
+    }
+  }
+  return masked.length;
+}
+
+export function alnumCountBeforeCursor(raw: string, cursor: number): number {
+  return countKeptChars(raw.slice(0, cursor));
+}
+
 export function formatSingleDateTokenToUs(raw: string): string {
   const d = parseFlexibleDateToken(raw);
   if (!d) return raw.trim();

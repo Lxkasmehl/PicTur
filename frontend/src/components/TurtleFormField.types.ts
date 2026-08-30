@@ -5,7 +5,7 @@
 import type { TurtleSheetsData } from '../services/api';
 import type { ReactNode } from 'react';
 
-export type TurtleFormFieldType = 'text' | 'select' | 'textarea';
+export type TurtleFormFieldType = 'text' | 'select' | 'textarea' | 'date' | 'multiDate';
 
 export interface TurtleFormFieldProps {
   field: keyof TurtleSheetsData;

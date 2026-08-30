@@ -20,7 +20,7 @@ export interface TurtleFormFieldConfig {
   description?: string;
   /** Optional help tooltip shown as a "?" icon next to the label (e.g. guided indicators). */
   infoTooltip?: string;
-  type: 'text' | 'select' | 'textarea';
+  type: 'text' | 'select' | 'textarea' | 'date' | 'multiDate';
   selectData?: string[];
   span: FieldSpan;
 }
@@ -48,24 +48,24 @@ export const TURTLE_SHEETS_FORM_FIELDS: TurtleFormFieldConfig[] = [
   {
     key: 'dna_extracted',
     label: 'Date DNA Extracted?',
-    placeholder: 'Date or Yes/No',
-    type: 'text',
+    placeholder: 'MM/DD/YYYY or Yes/No',
+    type: 'multiDate',
     span: { base: 12, md: 6 },
   },
-  { key: 'date_1st_found', label: 'Date 1st found', placeholder: 'MM/DD/YYYY', type: 'text', span: { base: 12, md: 6 } },
+  { key: 'date_1st_found', label: 'Date 1st found', placeholder: 'MM/DD/YYYY', type: 'date', span: { base: 12, md: 6 } },
   { key: 'species', label: 'Species', placeholder: 'Species', type: 'text', span: { base: 12, md: 4 } },
   { key: 'name', label: 'Name', placeholder: 'Turtle name', type: 'text', span: { base: 12, md: 4 } },
   { key: 'sex', label: 'Sex', placeholder: 'Select sex', type: 'select', selectData: ['F', 'M', 'J', 'U'], span: { base: 12, md: 4 } },
-  { key: 'ibutton_last_set', label: 'iButton Last set', placeholder: 'Date', type: 'text', span: { base: 12, md: 3 } },
+  { key: 'ibutton_last_set', label: 'iButton Last set', placeholder: 'MM/DD/YYYY', type: 'date', span: { base: 12, md: 3 } },
   {
     key: 'last_assay_date',
     label: 'Last Assay Date',
     placeholder: 'MM/DD/YYYY',
     description: 'Date last brought in for assays',
-    type: 'text',
+    type: 'date',
     span: { base: 12, md: 3 },
   },
-  { key: 'dates_refound', label: 'Dates refound', placeholder: 'Comma-separated dates', type: 'text', span: { base: 12, md: 6 } },
+  { key: 'dates_refound', label: 'Dates refound', placeholder: 'MM/DD/YYYY, MM/DD/YYYY, ...', type: 'multiDate', span: { base: 12, md: 6 } },
   { key: 'specific_location', label: 'Specific Property', placeholder: 'Specific property (sheet column)', type: 'text', span: { base: 12, md: 6 } },
   { key: 'general_location', label: 'General Location', placeholder: 'General location', type: 'text', span: { base: 12, md: 6 } },
   {
@@ -103,10 +103,10 @@ export const TURTLE_SHEETS_FORM_FIELDS: TurtleFormFieldConfig[] = [
   },
   { key: 'notes', label: 'Notes', placeholder: 'Additional notes', type: 'textarea', span: { base: 12, md: 12 } },
   { key: 'transmitter_put_on_by', label: 'Transmitter put on by', placeholder: 'Name', type: 'text', span: { base: 12, md: 6 } },
-  { key: 'transmitter_on_date', label: 'Transmitter On Date', placeholder: 'Date', type: 'text', span: { base: 12, md: 6 } },
+  { key: 'transmitter_on_date', label: 'Transmitter On Date', placeholder: 'MM/DD/YYYY', type: 'date', span: { base: 12, md: 6 } },
   { key: 'transmitter_type', label: 'Transmitter Type', placeholder: 'Transmitter type', type: 'text', span: { base: 12, md: 6 } },
   { key: 'transmitter_lifespan', label: 'Transmitter lifespan', placeholder: 'Lifespan', type: 'text', span: { base: 12, md: 3 } },
-  { key: 'radio_replace_date', label: 'Radio Replace Date', placeholder: 'Date', type: 'text', span: { base: 12, md: 6 } },
+  { key: 'radio_replace_date', label: 'Radio Replace Date', placeholder: 'MM/DD/YYYY', type: 'date', span: { base: 12, md: 6 } },
   { key: 'old_frequencies', label: 'OLD Frequencies', placeholder: 'Frequencies', type: 'text', span: { base: 12, md: 6 } },
   { key: 'flesh_flies', label: 'Flesh Flies?', placeholder: FLAG_FIELD_PLACEHOLDER, type: 'text', span: { base: 12, md: 6 } },
   { key: 'mass_g', label: 'Mass (g)', placeholder: 'e.g. 250', description: 'Body mass in grams', type: 'text', span: { base: 12, md: 4 } },

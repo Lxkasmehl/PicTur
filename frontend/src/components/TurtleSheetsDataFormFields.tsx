@@ -8,6 +8,8 @@ import { TurtleFormField } from './TurtleFormField';
 import { TURTLE_SHEETS_FORM_FIELDS } from './turtleSheetsDataFormFieldsConfig';
 import type { FieldSpan } from './turtleSheetsDataFormFieldsConfig';
 import { CommunityLocationHint } from './TurtleSheetsDataFormSections';
+import { maskUsMultiDateInput } from '../utils/usDateFormat';
+import { useCursorPreservingMask } from '../hooks/useCursorPreservingMask';
 import type { TurtleSheetsDataFormFieldsProps } from './TurtleSheetsDataForm.types';
 import {
   FULL_SHEET_FORM_FIELD_ORDER,
@@ -53,6 +55,8 @@ export function TurtleSheetsDataFormFields({
   matchPageColumnLayout = false,
 }: TurtleSheetsDataFormFieldsProps) {
   const useMatchEditLocks = matchPageColumnLayout && isFieldModeRestricted;
+  const datesRefoundMask = useCursorPreservingMask(maskUsMultiDateInput);
+  const additionalDatesRefoundMask = useCursorPreservingMask(maskUsMultiDateInput);
 
   const effectiveRestrictedForField = (field: keyof TurtleSheetsData) =>
     requireNewSheetForCommunityMatch && field === 'general_location' ? false : isFieldModeRestricted;
@@ -127,20 +131,22 @@ export function TurtleSheetsDataFormFields({
                     description='Read-only; add new dates below'
                   />
                   <TextInput
+                    ref={additionalDatesRefoundMask.ref}
                     label='Add dates refound'
-                    placeholder='Comma-separated dates to append'
+                    placeholder='MM/DD/YYYY, MM/DD/YYYY, ...'
                     value={additionalDatesRefound}
-                    onChange={(e) => setAdditionalDatesRefound(e.target.value)}
+                    onChange={(e) => additionalDatesRefoundMask.handleChange(e, setAdditionalDatesRefound)}
                     description='New dates will be appended to the list'
                     mt='xs'
                   />
                 </>
               ) : (
                 <TextInput
+                  ref={datesRefoundMask.ref}
                   label='Dates refound'
-                  placeholder='Comma-separated dates'
+                  placeholder='MM/DD/YYYY, MM/DD/YYYY, ...'
                   value={formData.dates_refound || ''}
-                  onChange={(e) => handleChange('dates_refound', e.target.value)}
+                  onChange={(e) => datesRefoundMask.handleChange(e, (v) => handleChange('dates_refound', v))}
                 />
               )}
             </Grid.Col>
