@@ -132,6 +132,7 @@ test.describe('Review Queue – community Create New Turtle (general location)',
 
     await loginAsAdmin(page);
     await navClick(page, 'Turtle Records');
+    await page.getByRole('tab', { name: /Review Queue/ }).click();
 
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     await tabPanel.waitFor({ state: 'visible', timeout: 15_000 });
