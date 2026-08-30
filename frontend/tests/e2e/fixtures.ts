@@ -368,6 +368,8 @@ const E2E_MOCK_KANSAS_GENERAL_LOCATIONS = [
 /**
  * Stub GET /api/general-locations for Kansas tests. Uses glob plus pathname match so Docker/nginx URLs still hit the mock.
  * Re-register after other `page.route` calls (Playwright matches last-registered routes first).
+ * The handler excludes source-module requests (see below) so it's safe to register before
+ * `page.goto` against a local Vite dev server too, not just a built/Dockerized frontend.
  */
 export async function registerKansasGeneralLocationsCatalogMock(page: Page): Promise<void> {
   const locations = [...E2E_MOCK_KANSAS_GENERAL_LOCATIONS];
@@ -382,7 +384,18 @@ export async function registerKansasGeneralLocationsCatalogMock(page: Page): Pro
   });
 
   const handler = async (route: Route) => {
-    if (route.request().method() === 'GET') {
+    const req = route.request();
+    // Against the local Vite dev server, the frontend's own source file at
+    // src/services/api/general-locations.ts is requested by path and matches
+    // the same "general-locations" substring as the real API call — but it's
+    // a JS module request, not JSON, so never intercept it (doing so serves
+    // JSON as a module script and crashes the whole app's module graph).
+    const pathname = new URL(req.url()).pathname;
+    const isSourceModuleRequest =
+      pathname.includes('/src/') ||
+      pathname.includes('/node_modules/') ||
+      /\.(ts|tsx|js|jsx|mjs)$/i.test(pathname);
+    if (req.method() === 'GET' && !isSourceModuleRequest) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
