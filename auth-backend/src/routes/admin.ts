@@ -1,10 +1,12 @@
 import express, { Request, Response } from 'express';
 import crypto from 'crypto';
 import db from '../db/database.js';
+import { getGroup } from '../db/groupsRepo.js';
 import { authenticateToken, AuthRequest, requireEmailVerified } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
 import { sendAdminPromotionEmail } from '../services/email.js';
 import type { User, UserRole } from '../types/user.js';
+import type { GroupRole } from '../types/group.js';
 
 const router = express.Router();
 
@@ -117,9 +119,16 @@ router.get(
     try {
       const users = db
         .prepare(
-          'SELECT id, email, name, role, created_at FROM users ORDER BY created_at DESC'
+          `SELECT u.id, u.email, u.name, u.role, u.created_at, u.group_id, u.group_role, g.name AS group_name
+             FROM users u
+             LEFT JOIN groups g ON g.id = u.group_id
+            ORDER BY u.created_at DESC`
         )
-        .all() as (Omit<User, 'google_id'>)[];
+        .all() as Array<
+          Pick<User, 'id' | 'email' | 'name' | 'role' | 'created_at' | 'group_id' | 'group_role'> & {
+            group_name: string | null;
+          }
+        >;
 
       res.json({
         success: true,
@@ -196,6 +205,105 @@ router.patch(
       });
     } catch (error) {
       console.error('Set role error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Set a user's group membership (admin only). One-step stray-user correction: lateral moves and
+// promotions do NOT log the user out. Revocation is bumped ONLY when privileges are reduced.
+router.patch(
+  '/users/:id/membership',
+  authenticateToken,
+  requireEmailVerified,
+  requireAdmin,
+  (req: Request, res: Response) => {
+    try {
+      const userId = Number(req.params.id);
+      if (!Number.isInteger(userId) || userId < 1) {
+        res.status(400).json({ error: 'Invalid user ID' });
+        return;
+      }
+
+      const body = req.body as { group_id?: unknown; group_role?: unknown };
+
+      // group_id is required and must be an integer group id or null.
+      if (!('group_id' in body) || (body.group_id !== null && !Number.isInteger(body.group_id))) {
+        res.status(400).json({ error: 'group_id must be a group id or null' });
+        return;
+      }
+      const newGroupId = body.group_id === null ? null : Number(body.group_id);
+
+      let requestedRole: GroupRole | undefined;
+      if (body.group_role !== undefined) {
+        if (body.group_role !== 'member' && body.group_role !== 'lead') {
+          res.status(400).json({ error: "group_role must be 'member' or 'lead'" });
+          return;
+        }
+        requestedRole = body.group_role;
+      }
+
+      const user = db
+        .prepare('SELECT id, email, role, group_id, group_role FROM users WHERE id = ?')
+        .get(userId) as
+        | { id: number; email: string; role: UserRole; group_id: number | null; group_role: GroupRole }
+        | undefined;
+      if (!user) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      if (newGroupId !== null && !getGroup(newGroupId)) {
+        res.status(400).json({ error: 'Unknown group_id' });
+        return;
+      }
+
+      const prevGroupId = user.group_id;
+      const prevGroupRole: GroupRole = user.group_role === 'lead' ? 'lead' : 'member';
+
+      // Unassigning forces 'member'; otherwise honor an explicit request, else keep the current rank.
+      let newGroupRole: GroupRole;
+      if (newGroupId === null) {
+        newGroupRole = 'member';
+      } else if (requestedRole !== undefined) {
+        newGroupRole = requestedRole;
+      } else {
+        newGroupRole = prevGroupRole;
+      }
+
+      // Leads must be staff. Admins may hold 'lead' harmlessly; community users cannot.
+      if (newGroupRole === 'lead' && user.role === 'community') {
+        res.status(400).json({ error: 'Only staff or admin users can be group leads' });
+        return;
+      }
+
+      db.prepare(
+        'UPDATE users SET group_id = ?, group_role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+      ).run(newGroupId, newGroupRole, userId);
+
+      // Revoke existing JWTs only when privileges are reduced: dropping the lead rank, or releasing a
+      // still-privileged (staff/admin) user to Unassigned. Lateral moves and promotions must not bump.
+      const demotedFromLead = prevGroupRole === 'lead' && newGroupRole !== 'lead';
+      const releasedToUnassigned =
+        prevGroupId !== null &&
+        newGroupId === null &&
+        (user.role === 'staff' || user.role === 'admin');
+      if (demotedFromLead || releasedToUnassigned) {
+        db.prepare('UPDATE users SET tokens_valid_after = CURRENT_TIMESTAMP WHERE id = ?').run(userId);
+      }
+
+      res.json({
+        success: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          group_id: newGroupId,
+          group_role: newGroupRole,
+        },
+      });
+    } catch (error) {
+      console.error('Set membership error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }

@@ -88,6 +88,84 @@ function migrateUserUiPreferencesTable(database: Database): void {
   `);
 }
 
+/**
+ * Groups + membership: the groups/group_areas tables and the users.group_id / users.group_role
+ * columns. Idempotent: CREATE TABLE IF NOT EXISTS and PRAGMA-guarded ALTERs. The users.role CHECK
+ * constraint is left untouched — roles stay community|staff|admin.
+ */
+function migrateGroupsSchema(database: Database): boolean {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      scope TEXT NOT NULL DEFAULT 'scoped' CHECK (scope IN ('global','scoped')),
+      system_key TEXT UNIQUE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS group_areas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER NOT NULL,
+      area TEXT NOT NULL,
+      FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+      UNIQUE (group_id, area COLLATE NOCASE)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_group_areas_group ON group_areas(group_id);
+  `);
+
+  const userCols = database.prepare(`PRAGMA table_info(users)`).all() as { name: string }[];
+  const addedGroupColumns = !userCols.some((c) => c.name === 'group_id');
+  if (addedGroupColumns) {
+    // Nullable, no FK — the repo layer enforces membership integrity.
+    database.exec(`ALTER TABLE users ADD COLUMN group_id INTEGER`);
+  }
+  if (!userCols.some((c) => c.name === 'group_role')) {
+    database.exec(
+      `ALTER TABLE users ADD COLUMN group_role TEXT NOT NULL DEFAULT 'member' CHECK (group_role IN ('member','lead'))`
+    );
+  }
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_users_group ON users(group_id)`);
+  return addedGroupColumns;
+}
+
+/**
+ * Seed the two system super-groups. INSERT OR IGNORE keeps this idempotent and — importantly —
+ * never clobbers an admin's later change (e.g. flipping Primary to 'scoped'): a matching name /
+ * system_key simply makes the insert a no-op.
+ */
+function migrateSeedSystemGroups(database: Database): void {
+  const insert = database.prepare(
+    `INSERT OR IGNORE INTO groups (name, scope, system_key) VALUES (?, 'global', ?)`
+  );
+  insert.run('Operations', 'operations');
+  insert.run('Primary', 'primary');
+}
+
+/**
+ * Membership backfill: route every still-unassigned admin into Operations (as lead) and every
+ * still-unassigned staff into Primary (as member). Community users stay unassigned. At boot this
+ * runs ONLY on the run that first adds the group columns — "unassigned staff/admin" is a
+ * deliberate, reachable state afterwards (admin membership PATCH with group_id null), and an
+ * every-boot backfill would silently resurrect memberships an admin explicitly removed. Also
+ * invoked explicitly by seeding/admin-bootstrap scripts, where routing fresh unassigned
+ * admins/staff into the system groups is exactly the intent.
+ */
+export function migrateBackfillMembership(database: Database): void {
+  database.exec(`
+    UPDATE users
+       SET group_id = (SELECT id FROM groups WHERE system_key = 'operations'),
+           group_role = 'lead'
+     WHERE role = 'admin' AND group_id IS NULL;
+
+    UPDATE users
+       SET group_id = (SELECT id FROM groups WHERE system_key = 'primary'),
+           group_role = 'member'
+     WHERE role = 'staff' AND group_id IS NULL;
+  `);
+}
+
 function setAutoincrementSeq(database: Database, table: string, maxId: number): void {
   if (maxId < 1) return;
   try {
@@ -235,7 +313,13 @@ const db: Database = new BetterSqlite3(dbPath);
 initSchema(db);
 migrateEmailVerificationsUsedAt(db);
 migrateUserUiPreferencesTable(db);
+const groupColumnsJustAdded = migrateGroupsSchema(db);
+// Seed + backfill run AFTER the legacy-JSON import so a first-boot import gets backfilled in the same run.
 maybeMigrateLegacyJson(db);
+migrateSeedSystemGroups(db);
+if (groupColumnsJustAdded) {
+  migrateBackfillMembership(db);
+}
 
 export function getCommunityGameForUser(userId: number): CommunityGamePersistedPayload | null {
   const row = db

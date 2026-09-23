@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-07-20 — Staff groups foundation (auth-backend)
+
+### Added
+
+- **Groups foundation for staff management (auth-backend)**: new `groups` and `group_areas` tables plus `users.group_id` / `users.group_role` columns (idempotent migrations; the `users.role` CHECK stays `community|staff|admin`). Two system super-groups are seeded — **Operations** (global, holds admins) and **Primary** (global today, re-scopable later) — and a one-time backfill routes every existing admin into Operations (as lead) and every existing staff into Primary (as member); community users stay unassigned. A Team Lead is simply a staff user whose membership carries `group_role='lead'`.
+- **Group management API (`/api/admin/groups`, admin-only)**: list groups with their areas and member counts; create/rename/re-scope/delete admin-created Sub-Area groups (scoped, with area path prefixes); and replace a group's area set (`PUT /:id/areas`) with trimmed/slash-stripped/`..`-rejecting/case-insensitively-deduped opaque prefixes. System groups can never be deleted and Operations can never leave global scope; Primary may be flipped to scoped (the future lever).
+- **Admin membership assignment (`PATCH /api/admin/users/:id/membership`)**: move a user between groups or unassign them, optionally setting their group rank. Existing sessions are revoked only when privileges are reduced (dropping the lead rank, or releasing a still-privileged staff/admin to Unassigned) — lateral moves and promotions never log the user out, so a one-step stray-user correction is painless.
+- **Team Lead API (`/api/lead`, staff leads only)**: a lead can view their group (metadata, areas, members), claim an unassigned community user into their group, promote/demote members one rung (community ↔ staff ↔ lead within the group), and release a member back to Unassigned. Guards prevent acting on themselves, on admins, or on users outside their group; demotions and releases revoke the affected member's tokens.
+- **Enriched `/api/auth/validate` and `/api/auth/me`**: both now return the user's resolved `group` (`{id,name,scope,system_key}` or null), `group_role`, and `areas`, with `role` re-read fresh from the DB. The JWT stays identity-only; these fields are purely additive so existing consumers are unaffected.
+- **Seeds + integration tests**: the e2e seed now also creates a scoped `KansasTeam` group (area `Kansas/Topeka`, a real fixture-data folder) with a team lead, a scoped staff member, and an unassigned community user; new `backend/tests/integration/test_groups_routes.py` covers group CRUD, area validation, the enriched auth payloads, admin membership moves, the full Team Lead matrix, and revocation/last-admin regressions.
+
 ## [2.0.22] - 2026-07-10 — Carapace quick check opened to staff
 
 ### Changed

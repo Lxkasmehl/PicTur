@@ -32,6 +32,8 @@ import session from 'express-session';
 import authRoutes from './routes/auth.js';
 import googleAuthRoutes from './routes/googleAuth.js';
 import adminRoutes from './routes/admin.js';
+import groupRoutes from './routes/groups.js';
+import leadRoutes from './routes/lead.js';
 import communityGameRoutes from './routes/communityGame.js';
 import userUiPreferencesRoutes from './routes/userUiPreferences.js';
 import contactRoutes from './routes/contact.js';
@@ -93,6 +95,8 @@ app.use('/api/auth', communityGameRoutes);
 app.use('/api/auth', userUiPreferencesRoutes);
 app.use('/api/auth', googleAuthRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/admin/groups', groupRoutes);
+app.use('/api/lead', leadRoutes);
 app.use('/api', contactRoutes);
 app.use('/api', feedbackRoutes);
 

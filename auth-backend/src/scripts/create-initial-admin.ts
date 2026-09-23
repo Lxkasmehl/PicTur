@@ -10,7 +10,7 @@
  *   INITIAL_ADMIN_NAME="Admin User"
  */
 
-import db from '../db/database.js';
+import db, { migrateBackfillMembership } from '../db/database.js';
 import bcrypt from 'bcryptjs';
 import type { User } from '../types/user.js';
 
@@ -40,6 +40,7 @@ async function createInitialAdmin() {
 
     if (existingUser) {
       if (existingUser.role === 'admin') {
+        migrateBackfillMembership(db);
         console.log(`User ${email} already exists and is already an admin.`);
         process.exit(0);
       } else {
@@ -48,6 +49,8 @@ async function createInitialAdmin() {
           'admin',
           existingUser.id
         );
+        // Route the (now unassigned-admin) user into Operations, like any bootstrap admin.
+        migrateBackfillMembership(db);
         console.log(`User ${email} has been promoted to admin.`);
         process.exit(0);
       }
@@ -64,6 +67,10 @@ async function createInitialAdmin() {
          VALUES (?, ?, ?, ?, 1, ?, ?, ?)`
       )
       .run(email.toLowerCase(), passwordHash, name, 'admin', now, now, now);
+
+    // Boot-time backfill only runs when the group columns are first added, so an
+    // admin created on an already-migrated DB is routed into Operations here.
+    migrateBackfillMembership(db);
 
     console.log('✅ Initial admin user created successfully!');
     console.log(`   Email: ${email}`);
