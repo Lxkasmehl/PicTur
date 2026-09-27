@@ -57,6 +57,9 @@ services:
       GITHUB_FEEDBACK_PROJECT_NODE_ID: ${GITHUB_FEEDBACK_PROJECT_NODE_ID:-}
       GITHUB_FEEDBACK_PROJECT_STATUS_FIELD: ${GITHUB_FEEDBACK_PROJECT_STATUS_FIELD:-Status}
       GITHUB_FEEDBACK_PROJECT_BACKLOG_OPTION: ${GITHUB_FEEDBACK_PROJECT_BACKLOG_OPTION:-Backlog}
+      # Research groups: display name of the original (Sheets-backed) group and platform super admins
+      MAIN_ORG_NAME: ${MAIN_ORG_NAME:-}
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
     volumes:
       - auth-data:/app/data
 
@@ -76,8 +79,15 @@ services:
       GOOGLE_SHEETS_CREDENTIALS_PATH: ${GOOGLE_SHEETS_CREDENTIALS_PATH:-/app/credentials/google-sheets-credentials.json}
       GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID: ${GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID:-}
       BACKUP_OUTPUT_DIR: ${BACKUP_OUTPUT_DIR:-/app/backups}
+      # Database + photo storage of the additional (database-backed) research groups
+      DATABASE_URL: ${DATABASE_URL:-postgresql://pictur:${POSTGRES_PASSWORD:-pictur-change-me}@postgres:5432/pictur}
+      ORG_DATA_DIR: /app/org_data
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - backend-data:/app/data
+      - org-data:/app/org_data
       # Backups on host so they survive container/volume removal (see docs/BACKUP.md)
       - ./backups:/app/backups
       # Mount Google credentials from host (create backend/credentials/ and add JSON)
@@ -96,6 +106,24 @@ services:
       retries: 5
       start_period: 60s
 
+  # Database of the additional research groups (the main group stays on Google Sheets)
+  postgres:
+    image: postgres:16-alpine
+    restart: on-failure
+    environment:
+      POSTGRES_DB: pictur
+      POSTGRES_USER: pictur
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pictur-change-me}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U pictur -d pictur']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   auth-data:
   backend-data:
+  org-data:
+  pg-data:

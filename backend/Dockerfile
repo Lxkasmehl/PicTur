@@ -18,7 +18,7 @@ COPY . .
 
 # Data dir for TurtleManager (Review_Queue, Community_Uploads, vocabulary, etc.)
 ENV DATA_DIR=/app/data
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/org_data
 
 EXPOSE 5000
 

@@ -32,18 +32,35 @@ services:
       AUTH_URL: ${AUTH_URL:-http://auth-backend:3001/api}
       GOOGLE_SHEETS_SPREADSHEET_ID: ${GOOGLE_SHEETS_SPREADSHEET_ID:-}
       GOOGLE_SHEETS_CREDENTIALS_PATH: ${GOOGLE_SHEETS_CREDENTIALS_PATH:-/app/credentials/google-sheets-credentials.json}
+      DATABASE_URL: postgresql://pictur:pictur-test@postgres:5432/pictur
+      ORG_DATA_DIR: /app/org_data
     volumes:
       # Mount fixture data so integration tests see known review queue, turtles, flags
       - ./backend/tests/fixture-data:/app/data
       - ./backend/credentials:/app/credentials:ro
     depends_on:
-      - auth-backend
+      auth-backend:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 90s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pictur
+      POSTGRES_USER: pictur
+      POSTGRES_PASSWORD: pictur-test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pictur -d pictur"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   auth-data-integration:

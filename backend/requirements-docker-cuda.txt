@@ -16,6 +16,11 @@ google-auth>=2.23.0
 google-auth-oauthlib>=1.1.0
 google-auth-httplib2>=0.1.1
 
+# Database for research groups beyond the main (Sheets-backed) one
+SQLAlchemy>=2.0.25
+alembic>=1.13.0
+psycopg[binary]>=3.1.18
+
 # Test dependencies (integration tests use requests against Docker backend)
 pytest>=7.0.0
 pytest-flask>=1.3.0

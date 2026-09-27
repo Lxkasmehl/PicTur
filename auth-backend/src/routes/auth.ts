@@ -11,6 +11,7 @@ import {
   acceptInvitation,
   getActiveInvitation,
   getMembershipsForUser,
+  getOrgBySlug,
   isSuperAdmin,
 } from '../db/orgsRepo.js';
 
@@ -352,11 +353,24 @@ router.post('/validate', authenticateToken, (req: Request, res: Response) => {
   }
   // Research-group roles are resolved live here (never from the JWT) so membership changes apply
   // on the next request.
+  // ?org=<slug> additionally returns that group's public descriptor (lets Flask resolve groups
+  // the caller is not a member of, e.g. for super admins or community uploads).
+  const orgSlug = typeof req.query.org === 'string' ? req.query.org : '';
+  const org = orgSlug ? getOrgBySlug(orgSlug) : null;
   res.json({
     valid: true,
     user: authUser,
     is_super_admin: isSuperAdmin(authUser.id),
     memberships: getMembershipsForUser(authUser.id),
+    org: org
+      ? {
+          id: org.id,
+          slug: org.slug,
+          name: org.name,
+          kind: org.kind,
+          accepts_community: org.accepts_community,
+        }
+      : null,
   });
 });
 

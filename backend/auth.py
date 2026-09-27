@@ -101,25 +101,43 @@ def check_auth_revocation(auth_header):
     Returns (allowed: bool, error_message: str or None).
     Fails closed when AUTH_URL is unset so demoted staff/admin tokens are not accepted.
     """
+    allowed, error, _body = validate_with_auth_service(auth_header)
+    return allowed, error
+
+
+def validate_with_auth_service(auth_header, org_slug=None):
+    """
+    POST {AUTH_URL}/auth/validate with the caller's token.
+    Returns (allowed: bool, error_message: str or None, body: dict or None). On success the body
+    carries the live research-group memberships ({valid, user, is_super_admin, memberships}).
+    With org_slug the body also carries that group's public descriptor under 'org'.
+    Fails closed when AUTH_URL is unset or the auth service is unreachable.
+    """
     if not AUTH_URL:
-        return False, 'AUTH_URL must be set to verify staff/admin tokens (revocation check)'
+        return False, 'AUTH_URL must be set to verify staff/admin tokens (revocation check)', None
 
     def validate_against(auth_base_url):
-        """Returns (allowed, error, connectivity_failure).
+        """Returns (allowed, error, connectivity_failure, body).
 
         connectivity_failure is True only when the auth service could not be reached
         (no HTTP response). Used to decide whether a localhost → 127.0.0.1 fallback
         is safe: never retry after a definitive HTTP outcome (e.g. 403 revocation).
         """
         url = f'{auth_base_url.rstrip("/")}/auth/validate'
+        if org_slug:
+            url += '?' + urllib.parse.urlencode({'org': org_slug})
         try:
             req = urllib.request.Request(url, method='POST', headers={'Authorization': auth_header})
             # Optional: don't verify SSL in dev if auth uses self-signed cert
             ctx = ssl.create_default_context()
             with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
                 if resp.status != 200:
-                    return False, f'Auth validation failed (HTTP {resp.status})', False
-                return True, None, False
+                    return False, f'Auth validation failed (HTTP {resp.status})', False, None
+                try:
+                    body = json.loads(resp.read().decode() or '{}')
+                except ValueError:
+                    body = {}
+                return True, None, False, body
         except urllib.error.HTTPError as e:
             error_message = None
             try:
@@ -129,15 +147,15 @@ def check_auth_revocation(auth_header):
                 error_message = None
 
             if e.code == 403:
-                return False, error_message or 'Token has been revoked', False
-            return False, error_message or f'Auth validation failed (HTTP {e.code})', False
+                return False, error_message or 'Token has been revoked', False, None
+            return False, error_message or f'Auth validation failed (HTTP {e.code})', False, None
         except (urllib.error.URLError, OSError, TimeoutError):
             # Fail closed: if we can't reach auth service, deny access
-            return False, 'Unable to verify token; try again later', True
+            return False, 'Unable to verify token; try again later', True, None
 
-    allowed, revoke_error, primary_unreachable = validate_against(AUTH_URL)
+    allowed, revoke_error, primary_unreachable, body = validate_against(AUTH_URL)
     if allowed:
-        return True, None
+        return True, None, body
 
     # Windows/dev environments can resolve "localhost" to a different service than 127.0.0.1.
     # Retry once against 127.0.0.1 only when the primary host could not be reached — not after
@@ -147,12 +165,12 @@ def check_auth_revocation(auth_header):
         fallback_netloc = parsed.netloc.replace('localhost', '127.0.0.1', 1)
         fallback_url = urllib.parse.urlunparse(parsed._replace(netloc=fallback_netloc))
         if fallback_url != AUTH_URL:
-            retry_allowed, retry_error, _ = validate_against(fallback_url)
+            retry_allowed, retry_error, _, retry_body = validate_against(fallback_url)
             if retry_allowed:
-                return True, None
+                return True, None, retry_body
             revoke_error = retry_error or revoke_error
 
-    return False, revoke_error
+    return False, revoke_error, None
 
 
 def require_auth(f):
