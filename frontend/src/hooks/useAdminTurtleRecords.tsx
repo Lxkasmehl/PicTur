@@ -1,3 +1,4 @@
+import { useActiveOrg } from './useActiveOrg';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -19,6 +20,9 @@ import type { TurtleSheetsDataFormRef } from '../components/TurtleSheetsDataForm
 import { useAvailableSheets } from './useAvailableSheets';
 
 export function useAdminTurtleRecords(role: string | undefined, authChecked: boolean) {
+  // Research groups photograph the carapace; the main group's default stays the plastron
+  const { isDbOrg } = useActiveOrg();
+  const defaultPhotoType = isDbOrg ? 'carapace' : 'plastron';
   const navigate = useNavigate();
   const { sheets: availableSheets, loading: sheetsListLoading } =
     useAvailableSheets(role);
@@ -366,7 +370,7 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
       await handleSaveSheetsData(data, sheetName);
       await approveReview(selectedItem.request_id, {
         match_turtle_id: selectedCandidate,
-        photo_type: selectedItem.photo_type ?? 'plastron',
+        photo_type: selectedItem.photo_type ?? defaultPhotoType,
       });
       notifications.show({
         title: 'Success!',
@@ -494,7 +498,7 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
               primary_id: sheetsDataCreated ? (finalPrimaryId ?? undefined) : undefined,
             }
           : undefined,
-        photo_type: selectedItem.photo_type ?? 'plastron',
+        photo_type: selectedItem.photo_type ?? defaultPhotoType,
       });
       notifications.show({
         title: 'Success!',

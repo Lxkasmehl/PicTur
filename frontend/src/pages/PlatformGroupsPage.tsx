@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Anchor,
@@ -23,8 +23,9 @@ import { useActiveOrg } from '../hooks/useActiveOrg';
 import { useUser } from '../hooks/useUser';
 import { useAppDispatch } from '../store/hooks';
 import { refreshMyOrgs } from '../store/orgActions';
+import { setActiveOrg } from '../store/slices/orgSlice';
 import { createOrg, listAllOrgs, type Organization } from '../services/api/orgs';
-import { formatDate } from './org/orgFormat';
+import { formatLocalDate as formatDate } from '../utils/formatLocalDate';
 
 function slugify(name: string): string {
   return name
@@ -39,6 +40,7 @@ function slugify(name: string): string {
 /** Super admin: create research groups and assign their first admin. */
 export default function PlatformGroupsPage() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const { authChecked } = useUser();
   const { isSuperAdmin, loaded } = useActiveOrg();
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
@@ -198,11 +200,16 @@ export default function PlatformGroupsPage() {
                   <Table.Td>{o.accepts_community ? 'yes' : 'no'}</Table.Td>
                   <Table.Td>{formatDate(o.created_at)}</Table.Td>
                   <Table.Td>
-                    {o.kind === 'db' && (
-                      <Anchor component={Link} to={`/g/${o.slug}/members`} size='sm'>
-                        Members
-                      </Anchor>
-                    )}
+                    <Anchor
+                      component='button'
+                      size='sm'
+                      onClick={() => {
+                        dispatch(setActiveOrg(o.slug));
+                        navigate(o.kind === 'db' ? '/admin/users' : '/');
+                      }}
+                    >
+                      Open
+                    </Anchor>
                   </Table.Td>
                 </Table.Tr>
               ))}

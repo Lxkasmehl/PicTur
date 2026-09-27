@@ -21,6 +21,7 @@ import { IconMapPin, IconFlag, IconArrowLeft, IconCircleCheck } from '@tabler/ic
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '../hooks/useUser';
+import { useActiveOrg } from '../hooks/useActiveOrg';
 import { isStaffRole } from '../services/api/auth';
 import { getTurtlesWithFlags, clearReleaseFlag } from '../services/api';
 import { MapWithMarkers } from '../components/MapWithMarkers.tsx';
@@ -40,7 +41,10 @@ interface FlagItem {
 }
 
 export default function AdminReleasePage() {
-  const { role, authChecked } = useUser();
+  const { authChecked: userAuthChecked } = useUser();
+  // Role in the active research group (the account role for the main group)
+  const { role, ready: orgReady } = useActiveOrg();
+  const authChecked = userAuthChecked && orgReady;
   const navigate = useNavigate();
   const [items, setItems] = useState<FlagItem[]>([]);
   const [loading, setLoading] = useState(true);

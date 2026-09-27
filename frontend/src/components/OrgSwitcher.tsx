@@ -29,8 +29,8 @@ export default function OrgSwitcher({ fullWidth = false, onSwitched }: { fullWid
       onChange={(slug) => {
         if (!slug || slug === active.slug) return;
         select(slug);
-        const next = options.find((o) => o.slug === slug);
-        navigate(next?.kind === 'db' ? `/g/${slug}` : '/');
+        // same pages for every group; start on the home page of the newly selected group
+        navigate('/');
         onSwitched?.();
       }}
       comboboxProps={{ withinPortal: true, zIndex: 1100 }}

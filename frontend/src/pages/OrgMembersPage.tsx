@@ -16,11 +16,10 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconMail, IconTrash } from '@tabler/icons-react';
-import { OrgGate } from '../../components/org/OrgGate';
-import type { OrgOption } from '../../hooks/useActiveOrg';
-import { useUser } from '../../hooks/useUser';
-import { useAppDispatch } from '../../store/hooks';
-import { refreshMyOrgs } from '../../store/orgActions';
+import type { OrgOption } from '../hooks/useActiveOrg';
+import { useUser } from '../hooks/useUser';
+import { useAppDispatch } from '../store/hooks';
+import { refreshMyOrgs } from '../store/orgActions';
 import {
   addOrgMember,
   getOrgMembers,
@@ -32,19 +31,19 @@ import {
   type OrgMember,
   type OrgMemberRole,
   type Organization,
-} from '../../services/api/orgs';
-import { formatDate } from './orgFormat';
+} from '../services/api/orgs';
+import { formatLocalDate as formatDate } from '../utils/formatLocalDate';
 
 const ROLE_OPTIONS = [
   { value: 'staff', label: 'Staff' },
   { value: 'admin', label: 'Admin' },
 ];
 
-export default function OrgMembersPage() {
-  return <OrgGate minRole='admin'>{(org) => <MembersManager org={org} />}</OrgGate>;
-}
-
-function MembersManager({ org }: { org: OrgOption }) {
+/**
+ * User management of a database-backed research group (members, invitations, community uploads).
+ * Rendered by AdminUserManagementPage when such a group is active; the caller checks admin rights.
+ */
+export default function OrgMembersPage({ org }: { org: OrgOption }) {
   const dispatch = useAppDispatch();
   const { user } = useUser();
   const [details, setDetails] = useState<Organization | null>(null);

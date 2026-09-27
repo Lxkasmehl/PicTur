@@ -23,7 +23,8 @@ export interface OrgOption {
  */
 export function useActiveOrg() {
   const dispatch = useAppDispatch();
-  const { memberships, publicOrgs, allOrgs, isSuperAdmin, activeSlug, loaded } = useAppSelector((s) => s.org);
+  const { memberships, publicOrgs, allOrgs, isSuperAdmin, activeSlug, loaded, publicLoaded } =
+    useAppSelector((s) => s.org);
   const { role: mainRole } = useAppSelector((s) => s.user);
 
   /** Every group the user can switch to: own memberships plus groups open to the community. */
@@ -61,6 +62,9 @@ export function useActiveOrg() {
   }, [memberships, publicOrgs, allOrgs, isSuperAdmin, mainRole]);
 
   const active = options.find((o) => o.slug === activeSlug) ?? options[0];
+  /** False while a remembered research group is still being resolved (its role is not known yet).
+   * Pages must not redirect on role before this is true. Always true for the main group. */
+  const ready = activeSlug === MAIN_ORG_SLUG || active.slug === activeSlug || (loaded && publicLoaded);
   const isDbOrg = active.kind === 'db';
 
   const select = useCallback((slug: string) => dispatch(setActiveOrg(slug)), [dispatch]);
@@ -73,6 +77,7 @@ export function useActiveOrg() {
     options,
     isSuperAdmin,
     loaded,
+    ready,
     select,
   };
 }

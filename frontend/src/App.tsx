@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Fragment } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
@@ -26,15 +27,9 @@ import GamePersistence from './components/game/GamePersistence';
 import ObserverHubPage from './pages/ObserverHubPage';
 import OrgProvider from './components/OrgProvider';
 import { useActiveOrg } from './hooks/useActiveOrg';
+import { useAppSelector } from './store/hooks';
 import PlatformGroupsPage from './pages/PlatformGroupsPage';
 import AcceptInvitePage from './pages/AcceptInvitePage';
-import OrgHomePage from './pages/org/OrgHomePage';
-import OrgReviewQueuePage from './pages/org/OrgReviewQueuePage';
-import OrgSubmissionPage from './pages/org/OrgSubmissionPage';
-import OrgTurtlesPage from './pages/org/OrgTurtlesPage';
-import OrgTurtleDetailPage from './pages/org/OrgTurtleDetailPage';
-import OrgRegionsPage from './pages/org/OrgRegionsPage';
-import OrgMembersPage from './pages/org/OrgMembersPage';
 
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   // Role in the selected research group (main group: the account role, unchanged)
@@ -49,11 +44,10 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** "/" shows the classic home page for the main group and the group home for other groups. */
-function HomeRoute() {
-  const { active, isDbOrg, loaded } = useActiveOrg();
-  if (isDbOrg && loaded) return <Navigate to={`/g/${active.slug}`} replace />;
-  return <HomePage />;
+/** Pages are remounted when the research group changes, so every page loads that group's data. */
+function GroupScope({ children }: { children: React.ReactNode }) {
+  const activeSlug = useAppSelector((s) => s.org.activeSlug);
+  return <Fragment key={activeSlug}>{children}</Fragment>;
 }
 
 function App(): React.JSX.Element {
@@ -67,8 +61,9 @@ function App(): React.JSX.Element {
           <Router>
             <Navigation>
               <EmailVerificationGuard>
+              <GroupScope>
               <Routes>
-                <Route path='/' element={<HomeRoute />} />
+                <Route path='/' element={<HomePage />} />
                 <Route path='/about' element={<AboutPage />} />
                 <Route path='/contact' element={<ContactPage />} />
                 <Route path='/feedback' element={<FeedbackPage />} />
@@ -89,14 +84,14 @@ function App(): React.JSX.Element {
                 <Route path='/admin/locations' element={<AdminLocationManagementPage />} />
                 <Route path='/platform/groups' element={<PlatformGroupsPage />} />
                 <Route path='/accept-invite' element={<AcceptInvitePage />} />
-                <Route path='/g/:slug' element={<OrgHomePage />} />
-                <Route path='/g/:slug/review' element={<OrgReviewQueuePage />} />
-                <Route path='/g/:slug/review/:submissionId' element={<OrgSubmissionPage />} />
-                <Route path='/g/:slug/turtles' element={<OrgTurtlesPage />} />
-                <Route path='/g/:slug/turtles/:turtleId' element={<OrgTurtleDetailPage />} />
-                <Route path='/g/:slug/regions' element={<OrgRegionsPage />} />
-                <Route path='/g/:slug/members' element={<OrgMembersPage />} />
+
+
+
+
+
+
               </Routes>
+              </GroupScope>
               </EmailVerificationGuard>
             </Navigation>
             <BackupCountdownOverlay />

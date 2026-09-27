@@ -321,7 +321,7 @@ def register_upload_routes(app):
                     # Save metadata with photo_type so review queue can display it.
                     # Persist match_sheet too so a later carapace cross-check on this
                     # packet uses the same location scope the admin chose at upload.
-                    packet_metadata = {'photo_type': 'plastron'}
+                    packet_metadata = {'photo_type': tenant.upload_photo_type()}
                     if match_sheet:
                         packet_metadata['match_sheet'] = match_sheet
                     # Persist the same flag / find-metadata fields the community
@@ -353,7 +353,7 @@ def register_upload_routes(app):
                         'request_id': request_id,
                         'matches': formatted_matches,
                         'uploaded_image_path': query_save_path,
-                        'photo_type': 'plastron',
+                        'photo_type': tenant.upload_photo_type(),
                         'message': message
                     })
                 except Exception as search_exc:

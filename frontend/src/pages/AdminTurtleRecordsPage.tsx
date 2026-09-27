@@ -13,6 +13,7 @@ import {
 import { IconPhoto, IconDatabase } from '@tabler/icons-react';
 import { useMediaQuery } from '@mantine/hooks';
 import { useUser } from '../hooks/useUser';
+import { useActiveOrg } from '../hooks/useActiveOrg';
 import { isStaffRole } from '../services/api/auth';
 import { useAdminTurtleRecords } from '../hooks/useAdminTurtleRecords';
 import { AdminTurtleRecordsProvider } from './AdminTurtleRecords/AdminTurtleRecordsContext';
@@ -21,7 +22,10 @@ import { SheetsBrowserTab } from './AdminTurtleRecords/SheetsBrowserTab';
 import { CreateNewTurtleModal } from './AdminTurtleRecords/CreateNewTurtleModal';
 
 export default function AdminTurtleRecordsPage() {
-  const { role, authChecked } = useUser();
+  const { authChecked: userAuthChecked } = useUser();
+  // Role in the active research group (the account role for the main group)
+  const { role, ready: orgReady } = useActiveOrg();
+  const authChecked = userAuthChecked && orgReady;
   const isMobile = useMediaQuery('(max-width: 576px)');
   const hook = useAdminTurtleRecords(role, authChecked);
 

@@ -49,7 +49,7 @@ import {
   turtleDiskFolderId,
   type TurtleSheetsData,
 } from '../../services/api/sheets';
-import { useUser } from '../../hooks/useUser';
+import { useActiveOrg } from '../../hooks/useActiveOrg';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
 import { OldTurtlePhotosSection } from '../../components/OldTurtlePhotosSection';
@@ -138,7 +138,8 @@ function findTurtleForMatch(
 }
 
 export function SheetsBrowserTab() {
-  const { role } = useUser();
+  // Role in the active research group (the account role for the main group)
+  const { role } = useActiveOrg();
   const ctx = useAdminTurtleRecordsContext();
   const [turtleImages, setTurtleImages] = useState<TurtleImagesResponse | null>(null);
   const [listMode, setListMode] = useState<'records' | 'tags'>('records');

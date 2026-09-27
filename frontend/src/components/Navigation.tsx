@@ -28,7 +28,6 @@ import {
   IconFlag,
   IconCompass,
   IconMapPin,
-  IconInbox,
   IconBuildingCommunity,
 } from '@tabler/icons-react';
 import { useUser } from '../hooks/useUser';
@@ -61,7 +60,7 @@ export default function Navigation({ children }: NavigationProps) {
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const { isLoggedIn, user, logout: setUserLogout } = useUser();
   // Role in the selected research group (for the main group this is the account role as before)
-  const { role, isDbOrg, active: activeOrg, isSuperAdmin, options: orgOptions } = useActiveOrg();
+  const { role, isSuperAdmin, options: orgOptions } = useActiveOrg();
   const showOrgSwitcher = orgOptions.length > 1;
 
   const isStaff = isStaffRole(role);
@@ -73,24 +72,10 @@ export default function Navigation({ children }: NavigationProps) {
 
   // Get navigation items in the correct order based on role
   const getNavigationItems = () => {
-    const items = isDbOrg ? getOrgNavigationItems() : getMainNavigationItems();
+    // Same pages for every research group; what is shown depends on the role in the active group
+    const items = getMainNavigationItems();
     if (isSuperAdmin) {
       items.push({ label: 'Research Groups', path: '/platform/groups', icon: IconBuildingCommunity });
-    }
-    return items;
-  };
-
-  // Database-backed research group: carapace upload/review, records, regions, members
-  const getOrgNavigationItems = () => {
-    const base = `/g/${activeOrg.slug}`;
-    const items = [{ label: 'Home', path: base, icon: IconHome }];
-    if (isStaff) {
-      items.push({ label: 'Review Queue', path: `${base}/review`, icon: IconInbox });
-      items.push({ label: 'Turtle Records', path: `${base}/turtles`, icon: IconPhoto });
-      if (isAdmin) {
-        items.push({ label: 'Regions', path: `${base}/regions`, icon: IconMapPin });
-        items.push({ label: 'Members', path: `${base}/members`, icon: IconUsers });
-      }
     }
     return items;
   };
@@ -154,7 +139,7 @@ export default function Navigation({ children }: NavigationProps) {
     // Calculate final breakpoint (higher = drawer appears at larger screen width)
     return baseBreakpoint + itemAdjustment + userNameAdjustment;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- item list derives from these values
-  }, [isStaff, isAdmin, isSuperAdmin, isDbOrg, showOrgSwitcher, user?.name, user?.email]);
+  }, [isStaff, isAdmin, isSuperAdmin, showOrgSwitcher, user?.name, user?.email]);
 
   // Use dynamic breakpoint; on mobile (< 768px) always show drawer for best touch UX
   const isMobile = useMediaQuery('(max-width: 767px)');

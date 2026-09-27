@@ -34,6 +34,7 @@ import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback } fr
 import { MAX_RAW_FILE_BYTES } from '../utils/uploadConstants';
 import { dropzoneRejectionMessage } from '../utils/uploadErrorMessages';
 import { useUser } from '../hooks/useUser';
+import { useActiveOrg } from '../hooks/useActiveOrg';
 import { usePhotoUpload } from '../hooks/usePhotoUpload';
 import { isStaffRole } from '../services/api/auth';
 import { PreviewCard } from '../components/PreviewCard';
@@ -91,10 +92,14 @@ function flattenMatchScopeOptions(data: ComboboxData): ComboboxItem[] {
 export default function HomePage() {
   const dispatch = useAppDispatch();
   const pendingRewards = useAppSelector((s) => s.communityGame.pendingRewards);
-  const { role, isLoggedIn, authChecked } = useUser();
+  const { isLoggedIn, authChecked: userAuthChecked } = useUser();
+  // Role in the active research group (the account role for the main group)
+  const { role, ready: orgReady, isDbOrg } = useActiveOrg();
+  const authChecked = userAuthChecked && orgReady;
   const isStaff = isStaffRole(role);
   const quickCheck = useCarapaceQuickCheck();
-  const carapaceMode = isStaff && quickCheck.enabled;
+  // Research groups upload carapace photos as their normal workflow: no separate quick check.
+  const carapaceMode = isStaff && quickCheck.enabled && !isDbOrg;
   const canUseObserverGamification = authChecked && isLoggedIn;
   const isMobile = useMediaQuery('(max-width: 768px)', undefined, { getInitialValueInEffect: false });
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -510,11 +515,11 @@ export default function HomePage() {
                   leftSection={<IconSkull size={16} stroke={1.5} />}
                   onClick={() => setMarkDeceasedModalOpen(true)}
                 >
-                  Mortality without plastron ID
+                  {isDbOrg ? 'Mortality without ID match' : 'Mortality without plastron ID'}
                 </Button>
               )}
             </Group>
-            {isStaff && (
+            {isStaff && !isDbOrg && (
               <Switch
                 label='Carapace-only quick check'
                 color='orange'
@@ -768,6 +773,7 @@ export default function HomePage() {
       </Paper>
 
       <InstructionsModal
+        shell={isDbOrg ? 'carapace' : 'plastron'}
         opened={instructionsOpened}
         onClose={() => setInstructionsOpened(false)}
         onTrainingCompleted={

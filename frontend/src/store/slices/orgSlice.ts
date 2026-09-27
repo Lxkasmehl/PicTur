@@ -1,8 +1,9 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { Membership, PublicOrg } from '../../services/api/orgs';
+import { MAIN_ORG_SLUG } from '../../services/api/orgContext';
 
+export { MAIN_ORG_SLUG };
 const ACTIVE_ORG_KEY = 'active_org';
-export const MAIN_ORG_SLUG = 'main';
 
 function readActiveSlug(): string {
   try {
@@ -23,6 +24,8 @@ interface OrgState {
   /** Currently selected research group (persisted per browser). */
   activeSlug: string;
   loaded: boolean;
+  /** True once the public group list has been fetched (or failed). */
+  publicLoaded: boolean;
 }
 
 const initialState: OrgState = {
@@ -32,6 +35,7 @@ const initialState: OrgState = {
   isSuperAdmin: false,
   activeSlug: readActiveSlug(),
   loaded: false,
+  publicLoaded: false,
 };
 
 const orgSlice = createSlice({
@@ -44,6 +48,7 @@ const orgSlice = createSlice({
     },
     setPublicOrgs: (state, action: PayloadAction<PublicOrg[]>) => {
       state.publicOrgs = action.payload;
+      state.publicLoaded = true;
     },
     setAllOrgs: (state, action: PayloadAction<PublicOrg[]>) => {
       state.allOrgs = action.payload;

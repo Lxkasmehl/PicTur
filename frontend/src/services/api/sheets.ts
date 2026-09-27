@@ -11,6 +11,7 @@ export * from './turtle-data';
 export * from './general-locations';
 
 import { getToken, TURTLE_API_BASE_URL } from './config';
+import { withOrgParam } from './orgContext';
 
 // ---------------------------------------------------------------------------
 // Sheet-tab management
@@ -300,7 +301,7 @@ export async function downloadAdminBackupArchive(
   // 2) Hand off to the browser's download manager (streams to disk; the
   //    response's Content-Disposition names the file).
   params.set('dl', dlToken);
-  const url = `${TURTLE_API_BASE_URL}/backup/archive?${params.toString()}`;
+  const url = withOrgParam(`${TURTLE_API_BASE_URL}/backup/archive?${params.toString()}`);
   const a = document.createElement('a');
   a.href = url;
   a.rel = 'noopener';

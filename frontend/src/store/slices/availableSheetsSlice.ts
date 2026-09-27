@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { listSheets } from '../../services/api';
+import { setActiveOrg } from './orgSlice';
 
 export const fetchAvailableSheets = createAsyncThunk(
   'availableSheets/fetch',
@@ -32,6 +33,8 @@ const availableSheetsSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
+      // tabs belong to a research group: forget them when the group changes
+      .addCase(setActiveOrg, () => initialState)
       .addCase(fetchAvailableSheets.pending, (state) => {
         state.loading = true;
       })

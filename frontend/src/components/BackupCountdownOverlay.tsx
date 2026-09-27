@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Affix, Modal, Stack, Text, Title, Group, Loader } from '@mantine/core';
 import { IconCloudUpload } from '@tabler/icons-react';
 import { useUser } from '../hooks/useUser';
+import { useActiveOrg } from '../hooks/useActiveOrg';
 import { isStaffRole } from '../services/api/auth';
 import { getBackupWindow, type BackupWindow } from '../services/api/backup';
 import { TURTLE_API_BASE_URL } from '../services/api/config';
@@ -49,7 +50,9 @@ async function backendIsHealthy(): Promise<boolean> {
 }
 
 export default function BackupCountdownOverlay() {
-  const { role, isLoggedIn } = useUser();
+  const { isLoggedIn } = useUser();
+  // Role in the active research group (the account role for the main group)
+  const { role } = useActiveOrg();
   const [windowInfo, setWindowInfo] = useState<BackupWindow | null>(null);
   const [now, setNow] = useState(() => Date.now() / 1000);
   const [phase, setPhase] = useState<Phase>('idle');

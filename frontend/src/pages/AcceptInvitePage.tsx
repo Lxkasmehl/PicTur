@@ -52,7 +52,7 @@ export default function AcceptInvitePage() {
     await refreshMyOrgs(dispatch);
     dispatch(setActiveOrg(slug));
     notifications.show({ color: 'green', icon: <IconCheck size={18} />, title: 'Welcome!', message: `You joined ${invite?.org.name}.` });
-    navigate(`/g/${slug}`);
+    navigate('/');
   };
 
   const accept = async () => {

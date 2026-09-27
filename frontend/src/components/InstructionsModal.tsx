@@ -25,6 +25,8 @@ interface InstructionsModalProps {
   onClose: () => void;
   /** Fired when the user completes the full checklist (not reminder-only close). */
   onTrainingCompleted?: () => void;
+  /** Which shell is photographed: the main group uses the plastron, research groups the carapace. */
+  shell?: 'plastron' | 'carapace';
 }
 
 const SECTION_GAP = 'xl';
@@ -32,7 +34,8 @@ const CARD_PX = 'xl';
 const CARD_PY = 'lg';
 const CARD_GAP = 'md';
 
-export function InstructionsModal({ opened, onClose, onTrainingCompleted }: InstructionsModalProps) {
+export function InstructionsModal({ opened, onClose, onTrainingCompleted, shell = 'plastron' }: InstructionsModalProps) {
+  const isCarapace = shell === 'carapace';
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -115,11 +118,11 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted }: Inst
                 <IconCamera size={20} />
               </ThemeIcon>
               <Text size="lg" fw={600} style={{ lineHeight: 1.4 }}>
-                How to photograph a turtle&apos;s plastron
+                How to photograph a turtle&apos;s {shell}
               </Text>
             </Group>
             <Text size="md" c="dimmed" style={{ lineHeight: 1.6 }}>
-              The plastron is the bottom shell. We need one main photo per turtle that
+              {isCarapace ? 'The carapace is the top shell.' : 'The plastron is the bottom shell.'} We need one main photo per turtle that
               shows the full pattern clearly so we can identify the animal.
             </Text>
 
@@ -134,7 +137,7 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted }: Inst
               }}
             >
               <Text size="sm" fw={700} mb="xs" style={{ letterSpacing: '0.02em' }}>
-                Your plastron photo must have:
+                Your {shell} photo must have:
               </Text>
               <List
                 size="sm"
@@ -143,7 +146,7 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted }: Inst
                 styles={{ item: { lineHeight: 1.5 } }}
               >
                 <List.Item>
-                  <strong>Full plastron in frame</strong> — nothing cut off at the edges
+                  <strong>Full {shell} in frame</strong> — nothing cut off at the edges
                 </List.Item>
                 <List.Item>
                   <strong>No light reflections</strong> — avoid flash and harsh light on the shell
@@ -176,11 +179,13 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted }: Inst
                 <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
                   <Text size="md" fw={600}>Positioning</Text>
                   <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
-                    Gently turn the turtle over or hold it so the plastron is fully visible. Keep the animal safe and supported.
+                    {isCarapace
+                      ? 'Leave the turtle on the ground in its natural position so the whole top shell is visible. No need to pick it up.'
+                      : 'Gently turn the turtle over or hold it so the plastron is fully visible. Keep the animal safe and supported.'}
                   </Text>
                 </Stack>
               </Group>
-              <Box mx={0}>
+              {!isCarapace && <Box mx={0}>
                 <Image
                   src={step1Image}
                   alt="Step 1: Position the turtle"
@@ -188,7 +193,7 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted }: Inst
                   maw={280}
                   fit="contain"
                 />
-              </Box>
+              </Box>}
             </Stack>
           </Paper>
 
@@ -239,7 +244,7 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted }: Inst
               <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
                 <Text size="md" fw={600}>Camera angle</Text>
                 <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
-                  Hold the camera directly above and parallel to the plastron. Keep the entire shell in frame with minimal distortion.
+                  Hold the camera directly above and parallel to the {shell}. Keep the entire shell in frame with minimal distortion.
                 </Text>
               </Stack>
             </Group>
@@ -282,11 +287,11 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted }: Inst
                 <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
                   <Text size="md" fw={600}>Background & result</Text>
                   <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
-                    Use a plain, contrasting background so the shell stands out. Example of a good plastron photo:
+                    Use a plain, contrasting background so the shell stands out.{isCarapace ? '' : ' Example of a good plastron photo:'}
                   </Text>
                 </Stack>
               </Group>
-              <Box mx={0}>
+              {!isCarapace && <Box mx={0}>
                 <Image
                   src={finalResultImage}
                   alt="Example: clear plastron photo"
@@ -297,7 +302,7 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted }: Inst
                 <Text size="xs" c="dimmed" mt="xs" style={{ lineHeight: 1.5 }}>
                   This is an ideal lab example with perfect lighting and background. Your field photo doesn&apos;t need to look this perfect—just ensure the full plastron is visible, sharp, and without reflections.
                 </Text>
-              </Box>
+              </Box>}
             </Stack>
           </Paper>
 
@@ -310,7 +315,7 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted }: Inst
               <Text size="md" fw={600}>Optional: extra photos</Text>
             </Group>
             <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
-              You can add <strong>microhabitat</strong> photos (where the turtle was found) and <strong>condition</strong> photos (e.g. shell condition, injuries). These are optional and can be added after selecting your main plastron image.
+              You can add <strong>microhabitat</strong> photos (where the turtle was found) and <strong>condition</strong> photos (e.g. shell condition, injuries). These are optional and can be added after selecting your main {shell} image.
             </Text>
           </Stack>
 
@@ -319,7 +324,7 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted }: Inst
             <Text size="md" fw={600}>Best practices</Text>
             <Stack gap="xs">
               <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
-                • Gently clean the plastron if dirty so the pattern is visible.
+                • Gently clean the {shell} if dirty so the pattern is visible.
               </Text>
               <Text size="sm" c="dimmed" style={{ lineHeight: 1.6 }}>
                 • Take several shots; pick the sharpest one with the full shell in frame.
