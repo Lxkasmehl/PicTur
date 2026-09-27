@@ -41,6 +41,8 @@ export interface RegisterRequest {
   password: string;
   name?: string;
   token?: string;
+  /** Research-group invitation token (grants the membership and verifies the email). */
+  org_invite_token?: string;
 }
 
 export interface LoginRequest {

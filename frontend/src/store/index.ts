@@ -3,6 +3,7 @@ import userReducer from './slices/userSlice.js';
 import themeReducer from './slices/themeSlice.js';
 import availableSheetsReducer from './slices/availableSheetsSlice.js';
 import communityGameReducer from './slices/communityGameSlice.js';
+import orgReducer from './slices/orgSlice.js';
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     theme: themeReducer,
     availableSheets: availableSheetsReducer,
     communityGame: communityGameReducer,
+    org: orgReducer,
   },
 });
 

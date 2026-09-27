@@ -55,6 +55,7 @@ import { SightingRewardsModal } from '../components/game/SightingRewardsModal';
 import { ObserverHomeSummary } from '../components/game/ObserverHomeSummary';
 import { ObserverGamificationTeaser } from '../components/game/ObserverGamificationTeaser';
 import { MarkDeceasedPanel } from '../components/MarkDeceasedPanel';
+import { UploadGroupPicker } from '../components/org/UploadGroupPicker';
 import {
   loadHomeMatchScopeFavorites,
   saveHomeMatchScopeFavorites,
@@ -473,6 +474,7 @@ export default function HomePage() {
     <Container size='sm' py={{ base: 'md', sm: 'xl' }} px={{ base: 'xs', sm: 'md' }}>
       <Paper shadow='sm' p={{ base: 'md', sm: 'xl' }} radius='md' withBorder>
         <Stack gap='lg'>
+          <UploadGroupPicker />
           {!isStaff && authChecked && !isLoggedIn && (
             <ObserverGamificationTeaser variant="home" />
           )}
