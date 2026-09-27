@@ -10,6 +10,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "create-admin": "tsx src/scripts/create-initial-admin.ts",
     "delete-user": "tsx src/scripts/delete-user.ts",
+    "set-super-admin": "tsx src/scripts/set-super-admin.ts",
     "seed-test-users": "tsx src/scripts/seed-test-users.ts",
     "test:setup": "tsx src/scripts/test-setup.ts",
     "test:dev": "npm run test:setup && npm run dev"
