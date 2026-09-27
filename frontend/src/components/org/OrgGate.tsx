@@ -21,12 +21,16 @@ interface OrgGateProps {
 export function OrgGate({ minRole, children }: OrgGateProps) {
   const { slug } = useParams();
   const { authChecked } = useUser();
-  const { options, loaded, active, select } = useActiveOrg();
+  const { options, loaded, select } = useActiveOrg();
   const org = options.find((o) => o.slug === slug);
+  const orgSlug = org?.slug;
 
+  // Opening a /g/:slug URL (link, reload) makes that group active — once per URL slug only.
+  // Depending on the active group here would fight the switcher: switching away while this page
+  // is still mounted would immediately re-select this group.
   useEffect(() => {
-    if (org && active.slug !== org.slug) select(org.slug);
-  }, [org, active.slug, select]);
+    if (orgSlug) select(orgSlug);
+  }, [orgSlug, select]);
 
   if (!authChecked || !loaded) {
     return (

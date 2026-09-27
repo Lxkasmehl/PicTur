@@ -196,11 +196,22 @@ def test_unknown_group_404(env):
     assert env['client'].get('/api/v2/orgs/nope/regions', headers=_h('a-staff')).status_code == 404
 
 
-def test_database_not_configured_returns_503(env):
+def test_unreachable_database_returns_503(env, monkeypatch):
+    """PostgreSQL down: the group API answers 503 instead of crashing (main group unaffected)."""
     from orgs import db as org_db
 
     org_db.reset_for_tests()
+    monkeypatch.setattr(org_db, '_last_attempt', 0.0)
+    monkeypatch.setenv('DATABASE_URL', 'postgresql://nobody:x@127.0.0.1:1/none?connect_timeout=1')
     assert env['client'].get('/api/v2/orgs/alpha/regions', headers=_h('a-staff')).status_code == 503
+
+
+def test_local_default_is_sqlite_next_to_group_photos(monkeypatch, tmp_path):
+    from orgs import db as org_db
+
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    monkeypatch.setenv('ORG_DATA_DIR', str(tmp_path / 'od'))
+    assert org_db.database_url() == 'sqlite:///' + (tmp_path / 'od' / 'orgs.sqlite').as_posix()
 
 
 def test_region_management_requires_group_admin(env):

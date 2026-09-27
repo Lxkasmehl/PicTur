@@ -32,7 +32,17 @@ def normalize_database_url(url: str) -> str:
 
 
 def database_url() -> str:
-    return normalize_database_url(os.environ.get('DATABASE_URL', '').strip())
+    """DATABASE_URL (PostgreSQL in Docker/production). Without it — local development via
+    `python app.py` — a SQLite file next to the group photos is used, so the research groups work
+    out of the box."""
+    url = os.environ.get('DATABASE_URL', '').strip()
+    if url:
+        return normalize_database_url(url)
+    from orgs import storage
+
+    root = storage.data_root()
+    os.makedirs(root, exist_ok=True)
+    return 'sqlite:///' + os.path.join(root, 'orgs.sqlite').replace(os.sep, '/')
 
 
 def is_configured() -> bool:
