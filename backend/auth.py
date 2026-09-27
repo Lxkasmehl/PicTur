@@ -13,6 +13,7 @@ import jwt
 from functools import wraps
 from flask import request, jsonify
 from config import JWT_SECRET, AUTH_URL
+import tenant
 
 
 def verify_jwt_token(token):
@@ -45,11 +46,15 @@ def mint_download_token(user_id, scope, sheet, ttl_seconds=120):
     the scope/sheet it authorizes so it can't be replayed for a different one.
     """
     now = int(time.time())
+    t = tenant.current()
     payload = {
         'purpose': 'backup_dl',
         'uid': user_id,
         'scope': scope,
         'sheet': sheet or '',
+        # research group the download belongs to (None = main group); bound so a token can never
+        # be replayed against another group
+        'org': {'id': t.id, 'slug': t.slug, 'name': t.name} if t is not None else None,
         'iat': now,
         'exp': now + int(ttl_seconds),
     }
@@ -76,7 +81,22 @@ def verify_download_token(token, scope, sheet):
         return False
     if (payload.get('sheet') or None) != (sheet or None):
         return False
+    t = tenant.current()
+    token_org = (payload.get('org') or {}).get('id')
+    if token_org != (t.id if t is not None else None):
+        return False
     return True
+
+
+def download_token_org(token):
+    """The research group embedded in a valid backup-download token (dict), or None."""
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+    except jwt.InvalidTokenError:
+        return None
+    if payload.get('purpose') != 'backup_dl':
+        return None
+    return payload.get('org')
 
 
 def get_user_from_request():
@@ -92,7 +112,17 @@ def get_user_from_request():
     if not success:
         return False, None, error
 
-    return True, payload, None
+    # In a database-backed research group the role comes from the membership, not the JWT.
+    return True, tenant.effective_user(payload), None
+
+
+def _revocation_check(auth_header):
+    """check_auth_revocation, skipped when the research-group resolution already validated this
+    token against the auth service during the same request."""
+    t = tenant.current()
+    if t is not None and t.token_validated:
+        return True, None
+    return check_auth_revocation(auth_header)
 
 
 def check_auth_revocation(auth_header):
@@ -196,7 +226,7 @@ def optional_auth(f):
             try:
                 success, user_data, error = verify_jwt_token(auth_header)
                 if success and user_data is not None:
-                    request.user = user_data
+                    request.user = tenant.effective_user(user_data)
             except Exception:
                 request.user = None
         return f(*args, **kwargs)
@@ -219,7 +249,7 @@ def require_admin(f):
 
         auth_header = request.headers.get('Authorization')
         if auth_header:
-            allowed, revoke_error = check_auth_revocation(auth_header)
+            allowed, revoke_error = _revocation_check(auth_header)
             if not allowed:
                 return jsonify({'error': revoke_error or 'Token has been revoked'}), 403
 
@@ -244,7 +274,7 @@ def require_admin_only(f):
 
         auth_header = request.headers.get('Authorization')
         if auth_header:
-            allowed, revoke_error = check_auth_revocation(auth_header)
+            allowed, revoke_error = _revocation_check(auth_header)
             if not allowed:
                 return jsonify({'error': revoke_error or 'Token has been revoked'}), 403
 

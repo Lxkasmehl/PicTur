@@ -37,7 +37,6 @@ from routes.turtles import register_turtle_routes
 from routes.locations import register_locations_routes
 from routes.general_locations import register_general_location_routes
 from routes.admin_backup import register_admin_backup_routes
-from routes.orgs_api import register_org_routes
 
 # Create Flask app
 from config import MAX_CONTENT_LENGTH, TRUSTED_PROXY_COUNT
@@ -47,15 +46,21 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 if TRUSTED_PROXY_COUNT > 0:
     from werkzeug.middleware.proxy_fix import ProxyFix
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=TRUSTED_PROXY_COUNT)
-CORS(app, resources={r"/api/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})
+CORS(app, resources={r"/api/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization", "X-Org-Slug"]}})
 
 # Add after_request handler to ensure CORS headers are always set
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Org-Slug')
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
     return response
+
+# Research-group context: X-Org-Slug (or ?org=) selects a database-backed group for this request;
+# without it everything runs for the main (Sheets) group exactly as before.
+import tenant
+app.before_request(tenant.resolve_request_tenant)
+app.teardown_request(tenant.clear_request_tenant)
 
 # Register all routes (Delegates logic to the /routes folder)
 register_health_routes(app)
@@ -67,7 +72,14 @@ register_turtle_routes(app)
 register_locations_routes(app)
 register_general_location_routes(app)
 register_admin_backup_routes(app)
-register_org_routes(app)
+
+# Database of the research groups (PostgreSQL via DATABASE_URL, SQLite locally). A failure here
+# must never take the main group down; tenant.resolve_request_tenant retries lazily.
+try:
+    from orgs import db as org_db
+    org_db.init_engine()
+except Exception as _org_db_err:
+    print(f"[orgs] research-group database not available yet: {_org_db_err}", flush=True)
 
 @app.errorhandler(HTTPException)
 def handle_http_exception(err: HTTPException):

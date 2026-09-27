@@ -324,7 +324,7 @@ class TurtleIngestMixin:
 
         shutil.copy2(source_path, dest_image_path)
         try:
-            success = brain.process_and_save(dest_image_path, dest_pt_path)
+            success = _matcher(self).process_and_save(dest_image_path, dest_pt_path)
         except Exception as e:
             print(f"   ⚠️ SuperPoint crashed for {turtle_id}: {e}")
             # Clean up the copied image so a future ingest can retry
@@ -344,3 +344,7 @@ class TurtleIngestMixin:
             print(f"   ⚠️ SuperPoint Processing Failed: {turtle_id}")
             return "error"
 
+def _matcher(manager):
+    """This manager's matcher: a research group's BrainView, else the shared module-level brain
+    (looked up at call time so tests can patch it)."""
+    return getattr(manager, '_brain_view', None) or brain

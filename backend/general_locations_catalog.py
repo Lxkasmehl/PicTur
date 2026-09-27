@@ -38,6 +38,24 @@ _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 _CATALOG_FILE = os.path.join(_DATA_DIR, 'general_locations.json')
 _CATALOG_LOCK = threading.RLock()
 
+
+def _catalog_file() -> str:
+    """Catalog of the active research group (its own data dir), else the main group's file."""
+    import tenant
+
+    t = tenant.current()
+    if t is None:
+        return _CATALOG_FILE
+    return os.path.join(tenant.data_dir(t.id), 'general_locations.json')
+
+
+def _seed_catalog() -> Dict[str, Any]:
+    """Seed for a missing catalog: the main group's programs; research groups start empty and
+    define their own tabs and General Locations on the Locations page."""
+    import tenant
+
+    return deepcopy(_DEFAULT_CATALOG) if tenant.current() is None else {'states': {}, 'sheet_defaults': {}}
+
 # Seed used only when the catalog file is missing or has no states/sheet_defaults yet.
 # Each state key = sheet tab name.  For fixed programs the state key equals the
 # sheet_default key so that folder paths are always data/<sheet_name>/<location>/...
@@ -90,7 +108,7 @@ def _normalize_catalog(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # Merging into generic/example defaults previously caused placeholder keys to be saved back to disk.
     has_persistent_data = bool(states or sheet_defaults_in)
     catalog: Dict[str, Any] = (
-        {'states': {}, 'sheet_defaults': {}} if has_persistent_data else deepcopy(_DEFAULT_CATALOG)
+        {'states': {}, 'sheet_defaults': {}} if has_persistent_data else _seed_catalog()
     )
 
     for state_name, locations in states.items():
@@ -185,13 +203,14 @@ def _normalize_catalog(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _load_catalog_unlocked() -> Dict[str, Any]:
-    if not os.path.exists(_CATALOG_FILE):
+    path = _catalog_file()
+    if not os.path.exists(path):
         catalog = _normalize_catalog(None)
         _save_catalog_unlocked(catalog)
         return catalog
 
     try:
-        with open(_CATALOG_FILE, 'r', encoding='utf-8') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             raw = json.load(f)
     except (OSError, json.JSONDecodeError):
         raw = None
@@ -199,8 +218,9 @@ def _load_catalog_unlocked() -> Dict[str, Any]:
 
 
 def _save_catalog_unlocked(catalog: Dict[str, Any]) -> None:
-    os.makedirs(os.path.dirname(_CATALOG_FILE) or '.', exist_ok=True)
-    with open(_CATALOG_FILE, 'w', encoding='utf-8') as f:
+    path = _catalog_file()
+    os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
         json.dump(catalog, f, indent=2, ensure_ascii=False, sort_keys=True)
 
 

@@ -15,6 +15,7 @@ from general_locations_catalog import (
     remove_sheet_default,
 )
 from services import manager_service
+import tenant
 from services.manager_service import get_sheets_service
 from sheets import bulk_ops, sheet_management
 
@@ -125,7 +126,7 @@ def register_general_location_routes(app):
             response['sheets_updated'] = sheets_updated
         if sync_error:
             response['sync_error'] = sync_error
-        elif service and sheets_updated == 0:
+        elif service and sheets_updated == 0 and tenant.current() is None:  # Google UI dropdowns only
             response['sync_warning'] = (
                 'Google Sheets General Location dropdown was not updated on any tab. '
                 'Ensure each state tab has a "General Location" header in row 1, or re-save a turtle on that tab.'

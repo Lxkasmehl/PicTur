@@ -1,5 +1,10 @@
 """
 Turtle Manager and Google Sheets Service initialization
+
+Per research group: ``manager``, ``manager_ready``, ``get_sheets_service()``,
+``get_community_sheets_service()`` and ``call_sheets_with_retry`` return the instances of the group
+active for the current request (see tenant.py). Without an active group — the main group — they
+return the Google-Sheets-backed singletons exactly as before.
 """
 
 import http.client
@@ -10,12 +15,61 @@ import threading
 import time
 from googleapiclient.errors import HttpError
 
+import tenant
 from services.google_sheets_service import GoogleSheetsService
 
 # Initialize Turtle Manager in background thread to avoid blocking server start
-# This allows the server to start immediately and respond to health checks
-manager = None
-manager_ready = threading.Event()
+# This allows the server to start immediately and respond to health checks.
+# Main group's manager; `manager_service.manager` resolves per research group (see __getattr__).
+_main_manager = None
+_main_manager_ready = threading.Event()
+
+# Research groups: one TurtleManager (own data dir + own matching caches) and one pair of
+# database-backed Sheets services per group, created on first use.
+_tenant_lock = threading.RLock()
+_tenant_managers = {}
+_tenant_sheets = {}
+_ALWAYS_READY = threading.Event()
+_ALWAYS_READY.set()
+
+
+def _tenant_manager(t):
+    with _tenant_lock:
+        mgr = _tenant_managers.get(t.id)
+        if mgr is None:
+            from turtle_manager import TurtleManager
+            from turtles.image_processing import BrainView, brain as shared_brain
+
+            mgr = TurtleManager(base_data_dir=tenant.data_dir(t.id), brain_view=BrainView(shared_brain))
+            _tenant_managers[t.id] = mgr
+            try:
+                sheets = _tenant_sheets_service(t, 'research').list_sheets() or []
+                community = _tenant_sheets_service(t, 'community').list_sheets() or []
+                mgr.ensure_data_folders_from_sheets(sheets, community)
+            except Exception as e:
+                print(f"⚠️ Could not ensure sheet folders for research group {t.slug}: {e}")
+        return mgr
+
+
+def _tenant_sheets_service(t, book):
+    with _tenant_lock:
+        svc = _tenant_sheets.get((t.id, book))
+        if svc is None:
+            from orgs.sheets_store import make_sheets_service
+
+            svc = _tenant_sheets[(t.id, book)] = make_sheets_service(t.id, book)
+        return svc
+
+
+def __getattr__(name):
+    """`manager_service.manager` / `.manager_ready` for the active research group (PEP 562).
+    Tests that patch these names still work: a patched module attribute takes precedence."""
+    if name == 'manager':
+        t = tenant.current()
+        return _main_manager if t is None else _tenant_manager(t)
+    if name == 'manager_ready':
+        return _main_manager_ready if tenant.current() is None else _ALWAYS_READY
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # Initialize Google Sheets Service (lazy initialization)
 sheets_service = None
@@ -27,6 +81,9 @@ migration_running = False
 def get_sheets_service():
     """Lazy initialization of Google Sheets Service (research spreadsheet)"""
     global sheets_service, migration_checked, migration_running
+    t = tenant.current()
+    if t is not None:
+        return _tenant_sheets_service(t, 'research')
     if sheets_service is None:
         try:
             sheets_service = GoogleSheetsService()
@@ -53,6 +110,9 @@ def get_community_sheets_service():
     """Lazy initialization of Google Sheets Service for community-facing spreadsheet.
     Returns None if GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID is not set."""
     global community_sheets_service
+    t = tenant.current()
+    if t is not None:
+        return _tenant_sheets_service(t, 'community')
     community_id = os.environ.get('GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID', '').strip()
     if not community_id:
         return None
@@ -71,6 +131,8 @@ def get_community_sheets_service():
 def reset_sheets_service():
     """Reset the Google Sheets service (useful for connection issues)"""
     global sheets_service, community_sheets_service
+    if tenant.current() is not None:
+        return get_sheets_service()  # database-backed: nothing to reconnect
     sheets_service = None
     community_sheets_service = None
     return get_sheets_service()
@@ -131,6 +193,9 @@ def _research_service_strict():
     (so call_sheets_with_retry can classify/retry) instead of swallowing to
     None like get_sheets_service()."""
     global sheets_service
+    t = tenant.current()
+    if t is not None:
+        return _tenant_sheets_service(t, 'research')
     if sheets_service is None:
         sheets_service = GoogleSheetsService()
     return sheets_service
@@ -140,6 +205,9 @@ def _community_service_strict():
     """Community Sheets service, or None when the community spreadsheet is not
     configured (the shipped default -- caller treats None as a skip, not an
     error). Raises on a configured-but-failing construction."""
+    t = tenant.current()
+    if t is not None:
+        return _tenant_sheets_service(t, 'community')
     community_id = os.environ.get('GOOGLE_SHEETS_COMMUNITY_SPREADSHEET_ID', '').strip()
     if not community_id:
         return None
@@ -219,11 +287,11 @@ def check_and_run_migration():
 
 def initialize_manager():
     """Initialize Turtle Manager in background thread (real TurtleManager only)."""
-    global manager
+    global _main_manager
     from turtle_manager import TurtleManager
     try:
-        manager = TurtleManager()
-        manager_ready.set()
+        _main_manager = TurtleManager()
+        _main_manager_ready.set()
         try:
             print("✅ TurtleManager initialized successfully")
         except UnicodeEncodeError:
@@ -235,12 +303,12 @@ def initialize_manager():
             print(f"❌ Error initializing TurtleManager: {str(e)}")
         except UnicodeEncodeError:
             print(f"[ERROR] Error initializing TurtleManager: {str(e)}")
-        manager_ready.set()  # Set even on error so server can continue
+        _main_manager_ready.set()  # Set even on error so server can continue
 
 
 def _ensure_sheet_folders_on_startup():
     """Fetch sheet names from admin and community spreadsheets and ensure matching folders exist under data/."""
-    if manager is None:
+    if _main_manager is None:
         return
     admin_sheets = []
     community_sheets = []
@@ -257,7 +325,7 @@ def _ensure_sheet_folders_on_startup():
     except Exception:
         pass
     try:
-        manager.ensure_data_folders_from_sheets(admin_sheets, community_sheets)
+        _main_manager.ensure_data_folders_from_sheets(admin_sheets, community_sheets)
     except Exception as e:
         try:
             print(f"⚠️ Could not ensure sheet folders: {e}")

@@ -60,7 +60,7 @@ class TurtleIdentifierPlastronMixin:
             except OSError:
                 pass
         shutil.copy2(query_image, dest_image)
-        if not brain.process_and_save(dest_image, dest_pt):
+        if not _matcher(self).process_and_save(dest_image, dest_pt):
             try:
                 if os.path.isfile(dest_image):
                     os.remove(dest_image)
@@ -81,7 +81,7 @@ class TurtleIdentifierPlastronMixin:
         staged_master_path = os.path.join(ref_dir, f"{turtle_id}_staged_{op_ts}{new_ext}")
         staged_pt_path = os.path.join(ref_dir, f"{turtle_id}_staged_{op_ts}.pt")
         shutil.copy2(query_image, staged_master_path)
-        staged_ok = brain.process_and_save(staged_master_path, staged_pt_path)
+        staged_ok = _matcher(self).process_and_save(staged_master_path, staged_pt_path)
         if not staged_ok:
             try:
                 if os.path.exists(staged_master_path):
@@ -151,3 +151,7 @@ class TurtleIdentifierPlastronMixin:
             return self._create_identifier_plastron(ref_stem, query_image, ref_dir, loose_dir)
         return self._replace_identifier_plastron(ref_stem, query_image, ref_dir, loose_dir)
 
+def _matcher(manager):
+    """This manager's matcher: a research group's BrainView, else the shared module-level brain
+    (looked up at call time so tests can patch it)."""
+    return getattr(manager, '_brain_view', None) or brain

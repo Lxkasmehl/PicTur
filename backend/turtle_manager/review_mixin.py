@@ -241,7 +241,7 @@ class TurtleReviewMixin:
                 # Extract features first; only replace old master if staging succeeds.
                 shutil.copy2(query_image, staged_master_path)
                 try:
-                    staged_ok = brain.process_and_save(staged_master_path, staged_pt_path)
+                    staged_ok = _matcher(self).process_and_save(staged_master_path, staged_pt_path)
                 except Exception as e:
                     print(f"   ⚠️ SuperPoint crashed during reference upgrade for {match_turtle_id}: {e}")
                     staged_ok = False
@@ -319,7 +319,7 @@ class TurtleReviewMixin:
                 rel_path = os.path.relpath(ref_dir, self.base_dir)
                 loc_parts = rel_path.split(os.sep)[:-2]
                 location_name = "/".join(loc_parts)
-                brain.add_single_to_vram(new_pt_path, ref_stem, location_name, photo_type=photo_type)
+                _matcher(self).add_single_to_vram(new_pt_path, ref_stem, location_name, photo_type=photo_type)
                 # Defensive orphan sweep so any stray non-canonical reference
                 # gets archived to Old References/.
                 self._purge_orphan_refs_in_ref_dir(ref_dir, ref_stem)
@@ -355,7 +355,7 @@ class TurtleReviewMixin:
                 pt_path = os.path.join(location_dir, new_turtle_id, subdir, f"{new_turtle_id}.pt")
                 rel_path = os.path.relpath(location_dir, self.base_dir)
                 location_name = rel_path.replace(os.sep, "/")
-                brain.add_single_to_vram(pt_path, new_turtle_id, location_name, photo_type=photo_type)
+                _matcher(self).add_single_to_vram(pt_path, new_turtle_id, location_name, photo_type=photo_type)
                 print("✅ Search index updated.")
             elif status == 'skipped':
                 return False, f"Turtle {new_turtle_id} already exists at {new_location}"
@@ -503,7 +503,7 @@ class TurtleReviewMixin:
                                 staged_pt = os.path.join(dest_subdir, f"{target_ref_stem}_staged_{op_ts}.pt")
                                 shutil.copy2(src_img, staged_master)
                                 try:
-                                    staged_ok = brain.process_and_save(staged_master, staged_pt)
+                                    staged_ok = _matcher(self).process_and_save(staged_master, staged_pt)
                                 except Exception as e:
                                     print(f"   ⚠️ SuperPoint crashed during carapace upgrade for {target_turtle_id}: {e}")
                                     staged_ok = False
@@ -533,7 +533,7 @@ class TurtleReviewMixin:
                                 self._evict_from_vram(old_pt_path, 'carapace')
                                 rel = os.path.relpath(target_dir, self.base_dir)
                                 loc = os.path.dirname(rel).replace(os.sep, "/")
-                                brain.add_single_to_vram(dest_pt, target_ref_stem, loc, photo_type='carapace')
+                                _matcher(self).add_single_to_vram(dest_pt, target_ref_stem, loc, photo_type='carapace')
                                 self._purge_orphan_refs_in_ref_dir(dest_subdir, target_ref_stem)
                                 print(f"   ✅ Carapace reference upgraded for {target_turtle_id}")
 
@@ -542,10 +542,10 @@ class TurtleReviewMixin:
                                 if img_type == 'carapace':
                                     _carapace_ref_handled = True
                                 shutil.copy2(src_img, dest_img)
-                                if brain.process_and_save(dest_img, dest_pt):
+                                if _matcher(self).process_and_save(dest_img, dest_pt):
                                     rel = os.path.relpath(target_dir, self.base_dir)
                                     loc = os.path.dirname(rel).replace(os.sep, "/")
-                                    brain.add_single_to_vram(dest_pt, target_ref_stem, loc, photo_type=img_type)
+                                    _matcher(self).add_single_to_vram(dest_pt, target_ref_stem, loc, photo_type=img_type)
                                     self._purge_orphan_refs_in_ref_dir(dest_subdir, target_ref_stem)
                                     print(f"   ✅ {img_type.capitalize()} reference created for {target_turtle_id}")
                                 else:
@@ -623,7 +623,7 @@ class TurtleReviewMixin:
         pt_path_fragments = [os.path.join(turtle_id, sd, f"{turtle_id}.pt") for sd in subdirs_to_check]
         for cache_attr, ptype in (('vram_cache_plastron', 'plastron'),
                                   ('vram_cache_carapace', 'carapace')):
-            removed = brain.filter_vram_cache(
+            removed = _matcher(self).filter_vram_cache(
                 lambda c: not any(c['file_path'].endswith(frag) for frag in pt_path_fragments),
                 photo_type=ptype,
             )
@@ -655,3 +655,8 @@ class TurtleReviewMixin:
         return packet_dir
 
     # --- PARTNER'S HELPER AND TRACKING FUNCTIONS (KEPT 100%) ---
+
+def _matcher(manager):
+    """This manager's matcher: a research group's BrainView, else the shared module-level brain
+    (looked up at call time so tests can patch it)."""
+    return getattr(manager, '_brain_view', None) or brain

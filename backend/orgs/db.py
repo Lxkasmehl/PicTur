@@ -38,9 +38,9 @@ def database_url() -> str:
     url = os.environ.get('DATABASE_URL', '').strip()
     if url:
         return normalize_database_url(url)
-    from orgs import storage
+    import tenant
 
-    root = storage.data_root()
+    root = tenant.org_data_root()
     os.makedirs(root, exist_ok=True)
     return 'sqlite:///' + os.path.join(root, 'orgs.sqlite').replace(os.sep, '/')
 

@@ -12,6 +12,7 @@ from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from auth import require_admin
 from services import manager_service
+import tenant
 from services.manager_service import get_sheets_service, get_community_sheets_service
 from config import UPLOAD_FOLDER, MAX_FILE_SIZE, allowed_file
 from image_utils import UploadImageError
@@ -427,7 +428,7 @@ def register_review_routes(app):
         match_from_community = data.get('match_from_community') is True  # Admin re-found a community turtle
         community_sheet_name = (data.get('community_sheet_name') or '').strip() or None  # Community tab to remove from
         is_community_upload = not (request_id.startswith('admin_') if request_id else False)
-        photo_type = (data.get('photo_type') or 'plastron').strip().lower()
+        photo_type = (data.get('photo_type') or tenant.upload_photo_type()).strip().lower()
         if photo_type not in ('plastron', 'carapace'):
             photo_type = 'plastron'
         replace_reference = data.get('replace_reference') is True

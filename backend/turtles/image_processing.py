@@ -1,4 +1,5 @@
 import threading
+import weakref
 
 import torch
 from lightglue import LightGlue, SuperPoint, utils
@@ -50,9 +51,8 @@ class TurtleDeepMatcher:
         self.feature_cache = {}
         self.vram_cache_plastron = []
         self.vram_cache_carapace = []
-        # Carapace references of the database-backed research groups, keyed by org id.
-        # Kept apart from the main group's caches so reloading one never touches the other.
-        self.org_caches = {}
+        # Research-group views (BrainView) sharing these models; their caches move with set_device.
+        self._views = weakref.WeakSet()
         # Serializes all GPU operations — prevents crashes from concurrent
         # community upload threads hitting CUDA simultaneously.
         self._gpu_lock = threading.Lock()
@@ -72,7 +72,8 @@ class TurtleDeepMatcher:
 
         # Migrate both caches to the new hardware
         total_migrated = 0
-        for cache in (self.vram_cache_plastron, self.vram_cache_carapace, *self.org_caches.values()):
+        view_caches = [c for v in list(self._views) for c in (v.vram_cache_plastron, v.vram_cache_carapace)]
+        for cache in (self.vram_cache_plastron, self.vram_cache_carapace, *view_caches):
             for cand in cache:
                 cand['feats'] = {k: v.to(self.device) for k, v in cand['feats'].items()}
             total_migrated += len(cache)
@@ -357,79 +358,6 @@ class TurtleDeepMatcher:
         """Remove cache entries whose file_path == pt_path (under the GPU lock)."""
         return self.filter_vram_cache(lambda c: c.get('file_path') != pt_path, photo_type)
 
-    # --- RESEARCH-GROUP (ORG) CACHES ---
-    # Items: {'site_id': turtle db id, 'location': region id or None, 'file_path': .pt path, 'feats'}
-
-    def _load_feats_unlocked(self, pt_path):
-        cand_data = torch.load(pt_path, map_location=self.device, weights_only=True)
-        return {k: v.unsqueeze(0).to(self.device) for k, v in cand_data.items()}
-
-    def has_org_cache(self, org_id):
-        return org_id in self.org_caches
-
-    def load_org_cache(self, org_id, entries):
-        """Replace one group's cache. entries: iterable of (pt_path, turtle_id, region_id)."""
-        with self._gpu_lock:
-            items = []
-            for pt_path, turtle_id, region_id in entries:
-                if not pt_path or not os.path.exists(pt_path):
-                    continue
-                try:
-                    items.append({
-                        'site_id': turtle_id,
-                        'location': region_id,
-                        'file_path': pt_path,
-                        'feats': self._load_feats_unlocked(pt_path),
-                    })
-                except Exception as e:
-                    logger.error(f"Failed to cache org {org_id} turtle {turtle_id}: {e}")
-            self.org_caches[org_id] = items
-            logger.info(f"✅ Cached {len(items)} carapace references for research group {org_id}.")
-            return len(items)
-
-    def add_to_org_cache(self, org_id, pt_path, turtle_id, region_id):
-        """Add one reference to a group's cache (replacing any entry of the same turtle)."""
-        with self._gpu_lock:
-            if not os.path.exists(pt_path):
-                return False
-            try:
-                feats = self._load_feats_unlocked(pt_path)
-            except Exception as e:
-                logger.error(f"Failed to cache org {org_id} turtle {turtle_id}: {e}")
-                return False
-            cache = [c for c in self.org_caches.get(org_id, []) if c['site_id'] != turtle_id]
-            cache.append({'site_id': turtle_id, 'location': region_id, 'file_path': pt_path, 'feats': feats})
-            self.org_caches[org_id] = cache
-            return True
-
-    def remove_from_org_cache(self, org_id, turtle_id):
-        with self._gpu_lock:
-            cache = self.org_caches.get(org_id)
-            if cache is None:
-                return 0
-            kept = [c for c in cache if c['site_id'] != turtle_id]
-            self.org_caches[org_id] = kept
-            return len(cache) - len(kept)
-
-    def update_org_cache_location(self, org_id, turtle_id, region_id):
-        with self._gpu_lock:
-            for c in self.org_caches.get(org_id, []):
-                if c['site_id'] == turtle_id:
-                    c['location'] = region_id
-
-    def match_against_org_cache(self, org_id, query_feats_list, region_ids=None):
-        """Match against ONE group's references. region_ids: optional set to restrict candidates."""
-        with self._gpu_lock:
-            cache = self.org_caches.get(org_id) or []
-            keep = None
-            if region_ids is not None:
-                allowed = set(region_ids)
-
-                def keep(cand):
-                    return cand['location'] in allowed
-
-            return self._match_cache_list_unlocked(query_feats_list, cache, keep)
-
     def match_query_robust_vram(self, query_path, location_filter="All Locations", photo_type="plastron"):
         """Convenience wrapper: extract + match in one call."""
         query_feats = self.extract_query_features(query_path)
@@ -448,6 +376,41 @@ class TurtleDeepMatcher:
             match_count = int(valid.sum().item())
             avg_conf = float(scores[valid].mean().item()) if match_count > 0 else 0.0
             return avg_conf, match_count
+
+
+class BrainView:
+    """
+    The matcher as seen by one research group: same SuperPoint/LightGlue models and GPU lock as
+    the shared ``brain``, but its own reference caches. A group's TurtleManager uses a view, so
+    loading, adding, evicting and matching only ever touch that group's turtles.
+    """
+
+    # Cache-touching methods run unchanged on the view's own vram_cache_* lists.
+    load_database_to_vram = TurtleDeepMatcher.load_database_to_vram
+    _load_database_to_vram_unlocked = TurtleDeepMatcher._load_database_to_vram_unlocked
+    match_against_cache = TurtleDeepMatcher.match_against_cache
+    _match_against_cache_unlocked = TurtleDeepMatcher._match_against_cache_unlocked
+    _match_cache_list_unlocked = TurtleDeepMatcher._match_cache_list_unlocked
+    add_single_to_vram = TurtleDeepMatcher.add_single_to_vram
+    _add_single_to_vram_unlocked = TurtleDeepMatcher._add_single_to_vram_unlocked
+    filter_vram_cache = TurtleDeepMatcher.filter_vram_cache
+    evict_from_vram = TurtleDeepMatcher.evict_from_vram
+    match_query_robust_vram = TurtleDeepMatcher.match_query_robust_vram
+
+    def __init__(self, base):
+        self._base = base
+        self.vram_cache_plastron = []
+        self.vram_cache_carapace = []
+        views = getattr(base, '_views', None)
+        if views is not None:
+            views.add(self)
+
+    def set_device(self, device_mode):
+        return self._base.set_device(device_mode)
+
+    def __getattr__(self, name):
+        # models, device, _gpu_lock, extraction and LightGlue helpers come from the shared brain
+        return getattr(self._base, name)
 
 
 brain = TurtleDeepMatcher()
