@@ -222,7 +222,7 @@ class TurtleReferenceMixin:
             # Stage new master and .pt first; only promote if extraction succeeds.
             shutil.copy2(new_image_path, staged_master_path)
             try:
-                staged_ok = brain.process_and_save(staged_master_path, staged_pt_path)
+                staged_ok = _matcher(self).process_and_save(staged_master_path, staged_pt_path)
             except Exception as e:
                 print(f"   ⚠️ SuperPoint crashed during reference upgrade for {turtle_id}: {e}")
                 staged_ok = False
@@ -301,7 +301,7 @@ class TurtleReferenceMixin:
             rel_path = os.path.relpath(ref_dir, self.base_dir)
             loc_parts = rel_path.split(os.sep)[:-2]
             location_name = "/".join(loc_parts)
-            brain.add_single_to_vram(new_pt_path, ref_stem, location_name, photo_type=photo_type)
+            _matcher(self).add_single_to_vram(new_pt_path, ref_stem, location_name, photo_type=photo_type)
             # Defensive sweep — archive any non-canonical reference files that
             # may have been left behind by an earlier buggy code path or a
             # manual copy. Keeps the ref dir self-healing.
@@ -328,3 +328,8 @@ class TurtleReferenceMixin:
     # delete and regenerated fresh on restore-as-reference. This keeps the
     # Deleted folder images-only and guarantees .pt consistency on revert.
     # ------------------------------------------------------------------
+
+def _matcher(manager):
+    """This manager's matcher: a research group's BrainView, else the shared module-level brain
+    (looked up at call time so tests can patch it)."""
+    return getattr(manager, '_brain_view', None) or brain

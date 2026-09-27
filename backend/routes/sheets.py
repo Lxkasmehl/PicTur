@@ -741,8 +741,13 @@ def register_sheets_routes(app):
                 if service.create_sheet_with_headers(sheet_name):
                     if target == 'community':
                         try:
-                            backend_base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                            data_dir = os.path.join(backend_base, 'data')
+                            from services import manager_service as _ms
+                            _mgr = _ms.manager  # the active research group's manager (or main group)
+                            if _mgr is not None:
+                                data_dir = _mgr.base_dir
+                            else:
+                                backend_base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                                data_dir = os.path.join(backend_base, 'data')
                             community_dir = os.path.join(data_dir, 'Community_Uploads')
                             safe_name = _safe_folder_name(sheet_name)
                             os.makedirs(os.path.join(community_dir, safe_name), exist_ok=True)

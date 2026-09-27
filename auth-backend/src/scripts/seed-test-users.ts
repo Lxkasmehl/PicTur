@@ -27,6 +27,8 @@ const roleTestEmail =
   process.env.E2E_ROLE_TEST_EMAIL || 'role-test-community@test.com';
 const roleTestPassword =
   process.env.E2E_ROLE_TEST_PASSWORD || 'testpassword123';
+const superAdminEmail = process.env.E2E_SUPER_ADMIN_EMAIL || 'superadmin@test.com';
+const superAdminPassword = process.env.E2E_SUPER_ADMIN_PASSWORD || 'testpassword123';
 
 async function createUser(
   email: string,
@@ -83,7 +85,14 @@ async function seedTestUsers() {
     // Dedicated user for "change role" E2E test (never use community@test.com so other tests are not affected)
     await createUser(roleTestEmail, roleTestPassword, 'community', 'Role Test');
 
+    // Platform super admin (research group management); plain community role in the main group
+    await createUser(superAdminEmail, superAdminPassword, 'community', 'Test Super Admin');
+    db.prepare('UPDATE users SET is_super_admin = 1 WHERE email = ?').run(
+      superAdminEmail.toLowerCase()
+    );
+
     console.log('\n✅ Test users seeded successfully!');
+    console.log(`   Super admin: ${superAdminEmail}`);
     console.log(`   Admin: ${adminEmail}`);
     console.log(`   Staff: ${staffEmail}`);
     console.log(`   Community: ${communityEmail}`);

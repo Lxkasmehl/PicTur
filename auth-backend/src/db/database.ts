@@ -88,6 +88,72 @@ function migrateUserUiPreferencesTable(database: Database): void {
   `);
 }
 
+/**
+ * Research groups (tenants). Org 1 ("main") is the original Sheets-backed group; its membership is
+ * implicit and still read from users.role so nothing changes for it. org_memberships only holds
+ * memberships of the additional, database-backed groups.
+ */
+function migrateOrganizations(database: Database): void {
+  const userCols = database.prepare(`PRAGMA table_info(users)`).all() as { name: string }[];
+  if (!userCols.some((c) => c.name === 'is_super_admin')) {
+    database.exec(`ALTER TABLE users ADD COLUMN is_super_admin INTEGER NOT NULL DEFAULT 0`);
+  }
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS organizations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('sheets', 'db')),
+      accepts_community INTEGER NOT NULL DEFAULT 1,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS org_memberships (
+      user_id INTEGER NOT NULL,
+      org_id INTEGER NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('staff', 'admin')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, org_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS org_invitations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      org_id INTEGER NOT NULL,
+      email TEXT NOT NULL COLLATE NOCASE,
+      role TEXT NOT NULL CHECK (role IN ('staff', 'admin')),
+      token TEXT NOT NULL UNIQUE,
+      invited_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_org_memberships_org ON org_memberships(org_id);
+    CREATE INDEX IF NOT EXISTS idx_org_invitations_email ON org_invitations(email);
+  `);
+  const mainName = process.env.MAIN_ORG_NAME?.trim() || 'PicTur Research';
+  database
+    .prepare(
+      `INSERT OR IGNORE INTO organizations (id, slug, name, kind, accepts_community, is_default)
+       VALUES (1, 'main', ?, 'sheets', 1, 1)`
+    )
+    .run(mainName);
+}
+
+/** SUPER_ADMIN_EMAILS (comma-separated) grants platform-level rights to existing accounts. */
+function applySuperAdminEmails(database: Database): void {
+  const raw = process.env.SUPER_ADMIN_EMAILS?.trim();
+  if (!raw) return;
+  const stmt = database.prepare('UPDATE users SET is_super_admin = 1 WHERE email = ?');
+  for (const email of raw.split(/[,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean)) {
+    stmt.run(email);
+  }
+}
+
 function setAutoincrementSeq(database: Database, table: string, maxId: number): void {
   if (maxId < 1) return;
   try {
@@ -235,7 +301,9 @@ const db: Database = new BetterSqlite3(dbPath);
 initSchema(db);
 migrateEmailVerificationsUsedAt(db);
 migrateUserUiPreferencesTable(db);
+migrateOrganizations(db);
 maybeMigrateLegacyJson(db);
+applySuperAdminEmails(db);
 
 export function getCommunityGameForUser(userId: number): CommunityGamePersistedPayload | null {
   const row = db

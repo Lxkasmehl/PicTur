@@ -9,7 +9,6 @@ import json
 import sys
 import time
 import traceback
-import threading
 import uuid
 from flask import request, jsonify
 from werkzeug.utils import secure_filename
@@ -19,6 +18,7 @@ from image_utils import UploadImageError
 from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
 from upload_validation import ingest_saved_upload, log_upload_rejection, upload_error_response
 from services import manager_service
+import tenant
 from additional_image_labels import normalize_additional_type, parse_labels_from_form
 
 _EXTRA_UPLOAD_KEY = re.compile(
@@ -273,9 +273,10 @@ def register_upload_routes(app):
                 candidates_dir = os.path.join(packet_dir, 'candidate_matches')
 
                 try:
-                    # Admin uploads are always plastron — photo_type is fixed
+                    # Admin uploads are plastron in the main group; research groups work with
+                    # carapace photos only.
                     results = manager_service.manager.search_for_matches(
-                        query_save_path, location_filter=match_sheet, photo_type='plastron'
+                        query_save_path, location_filter=match_sheet, photo_type=tenant.upload_photo_type()
                     )
 
                     # Safely unpack the tuple (matches, elapsed_time)
@@ -320,7 +321,7 @@ def register_upload_routes(app):
                     # Save metadata with photo_type so review queue can display it.
                     # Persist match_sheet too so a later carapace cross-check on this
                     # packet uses the same location scope the admin chose at upload.
-                    packet_metadata = {'photo_type': 'plastron'}
+                    packet_metadata = {'photo_type': tenant.upload_photo_type()}
                     if match_sheet:
                         packet_metadata['match_sheet'] = match_sheet
                     # Persist the same flag / find-metadata fields the community
@@ -352,7 +353,7 @@ def register_upload_routes(app):
                         'request_id': request_id,
                         'matches': formatted_matches,
                         'uploaded_image_path': query_save_path,
-                        'photo_type': 'plastron',
+                        'photo_type': tenant.upload_photo_type(),
                         'message': message
                     })
                 except Exception as search_exc:
@@ -375,7 +376,9 @@ def register_upload_routes(app):
                     'finder': finder_name,
                     'email': user_email,
                     'uploaded_at': time.time(),
-                    'photo_type': 'unclassified',
+                    # Main group: staff classify plastron/carapace later. Research groups are
+                    # carapace-only, so the packet is matched right away.
+                    'photo_type': 'unclassified' if tenant.current() is None else 'carapace',
                 }
 
                 if state and location:
@@ -434,11 +437,8 @@ def register_upload_routes(app):
                             except OSError:
                                 pass
 
-                threading.Thread(
-                    target=_build_packet,
-                    args=(temp_path, user_info, request_id, files_with_types),
-                    daemon=True
-                ).start()
+                # tenant.spawn keeps the research-group context (packet lands in the right group)
+                tenant.spawn(_build_packet, temp_path, user_info, request_id, files_with_types)
 
                 return jsonify({
                     'success': True,

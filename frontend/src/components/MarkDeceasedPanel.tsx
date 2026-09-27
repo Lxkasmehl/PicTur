@@ -20,7 +20,7 @@ import {
 import { IconInfoCircle, IconSkull } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { markTurtleDeceased, getTurtleLookupOptions, type TurtleLookupField } from '../services/api';
-import { useUser } from '../hooks/useUser';
+import { useActiveOrg } from '../hooks/useActiveOrg';
 import { useAvailableSheets } from '../hooks/useAvailableSheets';
 
 type LookupMode = TurtleLookupField;
@@ -31,7 +31,8 @@ export interface MarkDeceasedPanelProps {
 }
 
 export function MarkDeceasedPanel({ embedded = false }: MarkDeceasedPanelProps) {
-  const { role } = useUser();
+  // Role in the active research group (the account role for the main group)
+  const { role } = useActiveOrg();
   const { sheets: availableSheets, loading: sheetsListLoading } = useAvailableSheets(role);
   const [sheetName, setSheetName] = useState<string>('');
   const [lookupMode, setLookupMode] = useState<LookupMode>('biology_id');

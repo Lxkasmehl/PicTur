@@ -1,3 +1,4 @@
+import { useActiveOrg } from '../../hooks/useActiveOrg';
 import {
   Alert,
   Badge,
@@ -21,6 +22,9 @@ import { candidateSummaryKey, dataPathHintFromMatchLocation } from './utils';
 import { useAdminTurtleMatchContext } from './AdminTurtleMatchContext';
 
 export function MatchDetailView() {
+  // Research groups photograph the carapace; the main group the plastron
+  const { isDbOrg } = useActiveOrg();
+  const shellLabel = isDbOrg ? 'Carapace' : 'Plastron';
   const {
     imageId,
     matchData,
@@ -233,15 +237,15 @@ export function MatchDetailView() {
       <Paper shadow='sm' p='md' radius='md' withBorder>
         <Stack gap='sm'>
           <Checkbox
-            label='Replace plastron reference with this upload'
-            description='The current plastron reference will be archived to loose_images'
+            label={`Replace ${shellLabel.toLowerCase()} reference with this upload`}
+            description={`The current ${shellLabel.toLowerCase()} reference will be archived to loose_images`}
             checked={replaceReference}
             onChange={(e) => setReplaceReference(e.currentTarget.checked)}
             disabled={!!processing}
           />
           {replaceReference && (
             <Alert icon={<IconAlertTriangle size={16} />} color='orange' radius='md'>
-              The current plastron reference image will be replaced with this upload. The old
+              The current {shellLabel.toLowerCase()} reference image will be replaced with this upload. The old
               image will be archived.
             </Alert>
           )}

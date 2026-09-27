@@ -33,6 +33,7 @@ import {
   IconDots,
 } from '@tabler/icons-react';
 import { useUser } from '../hooks/useUser';
+import { useActiveOrg } from '../hooks/useActiveOrg';
 import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import {
@@ -68,7 +69,10 @@ interface AffectedInfo {
 // ---------------------------------------------------------------------------
 
 export default function AdminLocationManagementPage() {
-  const { role, authChecked } = useUser();
+  const { authChecked: userAuthChecked } = useUser();
+  // Role in the active research group (the account role for the main group)
+  const { role, ready: orgReady } = useActiveOrg();
+  const authChecked = userAuthChecked && orgReady;
   const navigate = useNavigate();
 
   const [catalog, setCatalog] = useState<GeneralLocationCatalog | null>(null);

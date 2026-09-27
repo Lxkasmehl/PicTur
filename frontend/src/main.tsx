@@ -5,6 +5,10 @@ import { ColorSchemeScript } from '@mantine/core';
 import './index.css';
 import 'leaflet/dist/leaflet.css';
 import App from './App.tsx';
+import { installOrgFetch } from './services/api/orgContext';
+
+// Flask API requests carry the active research group (X-Org-Slug)
+installOrgFetch();
 
 // Custom theme with turtle conservation color scheme
 const theme = createTheme({

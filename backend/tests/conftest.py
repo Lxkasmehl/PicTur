@@ -148,6 +148,21 @@ def staff_token(auth_url, integration_env):
 
 
 @pytest.fixture(scope="session")
+def super_admin_token(auth_url, integration_env):
+    """Obtain super admin JWT (research group management). Requires seeded super admin test user."""
+    if not integration_env:
+        return None
+    try:
+        return _login_token(
+            auth_url,
+            os.environ.get("E2E_SUPER_ADMIN_EMAIL", "superadmin@test.com"),
+            os.environ.get("E2E_SUPER_ADMIN_PASSWORD", "testpassword123"),
+        )
+    except Exception as e:
+        pytest.skip(f"Cannot get super admin token from auth-backend at {auth_url}/auth/login: {e}")
+
+
+@pytest.fixture(scope="session")
 def community_token(auth_url, integration_env):
     """Obtain community JWT by logging in to auth-backend. Requires seeded community test user."""
     if not integration_env:

@@ -76,8 +76,11 @@ except ImportError as e:
 
 
 class TurtleManager(TurtleReferenceMixin, TurtleDeletionMixin, TurtleReviewMixin, TurtleFolderResolverMixin, TurtleIngestMixin, TurtleIdentifierPlastronMixin, TurtleAdditionalImagesMixin, TurtleFlagsMixin, TurtleMergeMixin):
-    def __init__(self, base_data_dir='data'):
+    def __init__(self, base_data_dir='data', brain_view=None):
+        """base_data_dir: relative to backend/ (main group: 'data') or absolute (research groups).
+        brain_view: a research group's BrainView (own matching caches); None = shared brain."""
         import threading
+        self._brain_view = brain_view
         # backend/data/ — go up two levels: manager.py → turtle_manager/ → backend/
         self.base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), base_data_dir)
         self.review_queue_dir = os.path.join(self.base_dir, 'Review_Queue')
@@ -102,7 +105,7 @@ class TurtleManager(TurtleReferenceMixin, TurtleDeletionMixin, TurtleReviewMixin
 
     def set_device(self, mode):
         """Passes device toggle down to the deep learning brain."""
-        brain.set_device(mode)
+        _matcher(self).set_device(mode)
 
     def save_benchmark(self, device_mode, total_time):
         """Saves sequential benchmark files for runtime analysis."""
@@ -289,9 +292,9 @@ class TurtleManager(TurtleReferenceMixin, TurtleDeletionMixin, TurtleReviewMixin
         self.db_index = index
 
         # Push the indexed files directly into the Brain's VRAM
-        if hasattr(brain, 'load_database_to_vram'):
+        if hasattr(_matcher(self), 'load_database_to_vram'):
             print("⚡ Pushing database to Memory Cache...")
-            brain.load_database_to_vram(index)
+            _matcher(self).load_database_to_vram(index)
 
     # Folders that should never appear in user-facing location dropdowns
     SYSTEM_FOLDERS = {"Review_Queue", "Community_Uploads",
@@ -401,12 +404,12 @@ class TurtleManager(TurtleReferenceMixin, TurtleDeletionMixin, TurtleReviewMixin
         print(f"🔍 Searching {filename} (VRAM Cached Mode, {photo_type}){scope}...")
 
         # Extract query features ONCE (expensive SuperPoint step)
-        query_feats = brain.extract_query_features(query_image_path)
+        query_feats = _matcher(self).extract_query_features(query_image_path)
         if query_feats is None:
             print(f"⚠️ Could not read query image")
             return [], time.time() - t_start
 
-        results = brain.match_against_cache(query_feats, loc_filter, photo_type=photo_type)
+        results = _matcher(self).match_against_cache(query_feats, loc_filter, photo_type=photo_type)
 
         # Fallback: if the location-scoped search found fewer than 5 results,
         # re-run against the entire dataset so the admin always gets candidates.
@@ -415,7 +418,7 @@ class TurtleManager(TurtleReferenceMixin, TurtleDeletionMixin, TurtleReviewMixin
         # diagnostic answer stays scoped to what the admin asked.
         if expand_to_all_when_short and loc_filter and len(results) < 5:
             print(f"📢 Only {len(results)} match(es) in scope — expanding to all locations...")
-            results = brain.match_against_cache(query_feats, None, photo_type=photo_type)
+            results = _matcher(self).match_against_cache(query_feats, None, photo_type=photo_type)
 
         t_elapsed = time.time() - t_start
 
@@ -426,3 +429,7 @@ class TurtleManager(TurtleReferenceMixin, TurtleDeletionMixin, TurtleReviewMixin
 
         return results[:5], t_elapsed
 
+def _matcher(manager):
+    """This manager's matcher: a research group's BrainView, else the shared module-level brain
+    (looked up at call time so tests can patch it)."""
+    return getattr(manager, '_brain_view', None) or brain

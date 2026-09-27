@@ -24,6 +24,8 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 import { useUser } from '../hooks/useUser';
+import { useActiveOrg } from '../hooks/useActiveOrg';
+import OrgMembersPage from './OrgMembersPage';
 import { useNavigate } from 'react-router-dom';
 import { promoteToAdmin, getUsers, setUserRole, deleteUser } from '../services/api';
 import type { UserRole } from '../services/api';
@@ -52,7 +54,31 @@ const ROLE_BADGE_COLOR: Record<UserRole, string> = {
 
 type UserRow = { id: number; email: string; name: string | null; role: UserRole; created_at: string };
 
+/**
+ * User management of the active research group: the classic account/role management for the
+ * main group, member management for database-backed groups.
+ */
 export default function AdminUserManagementPage() {
+  const { isDbOrg, active, role, loaded } = useActiveOrg();
+  const { authChecked } = useUser();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isDbOrg && authChecked && loaded && role !== 'admin') navigate('/');
+  }, [isDbOrg, authChecked, loaded, role, navigate]);
+
+  if (!isDbOrg) return <MainGroupUserManagement />;
+  if (!authChecked || !loaded) {
+    return (
+      <Center py='xl'>
+        <Loader size='lg' />
+      </Center>
+    );
+  }
+  return role === 'admin' ? <OrgMembersPage org={active} /> : null;
+}
+
+function MainGroupUserManagement() {
   const { role, authChecked, user: currentUser } = useUser();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
