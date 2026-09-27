@@ -61,7 +61,8 @@ export default function Navigation({ children }: NavigationProps) {
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const { isLoggedIn, user, logout: setUserLogout } = useUser();
   // Role in the selected research group (for the main group this is the account role as before)
-  const { role, isDbOrg, active: activeOrg, isSuperAdmin } = useActiveOrg();
+  const { role, isDbOrg, active: activeOrg, isSuperAdmin, options: orgOptions } = useActiveOrg();
+  const showOrgSwitcher = orgOptions.length > 1;
 
   const isStaff = isStaffRole(role);
   const isAdmin = role === 'admin';
@@ -135,7 +136,8 @@ export default function Navigation({ children }: NavigationProps) {
     const baseBreakpoint = 1000; // Base breakpoint for customer view with normal name
 
     // Home + Observer HQ (+ staff/admin ops); About/Contact are in the footer
-    const itemCount = (isAdmin ? 6 : isStaff ? 4 : 2) + (isSuperAdmin ? 1 : 0) + 1;
+    // (+1 for the research group switcher, which takes about one item's width)
+    const itemCount = getNavigationItems().length + (showOrgSwitcher ? 1 : 0);
 
     // Admin has 2 extra items, increase breakpoint by ~167px per extra item
     // This makes drawer appear earlier when there are more nav items
@@ -151,7 +153,8 @@ export default function Navigation({ children }: NavigationProps) {
 
     // Calculate final breakpoint (higher = drawer appears at larger screen width)
     return baseBreakpoint + itemAdjustment + userNameAdjustment;
-  }, [isStaff, isAdmin, isSuperAdmin, user?.name, user?.email]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- item list derives from these values
+  }, [isStaff, isAdmin, isSuperAdmin, isDbOrg, showOrgSwitcher, user?.name, user?.email]);
 
   // Use dynamic breakpoint; on mobile (< 768px) always show drawer for best touch UX
   const isMobile = useMediaQuery('(max-width: 767px)');
