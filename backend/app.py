@@ -37,6 +37,7 @@ from routes.turtles import register_turtle_routes
 from routes.locations import register_locations_routes
 from routes.general_locations import register_general_location_routes
 from routes.admin_backup import register_admin_backup_routes
+from routes.orgs_api import register_org_routes
 
 # Create Flask app
 from config import MAX_CONTENT_LENGTH, TRUSTED_PROXY_COUNT
@@ -66,6 +67,7 @@ register_turtle_routes(app)
 register_locations_routes(app)
 register_general_location_routes(app)
 register_admin_backup_routes(app)
+register_org_routes(app)
 
 @app.errorhandler(HTTPException)
 def handle_http_exception(err: HTTPException):

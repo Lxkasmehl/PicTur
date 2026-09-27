@@ -50,6 +50,9 @@ class TurtleDeepMatcher:
         self.feature_cache = {}
         self.vram_cache_plastron = []
         self.vram_cache_carapace = []
+        # Carapace references of the database-backed research groups, keyed by org id.
+        # Kept apart from the main group's caches so reloading one never touches the other.
+        self.org_caches = {}
         # Serializes all GPU operations — prevents crashes from concurrent
         # community upload threads hitting CUDA simultaneously.
         self._gpu_lock = threading.Lock()
@@ -69,7 +72,7 @@ class TurtleDeepMatcher:
 
         # Migrate both caches to the new hardware
         total_migrated = 0
-        for cache in (self.vram_cache_plastron, self.vram_cache_carapace):
+        for cache in (self.vram_cache_plastron, self.vram_cache_carapace, *self.org_caches.values()):
             for cand in cache:
                 cand['feats'] = {k: v.to(self.device) for k, v in cand['feats'].items()}
             total_migrated += len(cache)
@@ -262,16 +265,24 @@ class TurtleDeepMatcher:
             logger.warning(f"⚠️ VRAM cache empty for {photo_type}! Returning no matches.")
             return []
 
+        keep = None
+        if location_filter and location_filter != "All Locations":
+            # Uses prefix matching so a state like "Kansas" matches
+            # "Kansas/Lawrence", "Kansas/North Topeka", etc.
+            allowed = list(location_filter) if isinstance(location_filter, list) else [location_filter]
+
+            def keep(cand):
+                return any(cand['location'] == a or cand['location'].startswith(a + '/') for a in allowed)
+
+        return self._match_cache_list_unlocked(query_feats_list, cache, keep)
+
+    def _match_cache_list_unlocked(self, query_feats_list, cache, keep=None):
         results = []
 
         for cand in cache:
-            # Apply location filter early to skip unnecessary math.
-            # Uses prefix matching so a state like "Kansas" matches
-            # "Kansas/Lawrence", "Kansas/North Topeka", etc.
-            if location_filter and location_filter != "All Locations":
-                allowed = list(location_filter) if isinstance(location_filter, list) else [location_filter]
-                if not any(cand['location'] == a or cand['location'].startswith(a + '/') for a in allowed):
-                    continue
+            # Apply the filter early to skip unnecessary math.
+            if keep is not None and not keep(cand):
+                continue
 
             cand_feats_safe = {k: v.to(self.device) for k, v in cand['feats'].items()}
 
@@ -345,6 +356,79 @@ class TurtleDeepMatcher:
     def evict_from_vram(self, pt_path, photo_type="plastron"):
         """Remove cache entries whose file_path == pt_path (under the GPU lock)."""
         return self.filter_vram_cache(lambda c: c.get('file_path') != pt_path, photo_type)
+
+    # --- RESEARCH-GROUP (ORG) CACHES ---
+    # Items: {'site_id': turtle db id, 'location': region id or None, 'file_path': .pt path, 'feats'}
+
+    def _load_feats_unlocked(self, pt_path):
+        cand_data = torch.load(pt_path, map_location=self.device, weights_only=True)
+        return {k: v.unsqueeze(0).to(self.device) for k, v in cand_data.items()}
+
+    def has_org_cache(self, org_id):
+        return org_id in self.org_caches
+
+    def load_org_cache(self, org_id, entries):
+        """Replace one group's cache. entries: iterable of (pt_path, turtle_id, region_id)."""
+        with self._gpu_lock:
+            items = []
+            for pt_path, turtle_id, region_id in entries:
+                if not pt_path or not os.path.exists(pt_path):
+                    continue
+                try:
+                    items.append({
+                        'site_id': turtle_id,
+                        'location': region_id,
+                        'file_path': pt_path,
+                        'feats': self._load_feats_unlocked(pt_path),
+                    })
+                except Exception as e:
+                    logger.error(f"Failed to cache org {org_id} turtle {turtle_id}: {e}")
+            self.org_caches[org_id] = items
+            logger.info(f"✅ Cached {len(items)} carapace references for research group {org_id}.")
+            return len(items)
+
+    def add_to_org_cache(self, org_id, pt_path, turtle_id, region_id):
+        """Add one reference to a group's cache (replacing any entry of the same turtle)."""
+        with self._gpu_lock:
+            if not os.path.exists(pt_path):
+                return False
+            try:
+                feats = self._load_feats_unlocked(pt_path)
+            except Exception as e:
+                logger.error(f"Failed to cache org {org_id} turtle {turtle_id}: {e}")
+                return False
+            cache = [c for c in self.org_caches.get(org_id, []) if c['site_id'] != turtle_id]
+            cache.append({'site_id': turtle_id, 'location': region_id, 'file_path': pt_path, 'feats': feats})
+            self.org_caches[org_id] = cache
+            return True
+
+    def remove_from_org_cache(self, org_id, turtle_id):
+        with self._gpu_lock:
+            cache = self.org_caches.get(org_id)
+            if cache is None:
+                return 0
+            kept = [c for c in cache if c['site_id'] != turtle_id]
+            self.org_caches[org_id] = kept
+            return len(cache) - len(kept)
+
+    def update_org_cache_location(self, org_id, turtle_id, region_id):
+        with self._gpu_lock:
+            for c in self.org_caches.get(org_id, []):
+                if c['site_id'] == turtle_id:
+                    c['location'] = region_id
+
+    def match_against_org_cache(self, org_id, query_feats_list, region_ids=None):
+        """Match against ONE group's references. region_ids: optional set to restrict candidates."""
+        with self._gpu_lock:
+            cache = self.org_caches.get(org_id) or []
+            keep = None
+            if region_ids is not None:
+                allowed = set(region_ids)
+
+                def keep(cand):
+                    return cand['location'] in allowed
+
+            return self._match_cache_list_unlocked(query_feats_list, cache, keep)
 
     def match_query_robust_vram(self, query_path, location_filter="All Locations", photo_type="plastron"):
         """Convenience wrapper: extract + match in one call."""
