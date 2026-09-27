@@ -1,3 +1,4 @@
+import { useActiveOrg } from '../../hooks/useActiveOrg';
 import {
   Badge,
   Button,
@@ -16,6 +17,9 @@ import { MatchCandidateCard } from './MatchCandidateCard';
 import { useAdminTurtleMatchContext } from './AdminTurtleMatchContext';
 
 export function MatchGridView() {
+  // Research groups photograph the carapace; the main group the plastron
+  const { isDbOrg } = useActiveOrg();
+  const shellLabel = isDbOrg ? 'Carapace' : 'Plastron';
   const {
     imageId,
     matchData,
@@ -49,7 +53,7 @@ export function MatchGridView() {
           <Grid gutter='md'>
             <Grid.Col span={uploadedCarapaceGrid ? { base: 12, sm: 6 } : 12}>
               <Text size='sm' c='dimmed' mb={4}>
-                Plastron
+                {shellLabel}
               </Text>
               <Image
                 src={
@@ -57,7 +61,7 @@ export function MatchGridView() {
                     ? getImageUrl(matchData.uploaded_image_path)
                     : ''
                 }
-                alt='Uploaded plastron'
+                alt={`Uploaded ${shellLabel.toLowerCase()}`}
                 radius='md'
                 style={{
                   maxHeight: 'min(500px, 60vh)',
@@ -130,7 +134,7 @@ export function MatchGridView() {
         <Grid gutter='lg'>
           <Grid.Col span={hasCarapaceCrossCheck ? { base: 12, md: 6 } : 12}>
             <Text fw={500} size='lg' mb='md'>
-              {hasCarapaceCrossCheck ? 'Plastron Matches' : 'Top 5 Matches'}
+              {hasCarapaceCrossCheck ? `${shellLabel} Matches` : 'Top 5 Matches'}
             </Text>
             <Text size='sm' c='dimmed' mb='md'>
               Select a match to view details

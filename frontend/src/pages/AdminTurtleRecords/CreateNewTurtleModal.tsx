@@ -1,3 +1,4 @@
+import { StorageName } from '../../components/StorageName';
 import { Divider, Modal, Paper, Stack, Text } from '@mantine/core';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
@@ -62,7 +63,7 @@ export function CreateNewTurtleModal({ size }: CreateNewTurtleModalProps) {
             />
           </Paper>
         )}
-        <Divider label='Google Sheets Data' labelPosition='center' />
+        <Divider label={<><StorageName /> Data</>} labelPosition='center' />
         <TurtleSheetsDataForm
           initialData={newTurtleSheetsData || undefined}
           sheetName={newTurtleSheetName}

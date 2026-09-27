@@ -64,7 +64,9 @@ export function useActiveOrg() {
   const active = options.find((o) => o.slug === activeSlug) ?? options[0];
   /** False while a remembered research group is still being resolved (its role is not known yet).
    * Pages must not redirect on role before this is true. Always true for the main group. */
-  const ready = activeSlug === MAIN_ORG_SLUG || active.slug === activeSlug || (loaded && publicLoaded);
+  // Memberships must be loaded first: a group open to the community is already in the public
+  // list (as 'community') before the user's real role in it arrives.
+  const ready = activeSlug === MAIN_ORG_SLUG || (loaded && (active.slug === activeSlug || publicLoaded));
   const isDbOrg = active.kind === 'db';
 
   const select = useCallback((slug: string) => dispatch(setActiveOrg(slug)), [dispatch]);

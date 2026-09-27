@@ -3,6 +3,7 @@
  * Form for entering/editing turtle data that will be synced to Google Sheets
  */
 
+import { StorageName } from './StorageName';
 import {
   Stack,
   Group,
@@ -127,7 +128,7 @@ export const TurtleSheetsDataForm = forwardRef<
 
         <Alert icon={<IconInfoCircle size={18} />} color='blue' radius='md'>
           <Text size='sm'>
-            This data will be synced to Google Sheets. Primary ID is automatically
+            This data will be synced to <StorageName inline />. Primary ID is automatically
             generated.
           </Text>
         </Alert>

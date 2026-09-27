@@ -2,6 +2,7 @@
  * Reusable sections for TurtleSheetsDataForm: header, sheet row, modals, community hint
  */
 
+import { StorageName } from './StorageName';
 import {
   Stack,
   TextInput,
@@ -30,11 +31,11 @@ export function FormHeader({
 }) {
   return (
     <div>
-      <Title order={3}>Turtle Data - Google Sheets</Title>
+      <Title order={3}>Turtle Data - <StorageName /></Title>
       <Text size='sm' c='dimmed' mt='xs'>
         {mode === 'create'
-          ? 'Enter turtle data to add to Google Sheets'
-          : 'Edit turtle data in Google Sheets'}
+          ? <>Enter turtle data to add to <StorageName inline /></>
+          : <>Edit turtle data in <StorageName inline /></>}
       </Text>
       {primaryId && (
         <Text size='sm' c='dimmed' mt='xs'>
@@ -104,7 +105,7 @@ export function SheetSelectionRow({
           label='Sheet / Location'
           value={selectedSheetName}
           disabled
-          description='Select the Google Sheets tab where this turtle data should be stored'
+          description={<>Select the <StorageName /> tab where this turtle data should be stored</>}
         />
       </>
     );
@@ -128,7 +129,7 @@ export function SheetSelectionRow({
         value={selectedSheetName}
         onChange={(e) => handleSheetChange(e.currentTarget.value || null)}
         required
-        description='Select the Google Sheets tab where this turtle data should be stored'
+        description={<>Select the <StorageName /> tab where this turtle data should be stored</>}
         error={!selectedSheetName ? 'Sheet selection is required' : undefined}
       />
     );
@@ -143,7 +144,7 @@ export function SheetSelectionRow({
       onChange={handleSheetChange}
       required
       allowDeselect={false}
-      description='Select the Google Sheets tab where this turtle data should be stored'
+      description={<>Select the <StorageName /> tab where this turtle data should be stored</>}
       error={!selectedSheetName ? 'Sheet selection is required' : undefined}
       comboboxProps={{ keepMounted: true }}
     />
@@ -253,7 +254,7 @@ export function CreateSheetModal({
     >
       <Stack gap='md'>
         <Text size='sm' c='dimmed'>
-          Create a new Google Sheets tab with all required headers.
+          Create a new <StorageName /> tab with all required headers.
         </Text>
         <TextInput
           label='Sheet Name'

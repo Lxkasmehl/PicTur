@@ -1,9 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
-import { getTestImageBuffer } from './fixtures';
 
 /**
- * Research groups (multi-tenancy): a super admin creates a database-backed group, defines a
- * region, uploads a carapace photo and creates the group's first turtle.
+ * Research groups (multi-tenancy): a super admin creates a database-backed group and opens it.
+ * Every group uses the same pages as the main group; "User Management" shows the group's members.
  *
  * The group is created with community uploads OFF so it never shows up in the public group
  * picker of the other specs (their header/navigation stays unchanged).
@@ -12,62 +11,49 @@ import { getTestImageBuffer } from './fixtures';
 const SUPER_ADMIN_EMAIL = process.env.E2E_SUPER_ADMIN_EMAIL ?? 'superadmin@test.com';
 const SUPER_ADMIN_PASSWORD = process.env.E2E_SUPER_ADMIN_PASSWORD ?? 'testpassword123';
 
-async function loginAsSuperAdmin(page: Page): Promise<void> {
+async function login(page: Page, email: string, password: string): Promise<void> {
   await page.goto('/login');
-  await page.getByLabel('Email').fill(SUPER_ADMIN_EMAIL);
-  await page.getByLabel('Password').fill(SUPER_ADMIN_PASSWORD);
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign In' }).click({ noWaitAfter: true });
   await page.waitForURL('/', { timeout: 15_000 });
 }
 
 test.describe('Research groups', () => {
-  test('super admin creates a group and records its first turtle', async ({ page }) => {
-    test.setTimeout(120_000);
+  test('super admin creates a group, opens it and switches back', async ({ page }) => {
+    test.setTimeout(90_000);
     const slug = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const name = `E2E Group ${slug}`;
 
-    await loginAsSuperAdmin(page);
+    await login(page, SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD);
     await page.goto('/platform/groups');
-    await page.getByLabel('Name', { exact: true }).fill(`E2E Group ${slug}`);
+    await page.getByLabel('Name', { exact: true }).fill(name);
     await page.getByLabel('URL name').fill(slug);
-    const communitySwitch = page.getByLabel('Accept photos from the community');
     await page.getByText('Accept photos from the community').click();
-    await expect(communitySwitch).not.toBeChecked();
+    await expect(page.getByLabel('Accept photos from the community')).not.toBeChecked();
     await page.getByTestId('platform-create-group').click();
     await expect(page.getByText(slug, { exact: true })).toBeVisible({ timeout: 15_000 });
 
-    // Regions
-    await page.goto(`/g/${slug}/regions`);
-    await page.getByLabel('New region').fill('North Site');
-    await page.getByTestId('org-add-region').click();
-    await expect(page.locator('p', { hasText: /^North Site$/ })).toBeVisible();
+    // Open the group: same User Management route, now showing the group's members
+    await page.getByRole('row', { name: new RegExp(slug) }).getByRole('button', { name: 'Open' }).click();
+    await expect(page).toHaveURL(/\/admin\/users$/);
+    await expect(page.getByRole('heading', { name: `Members of ${name}` })).toBeVisible({ timeout: 15_000 });
 
-    // Staff-style upload -> submission review
-    await page.goto(`/g/${slug}`);
-    await page.locator('[data-testid="org-upload-dropzone"] input[type="file"]').setInputFiles({
-      name: 'e2e-carapace.png',
-      mimeType: 'image/png',
-      buffer: getTestImageBuffer(),
-    });
-    await page.getByTestId('org-upload-submit').click();
-    await expect(page).toHaveURL(new RegExp(`/g/${slug}/review/\\d+`), { timeout: 60_000 });
+    // The classic pages work for the group (empty to start with)
+    await page.goto('/admin/locations');
+    await expect(page.getByText('No selectable location programs configured.')).toBeVisible({ timeout: 15_000 });
 
-    // Empty group: no candidates -> create the first turtle
-    await page.getByTestId('org-create-turtle').click();
-    await expect(page).toHaveURL(new RegExp(`/g/${slug}/turtles/\\d+`), { timeout: 30_000 });
-    await expect(page.getByRole('heading', { name: 'U1' })).toBeVisible();
-
-    await page.goto(`/g/${slug}/turtles`);
-    await expect(page.getByTestId('org-turtle-row')).toHaveCount(1);
+    // Switch back to the main group
+    await page.goto('/');
+    await page.getByTestId('org-switcher').first().click();
+    await page.getByRole('option').first().click();
+    await page.goto('/admin/users');
+    await expect(page.getByRole('heading', { name: `Members of ${name}` })).toHaveCount(0);
   });
 
-  test('main-group admin cannot open another group', async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Email').fill(process.env.E2E_ADMIN_EMAIL ?? 'admin@test.com');
-    await page.getByLabel('Password').fill(process.env.E2E_ADMIN_PASSWORD ?? 'testpassword123');
-    await page.getByRole('button', { name: 'Sign In' }).click({ noWaitAfter: true });
-    await page.waitForURL('/', { timeout: 15_000 });
-    await page.goto('/g/does-not-exist/turtles');
-    await expect(page.getByTestId('org-gate-message')).toBeVisible();
-    await expect(page.getByTestId('org-switcher')).toHaveCount(0);
+  test('main-group admin keeps the classic user management', async ({ page }) => {
+    await login(page, process.env.E2E_ADMIN_EMAIL ?? 'admin@test.com', process.env.E2E_ADMIN_PASSWORD ?? 'testpassword123');
+    await page.goto('/admin/users');
+    await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible({ timeout: 15_000 });
   });
 });
