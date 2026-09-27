@@ -404,6 +404,10 @@ export function useTurtleSheetsDataForm(
 
   /** User changed Sheet/Location: reset general_location so a value from the previous tab (e.g. Hawkeye) is not left visible; catalog effect then applies fixed defaults if any. */
   const applySelectedSheetChange = (value: string) => {
+    // Re-selecting the current sheet (e.g. a NativeSelect change event with an unchanged value) is not a
+    // change: clearing general_location here would wipe a locked sheet default, and the catalog effect
+    // would not re-apply it because neither the sheet nor its default changed.
+    if (value === selectedSheetName) return;
     setSelectedSheetName(value);
     const parts = value
       .split('/')
