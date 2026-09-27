@@ -310,10 +310,13 @@ test.describe('Dates Refound auto-fill on match confirmation', () => {
 
     await page.route('**/api/locations', async (route) => {
       if (route.request().method() !== 'GET') return route.continue();
+      // More than one sheet so the dialog preselects "Kansas" and the test actively switches to
+      // NebraskaCPBS (same setup as admin-match.spec.ts). With NebraskaCPBS as the only sheet it is
+      // preselected on load and the mobile NativeSelect never shows the locked default "CPBS".
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, locations: ['NebraskaCPBS'] }),
+        body: JSON.stringify({ success: true, locations: ['NebraskaCPBS', 'Kansas'] }),
       });
     });
 
