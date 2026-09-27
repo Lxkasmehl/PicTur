@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Turtle Records now opens on the Google Sheets Browser tab** (#276): navigating to `/admin/turtle-records` shows the Sheets Browser by default instead of the Review Queue. The Review Queue tab is still available one click away.
+
 ## [2.0.22] - 2026-07-10 — Carapace quick check opened to staff
 
 ### Changed
