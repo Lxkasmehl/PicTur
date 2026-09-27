@@ -7,6 +7,8 @@ import { TextInput, Textarea, Select, NativeSelect, Group, Button, Tooltip, Acti
 import { useMediaQuery } from '@mantine/hooks';
 import { IconLockOpen, IconHelp } from '@tabler/icons-react';
 import type { TurtleFormFieldProps } from './TurtleFormField.types';
+import { maskUsDateInput, maskUsMultiDateInput } from '../utils/usDateFormat';
+import { useCursorPreservingMask } from '../hooks/useCursorPreservingMask';
 
 export type { TurtleFormFieldProps, TurtleFormFieldType } from './TurtleFormField.types';
 
@@ -57,6 +59,8 @@ export function TurtleFormField({
   selectRemountKey,
 }: TurtleFormFieldProps) {
   const isMobile = useMediaQuery(MOBILE_BREAKPOINT);
+  const dateMask = useCursorPreservingMask(maskUsDateInput);
+  const multiDateMask = useCursorPreservingMask(maskUsMultiDateInput);
   const locked = isFieldModeRestricted && !isFieldUnlocked(field);
   const labelNode = <LabelWithOptionalTooltip label={label} infoTooltip={infoTooltip} />;
 
@@ -176,6 +180,46 @@ export function TurtleFormField({
         required={required}
         minRows={3}
       />
+    );
+  }
+
+  if (type === 'date') {
+    return (
+      <>
+        <TextInput
+          ref={dateMask.ref}
+          label={labelNode}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => dateMask.handleChange(e, onChange)}
+          description={description}
+          disabled={disabled}
+          error={error}
+          required={required}
+          inputMode='numeric'
+          maxLength={10}
+        />
+        {afterInput}
+      </>
+    );
+  }
+
+  if (type === 'multiDate') {
+    return (
+      <>
+        <TextInput
+          ref={multiDateMask.ref}
+          label={labelNode}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => multiDateMask.handleChange(e, onChange)}
+          description={description}
+          disabled={disabled}
+          error={error}
+          required={required}
+        />
+        {afterInput}
+      </>
     );
   }
 
