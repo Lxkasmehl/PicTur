@@ -82,9 +82,11 @@ services:
       # Database + photo storage of the additional (database-backed) research groups
       DATABASE_URL: ${DATABASE_URL:-postgresql://pictur:${POSTGRES_PASSWORD:-pictur-change-me}@postgres:5432/pictur}
       ORG_DATA_DIR: /app/org_data
+    # service_started (not _healthy): the main group must not wait for / depend on PostgreSQL.
+    # The research-group API connects lazily and retries while the database is still booting.
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_started
     volumes:
       - backend-data:/app/data
       - org-data:/app/org_data

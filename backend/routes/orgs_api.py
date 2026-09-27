@@ -423,7 +423,7 @@ def register_org_routes(app):
 
     @app.route('/api/v2/orgs/<slug>/media/<kind>/<int:obj_id>', methods=['GET'])
     def org_media(slug, kind, obj_id):
-        if not org_db.is_configured():
+        if not org_db.ensure_engine():
             return _error('Research-group database is not configured', 503)
         if kind not in ('image', 'submission'):
             return _error('Not found', 404)

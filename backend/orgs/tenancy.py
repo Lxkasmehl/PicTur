@@ -89,7 +89,7 @@ def org_route(min_role='staff', *, allow_anonymous=False):
         def wrapper(slug, *args, **kwargs):
             if request.method == 'OPTIONS':
                 return jsonify({}), 200
-            if not org_db.is_configured():
+            if not org_db.ensure_engine():
                 return jsonify({'error': 'Research-group database is not configured'}), 503
             org, role, user, err = _resolve_context(slug)
             if err:

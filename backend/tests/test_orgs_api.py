@@ -439,3 +439,15 @@ def test_matcher_org_caches_are_isolated_from_main_caches(tmp_path):
     m.add_to_org_cache(11, pts[0], 3, 5)  # replaces turtle 3's reference
     assert len(m.org_caches[11]) == 1 and m.org_caches[11][0]['location'] == 5
     assert m.remove_from_org_cache(11, 3) == 1
+
+
+def test_database_connects_lazily_after_startup_failure(env, monkeypatch, tmp_path):
+    """PostgreSQL booting after the backend: the first request after start-up connects."""
+    from orgs import db as org_db
+
+    org_db.reset_for_tests()
+    monkeypatch.setattr(org_db, '_last_attempt', 0.0)
+    monkeypatch.setenv('DATABASE_URL', f"sqlite:///{(tmp_path / 'late.sqlite').as_posix()}")
+    r = env['client'].get('/api/v2/orgs/alpha/regions', headers=_h('a-staff'))
+    assert r.status_code == 200
+    assert org_db.is_configured()

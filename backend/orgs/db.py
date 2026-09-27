@@ -8,6 +8,7 @@ research-group API answers 503.
 import logging
 import os
 import threading
+import time
 from pathlib import Path
 
 from sqlalchemy import create_engine, event
@@ -36,6 +37,29 @@ def database_url() -> str:
 
 def is_configured() -> bool:
     return _engine is not None
+
+
+_RETRY_SECONDS = 30
+_last_attempt = 0.0
+
+
+def ensure_engine() -> bool:
+    """True when the database is usable. If DATABASE_URL is set but the database was unreachable at
+    start-up (e.g. PostgreSQL still booting), retry at most every 30 seconds."""
+    global _last_attempt
+    if _engine is not None:
+        return True
+    if not database_url():
+        return False
+    now = time.monotonic()
+    if now - _last_attempt < _RETRY_SECONDS:
+        return False
+    _last_attempt = now
+    try:
+        return init_engine() is not None
+    except Exception as exc:
+        logger.warning('Research-group database still unavailable: %s', exc)
+        return False
 
 
 def init_engine(url: str | None = None, *, run_migrations: bool = True):
