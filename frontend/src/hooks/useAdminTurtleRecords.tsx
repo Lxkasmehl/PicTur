@@ -22,7 +22,7 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
   const navigate = useNavigate();
   const { sheets: availableSheets, loading: sheetsListLoading } =
     useAvailableSheets(role);
-  const [activeTab, setActiveTab] = useState<string>('queue');
+  const [activeTab, setActiveTab] = useState<string>('sheets');
 
   // Review Queue State
   const [queueItems, setQueueItems] = useState<ReviewQueueItem[]>([]);
