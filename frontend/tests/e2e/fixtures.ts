@@ -155,6 +155,13 @@ export async function grantLocationPermission(page: Page): Promise<void> {
   });
 }
 
+/** Today's local date as MM/DD/YYYY, matching `formatLocalDateUsSlash` in the app (see usDateFormat.ts). */
+export function todayUsSlash(): string {
+  const d = new Date();
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}/${d.getFullYear()}`;
+}
+
 /** Creates a small PNG as Base64 (for setInputFiles with Buffer). */
 export function createTestImageBase64(): string {
   return (

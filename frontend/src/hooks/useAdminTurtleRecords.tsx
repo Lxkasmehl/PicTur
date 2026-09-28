@@ -17,6 +17,16 @@ import { notifications } from '@mantine/notifications';
 import { IconCheck } from '@tabler/icons-react';
 import type { TurtleSheetsDataFormRef } from '../components/TurtleSheetsDataForm';
 import { useAvailableSheets } from './useAvailableSheets';
+import { appendTodayToDatesRefound } from '../utils/usDateFormat';
+
+const notifyDateRefoundAutoFilled = () => {
+  notifications.show({
+    title: 'Date Refound auto-filled',
+    message: "Today's date was added to Dates Refound since confirming this match records today as the date the turtle was refound. Edit the field if that's not correct.",
+    color: 'blue',
+    icon: <IconCheck size={18} />,
+  });
+};
 
 export function useAdminTurtleRecords(role: string | undefined, authChecked: boolean) {
   const navigate = useNavigate();
@@ -267,8 +277,12 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
           );
 
         if (hasRealData) {
-          setSheetsData(response.data);
+          const { value: dates_refound, added } = appendTodayToDatesRefound(
+            response.data.dates_refound,
+          );
+          setSheetsData({ ...response.data, dates_refound });
           setPrimaryId(response.data.primary_id || candidateId);
+          if (added) notifyDateRefoundAutoFilled();
           if (response.data.name) {
             setCandidateNames((prev) => ({
               ...prev,
@@ -282,22 +296,31 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
             }));
           }
         } else {
+          const { value: dates_refound } = appendTodayToDatesRefound(undefined);
           setPrimaryId(candidateId);
           setSheetsData({
             id: candidateId,
+            dates_refound,
           });
+          notifyDateRefoundAutoFilled();
         }
       } else {
+        const { value: dates_refound } = appendTodayToDatesRefound(undefined);
         setPrimaryId(candidateId);
         setSheetsData({
           id: candidateId,
+          dates_refound,
         });
+        notifyDateRefoundAutoFilled();
       }
     } catch {
+      const { value: dates_refound } = appendTodayToDatesRefound(undefined);
       setPrimaryId(candidateId);
       setSheetsData({
         id: candidateId,
+        dates_refound,
       });
+      notifyDateRefoundAutoFilled();
     } finally {
       setLoadingTurtleData(false);
     }
@@ -526,6 +549,10 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
     data: TurtleSheetsData,
     sheetName: string,
   ) => {
+    const { value: dates_refound, added } = appendTodayToDatesRefound(data.dates_refound);
+    data = { ...data, dates_refound };
+    if (added) notifyDateRefoundAutoFilled();
+
     setNewTurtleSheetsData(data);
     setNewTurtleSheetName(sheetName);
     const state = data.general_location || '';
