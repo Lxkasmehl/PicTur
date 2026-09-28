@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Auto-fill Date Refound on match confirmation**: when an admin selects a match (or confirms a new turtle) in Admin Turtle Match / Records, today's date is automatically appended to "Dates Refound" if not already present, with a notification and an inline hint explaining why the field was pre-filled.
 
+### Changed
+
+- **Turtle Records now opens on the Google Sheets Browser tab** (#276): navigating to `/admin/turtle-records` shows the Sheets Browser by default instead of the Review Queue. The Review Queue tab is still available one click away.
+
 ## [2.0.22] - 2026-07-10 — Carapace quick check opened to staff
 
 ### Changed
