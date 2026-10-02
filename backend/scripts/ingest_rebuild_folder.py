@@ -89,6 +89,7 @@ from ingest_common import (
     resolve_backend_path,
 )
 from turtle_manager import BASE_DATA_DIR, DRIVE_LOCATION_TO_BACKEND_PATH
+from turtle_manager.safe_fs import guarded_rmdir, UndeletableTurtleDataError
 
 # Filename parser: "F017 Plastron.jpg", "F017 Plastron 2.JPG",
 # "F017 Carapace.jpg", "F017 Carapace 3.jpg"
@@ -201,8 +202,10 @@ def _migrate_ref_data_to_plastron(turtle_dir: str, ref_stem: str,
                 for leftover in os.listdir(ref_data):
                     if leftover in SKIP_FILES:
                         os.remove(os.path.join(ref_data, leftover))
-                os.rmdir(ref_data)
-            except OSError as e:
+                # Empty ref_data/ is not turtle data → guard passes; a non-empty
+                # one (failed migration) is refused, never destroyed.
+                guarded_rmdir(ref_data)
+            except (OSError, UndeletableTurtleDataError) as e:
                 reporter.warn(f"Could not remove {ref_data}: {e}")
 
     # Always sweep empty loose_images/
@@ -220,8 +223,8 @@ def _migrate_ref_data_to_plastron(turtle_dir: str, ref_stem: str,
                 try:
                     for leftover in os.listdir(loose):
                         os.remove(os.path.join(loose, leftover))
-                    os.rmdir(loose)
-                except OSError as e:
+                    guarded_rmdir(loose)
+                except (OSError, UndeletableTurtleDataError) as e:
                     reporter.warn(f"Could not remove {loose}: {e}")
 
 

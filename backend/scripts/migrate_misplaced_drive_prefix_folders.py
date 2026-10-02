@@ -15,7 +15,9 @@ turtle folder (has ``plastron/``, ``carapace/``, or legacy ``ref_data/``) for
 each ``drive_key`` in the flat-ingest map, and plans a move to the canonical
 ``data/<State>/<Location>/<turtle_id>/`` path from ``DRIVE_LOCATION_TO_BACKEND_PATH``.
 
-**Does not import** ``turtle_manager`` (avoids loading SuperPoint). Keep the
+Imports only the **pure** ``path_utils`` / ``safe_fs`` modules (the single source
+of truth for the turtle-folder predicate and the undeletable-dataset guard), NOT
+the ``turtle_manager`` package — so SuperPoint/torch is never loaded. Keep the
 ``DRIVE_LOCATION_TO_BACKEND_PATH`` dict in sync with ``turtle_manager.py``.
 
 Usage (dry run — default, prints planned moves only)::
@@ -50,12 +52,19 @@ from __future__ import annotations
 import sys as _sys, os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))  # scripts/ for ingest_common etc.
+# turtle_manager/ on path so the PURE path_utils / safe_fs modules import
+# standalone — WITHOUT triggering turtle_manager/__init__ (which loads SuperPoint).
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), 'turtle_manager'))
 
 import argparse
 import os
 import shutil
 import sys
 from typing import Dict, List, Optional, Sequence, Tuple
+
+# Single source of truth for the turtle-folder predicate + the delete guard.
+from path_utils import _is_turtle_data_folder
+from safe_fs import guarded_rmdir, UndeletableTurtleDataError
 
 # SYNC: must match turtle_manager.DRIVE_LOCATION_TO_BACKEND_PATH
 DRIVE_LOCATION_TO_BACKEND_PATH: Dict[str, str] = {
@@ -80,19 +89,6 @@ SKIP_TOP_LEVEL_NAMES = frozenset(
         "__pycache__",
     }
 )
-
-
-def _is_turtle_data_folder(path: str) -> bool:
-    """SYNC: same idea as turtle_manager._is_turtle_data_folder."""
-    if not path or not os.path.isdir(path):
-        return False
-    try:
-        return any(
-            os.path.isdir(os.path.join(path, sub))
-            for sub in ("plastron", "carapace", "ref_data")
-        )
-    except OSError:
-        return False
 
 
 def _iter_turtle_dirs_under(wrong_root: str) -> List[str]:
@@ -150,9 +146,12 @@ def _prune_empty_under(root: str) -> int:
     for dirpath, _dirnames, _filenames in os.walk(root, topdown=False):
         try:
             if os.path.isdir(dirpath) and not os.listdir(dirpath):
-                os.rmdir(dirpath)
+                # Empty dirs are never turtle data, so the guard passes; routing
+                # through it means a dir that concurrently became a turtle folder
+                # fails closed (skipped) instead of being removed.
+                guarded_rmdir(dirpath)
                 removed += 1
-        except OSError:
+        except (OSError, UndeletableTurtleDataError):
             continue
     return removed
 
@@ -291,8 +290,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             if os.path.isdir(dest) and not os.listdir(dest):
                 try:
-                    os.rmdir(dest)
-                except OSError:
+                    # Empty dest → guard passes; fails closed if it isn't.
+                    guarded_rmdir(dest)
+                except (OSError, UndeletableTurtleDataError):
                     pass
             shutil.move(src, dest)
             print(f"OK [{drive_key}] moved to {dest}")

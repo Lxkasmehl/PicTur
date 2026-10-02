@@ -18,6 +18,7 @@ from image_utils import UploadImageError
 from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
 from upload_validation import ingest_saved_upload
 from turtle_manager import canonical_new_turtle_folder_id  # re-exported for callers/tests
+from turtle_manager.safe_fs import guarded_rmtree
 from sheets.migration import generate_primary_id as gen_primary_id  # pure (no network)
 from routes.upload import find_image_for_pt  # case-insensitive .pt→image sibling lookup
 from general_locations_catalog import (
@@ -324,11 +325,13 @@ def register_review_routes(app):
         if not query_image:
             return jsonify({'error': 'No uploaded image found in packet'}), 400
 
-        # Clear old candidates
+        # Clear old candidates. candidate_matches holds copied reference thumbnails,
+        # never a turtle folder, so the guard passes — but route it through anyway
+        # so a future path bug fails closed instead of destroying turtle data.
         import shutil
         candidates_dir = os.path.join(packet_dir, 'candidate_matches')
         if os.path.isdir(candidates_dir):
-            shutil.rmtree(candidates_dir)
+            guarded_rmtree(candidates_dir, manager_service.manager.base_dir)
         os.makedirs(candidates_dir, exist_ok=True)
 
         # Run matching with the chosen photo_type

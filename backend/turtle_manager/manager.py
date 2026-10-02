@@ -262,6 +262,10 @@ class TurtleManager(TurtleReferenceMixin, TurtleDeletionMixin, TurtleReviewMixin
             # (if any lingered across an older format) never enter the index.
             if 'Deleted' in dirs:
                 dirs.remove('Deleted')
+            # Prune _Archive/ (archived merge-secondary / rolled-back turtles):
+            # an archived turtle must STOP matching, exactly like Deleted/.
+            if '_Archive' in dirs:
+                dirs.remove('_Archive')
             # Determine photo_type from the directory name
             dir_name = os.path.basename(root)
             if dir_name in ("plastron", "ref_data"):
@@ -295,7 +299,7 @@ class TurtleManager(TurtleReferenceMixin, TurtleDeletionMixin, TurtleReviewMixin
 
     # Folders that should never appear in user-facing location dropdowns
     SYSTEM_FOLDERS = {"Review_Queue", "Community_Uploads",
-                      "Incidental Places", "benchmarks"}
+                      "Incidental Places", "benchmarks", "_Archive"}
 
     def get_all_locations(self):
         """

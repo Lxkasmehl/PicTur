@@ -18,6 +18,40 @@ from pathlib import Path
 base_dir = os.path.dirname(os.path.abspath(__file__))
 turtles_dir = os.path.join(base_dir, "turtles")
 
+# Undeletable-turtle-dataset guard (pure module; never loads SuperPoint).
+# turtle_manager/ sits one level up from this scripts/ dir.
+sys.path.insert(0, os.path.join(os.path.dirname(base_dir), "turtle_manager"))
+from safe_fs import guarded_rmtree, UndeletableTurtleDataError
+
+# Bypass the guard and permanently delete turtle folders ONLY when explicitly
+# opted in via --force-destroy-dataset / FORCE_DESTROY_DATASET=1. This is a CLI
+# tool only — never reachable from any HTTP path.
+FORCE_DESTROY = False
+
+
+def _destroy_tree(path, guard_base):
+    """rmtree that fails closed on protected turtle data unless FORCE_DESTROY.
+
+    Returns True when the tree was removed, False when the guard blocked it (a
+    clear message pointing at the override flag is printed). OSErrors from the
+    underlying rmtree propagate to the caller's existing handler.
+    """
+    if FORCE_DESTROY:
+        shutil.rmtree(path)
+        return True
+    try:
+        guarded_rmtree(path, guard_base)
+        return True
+    except UndeletableTurtleDataError:
+        print(
+            f"   🛑 Refusing to delete protected turtle dataset folder: {path}\n"
+            f"      It holds permanent research data. Re-run with "
+            f"--force-destroy-dataset (or env FORCE_DESTROY_DATASET=1) to override "
+            f"-- this PERMANENTLY DESTROYS the dataset."
+        )
+        return False
+
+
 try:
     from dotenv import load_dotenv
     for env_path in [Path(base_dir) / ".env", Path(base_dir).parent / ".env"]:
@@ -46,8 +80,8 @@ def clear_legacy_django_storage():
     if os.path.isdir(media_dir):
         try:
             print(f"   🗑️  Removing legacy media directory {media_dir}...")
-            shutil.rmtree(media_dir)
-            print("   ✅ Removed legacy media directory")
+            if _destroy_tree(media_dir, os.path.join(base_dir, 'data')):
+                print("   ✅ Removed legacy media directory")
         except OSError as e:
             print(f"   ⚠️  Could not remove media directory: {e}")
     else:
@@ -83,10 +117,12 @@ def clear_official_turtle_data():
         try:
             # Count files before deletion
             file_count = sum([len(files) for r, d, files in os.walk(item_path)])
+
+            # Delete the entire State/Location folder structure — fails closed on
+            # protected turtle data unless --force-destroy-dataset was passed.
+            if not _destroy_tree(item_path, data_dir):
+                continue
             deleted_files += file_count
-            
-            # Delete the entire State/Location folder structure
-            shutil.rmtree(item_path)
             deleted_folders += 1
             print(f"   🗑️  Deleted: {item} ({file_count} files)")
         except Exception as e:
@@ -117,7 +153,10 @@ def clear_uploaded_data():
                 item_path = os.path.join(folder_path, item)
                 try:
                     if os.path.isdir(item_path):
-                        shutil.rmtree(item_path)
+                        # Review_Queue packets pass the guard; a Community_Uploads
+                        # turtle folder (real photos) is protected unless forced.
+                        if not _destroy_tree(item_path, data_dir):
+                            continue
                     else:
                         os.remove(item_path)
                     deleted_count += 1
@@ -312,4 +351,20 @@ def reset_complete_backend():
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Complete backend reset")
+    parser.add_argument(
+        "--force-destroy-dataset",
+        action="store_true",
+        help="DANGER: bypass the undeletable-turtle-dataset guard and permanently "
+             "delete turtle folders (including Community_Uploads turtles). Off by "
+             "default; without it, protected folders are skipped and reported.",
+    )
+    args = parser.parse_args()
+    FORCE_DESTROY = (
+        args.force_destroy_dataset
+        or os.environ.get("FORCE_DESTROY_DATASET", "").strip().lower() in ("1", "true", "yes")
+    )
+    if FORCE_DESTROY:
+        print("⚠️  --force-destroy-dataset set: the turtle-dataset guard is DISABLED.")
     reset_complete_backend()

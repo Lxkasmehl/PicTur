@@ -120,6 +120,10 @@ class TurtleFolderResolverMixin:
         try:
             for walk_root in walk_roots:
                 for root, dirs, files in os.walk(walk_root):
+                    # Never resolve a turtle from an archived or soft-deleted copy:
+                    # an archived folder is named "<ts>_State__Location__F###", whose
+                    # basename endswith "_F###" and would otherwise match tid F###.
+                    dirs[:] = [d for d in dirs if d not in ('_Archive', 'Deleted')]
                     if _basename_matches_turtle_id(os.path.basename(root), tid):
                         add_candidate(root)
         except OSError:
@@ -134,6 +138,7 @@ class TurtleFolderResolverMixin:
                 and self.base_dir not in walk_roots):
             try:
                 for root, dirs, files in os.walk(self.base_dir):
+                    dirs[:] = [d for d in dirs if d not in ('_Archive', 'Deleted')]
                     if _basename_matches_turtle_id(os.path.basename(root), tid):
                         add_candidate(root)
             except OSError:
