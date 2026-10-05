@@ -10,7 +10,7 @@ only the storage behind them differs.
 | Photos / folders | `backend/data/` | `ORG_DATA_DIR/<org_id>/data/` (same folder layout) |
 | Photo type | plastron (+ carapace) | carapace |
 | Roles | account role (`users.role`) | per-group membership (staff / admin) |
-| Locations | Locations page (seeded programs) | Locations page (starts empty; the group defines its own tabs + General Locations) |
+| Locations | Locations page (seeded programs) | Locations page: one location, several areas or several programs (chosen by the group admin) |
 
 The groups are fully isolated from each other and from the main group: records, photos, matching
 caches, locations catalog and permissions are all per group. Nothing about the main group changes.
@@ -36,8 +36,13 @@ group and reloads every page for it. Roles are resolved live from the auth backe
 1. Super admin: **Research Groups** (`/platform/groups`) → create the group (name, URL name, first admin email).
 2. The admin receives an email (existing accounts are added directly; new addresses get an invitation
    link to `/accept-invite`, which creates the account with a verified email).
-3. In the group: create the first tab (e.g. a state or program) in the "Create New Turtle" form or the
-   Sheets browser, and General Locations on the **Locations** page — the same as in the main group.
+3. In the group: on the **Locations** page, choose how the group records where a turtle was found:
+   - **One location** — one fixed program ("Turtles" / "Study Area"); the data form asks only for the
+     exact Location, and the home page has no "location to test against" choice.
+   - **Several areas** — one program whose General Locations are the areas; the form hides the program.
+   - **Several programs** — programs (in the database: tabs), each selectable or fixed, as in the main group.
+   Switching to one location / several areas is refused while the group has more than one program or
+   its turtles use different General Locations. Stored in `ORG_DATA_DIR/<org_id>/data/location_structure.json`.
 4. From then on: upload → match page → confirm a match or "Create New Turtle", review queue, turtle
    records, release — all the familiar pages.
 
