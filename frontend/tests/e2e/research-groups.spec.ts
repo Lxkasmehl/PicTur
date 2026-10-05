@@ -67,6 +67,17 @@ test.describe('Research groups', () => {
     await expect(page.getByText('Turtles', { exact: true })).toBeVisible();
   });
 
+  test('super admins see the role explanation and the other super admins', async ({ page }) => {
+    await login(page, SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD);
+    await page.goto('/platform/groups');
+    await expect(page.getByRole('heading', { name: 'Roles' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Creates research groups and names their first admin')).toBeVisible();
+    const list = page.getByTestId('super-admin-list');
+    await expect(list.getByText(SUPER_ADMIN_EMAIL)).toBeVisible({ timeout: 15_000 });
+    // The only super admin cannot remove themselves
+    await expect(list.getByRole('button', { name: `Remove super admin ${SUPER_ADMIN_EMAIL}` })).toBeDisabled();
+  });
+
   test('super admin creates a group, opens it and switches back', async ({ page }) => {
     test.setTimeout(90_000);
     const name = await createAndOpenGroup(page);

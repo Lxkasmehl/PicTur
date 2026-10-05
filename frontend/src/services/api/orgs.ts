@@ -65,6 +65,29 @@ export async function getMyOrgs(): Promise<{ is_super_admin: boolean; membership
 
 // ---- super admin ----
 
+export interface SuperAdmin {
+  id: number;
+  email: string;
+  name: string | null;
+  /** Set in the server configuration (SUPER_ADMIN_EMAILS): cannot be removed in the app. */
+  from_env: boolean;
+}
+
+export async function listSuperAdmins(): Promise<SuperAdmin[]> {
+  const r = await apiRequest('/platform/super-admins');
+  return (await json<{ super_admins: SuperAdmin[] }>(r, 'Failed to load super admins')).super_admins;
+}
+
+export async function addSuperAdmin(email: string): Promise<SuperAdmin[]> {
+  const r = await apiRequest('/platform/super-admins', { method: 'POST', body: JSON.stringify({ email }) });
+  return (await json<{ super_admins: SuperAdmin[] }>(r, 'Failed to add super admin')).super_admins;
+}
+
+export async function removeSuperAdmin(userId: number): Promise<{ self: boolean; super_admins: SuperAdmin[] }> {
+  const r = await apiRequest(`/platform/super-admins/${userId}`, { method: 'DELETE' });
+  return json(r, 'Failed to remove super admin');
+}
+
 export async function listAllOrgs(): Promise<Organization[]> {
   const r = await apiRequest('/orgs');
   return (await json<{ orgs: Organization[] }>(r, 'Failed to load research groups')).orgs;

@@ -19,7 +19,10 @@ caches, locations catalog and permissions are all per group. Nothing about the m
 
 - **Super admin** (platform level): creates research groups and assigns their first admin, and acts as
   admin in every group. Grant with `SUPER_ADMIN_EMAILS=a@x.org,b@y.org` (applied on start) or
-  `npm run set-super-admin -- you@example.org` in `auth-backend/` (the account must exist).
+  `npm run set-super-admin -- you@example.org` in `auth-backend/` (the account must exist), or — as a
+  super admin — on the **Research Groups** page, which lists all super admins, explains super admin /
+  admin / staff and promotes or removes super admins (`/api/platform/super-admins`). Addresses from
+  `SUPER_ADMIN_EMAILS` and the last super admin cannot be removed there.
   Being admin of the main group does **not** make someone a super admin.
 - **Group admin / staff**: the same rights as admin / staff in the main group, but only inside their group.
   "User Management" shows the group's members (invite by email, change role, remove) and whether

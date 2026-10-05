@@ -6,6 +6,7 @@ member management with the last-admin guard, and that /auth/validate exposes liv
 Run with: BACKEND_URL=... AUTH_URL=... pytest tests/integration/test_orgs_routes.py -v
 """
 
+import os
 import uuid
 
 import pytest
@@ -214,3 +215,32 @@ def test_register_with_org_invitation(auth_url, super_admin_token, new_org):
     assert r.status_code == 400
     r = requests.get(f"{auth_url}/orgs/invitations/bogus", timeout=10)
     assert r.status_code == 404
+
+
+def test_super_admins_promote_list_and_demote(auth_url, super_admin_token, staff_token, integration_env):
+    """Super admins manage super admins in the app; the change applies to the next request."""
+    if not integration_env or not super_admin_token or not staff_token:
+        pytest.skip("Set BACKEND_URL and AUTH_URL (and seeded users) to run")
+    base = f"{auth_url}/platform/super-admins"
+    staff_email = os.environ.get("E2E_STAFF_EMAIL", "staff@test.com")
+
+    assert requests.get(base, headers=_h(staff_token), timeout=10).status_code == 403
+    r = requests.get(base, headers=_h(super_admin_token), timeout=10)
+    assert r.status_code == 200
+    assert any(s["email"] == "superadmin@test.com" for s in r.json()["super_admins"])
+
+    r = requests.post(base, headers=_h(super_admin_token), json={"email": "nobody-here@test.com"}, timeout=10)
+    assert r.status_code == 404
+
+    r = requests.post(base, headers=_h(super_admin_token), json={"email": staff_email}, timeout=10)
+    assert r.status_code == 200, r.text
+    promoted = next(s for s in r.json()["super_admins"] if s["email"] == staff_email)
+    try:
+        # live: the staff account now sees the list without logging in again
+        assert requests.get(base, headers=_h(staff_token), timeout=10).status_code == 200
+    finally:
+        r = requests.delete(f"{base}/{promoted['id']}", headers=_h(super_admin_token), timeout=10)
+    assert r.status_code == 200, r.text
+    assert all(s["email"] != staff_email for s in r.json()["super_admins"])
+    assert requests.get(base, headers=_h(staff_token), timeout=10).status_code == 403
+    assert requests.delete(f"{base}/{promoted['id']}", headers=_h(super_admin_token), timeout=10).status_code == 404

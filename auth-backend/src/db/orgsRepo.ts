@@ -127,6 +127,35 @@ export function isSuperAdmin(userId: number): boolean {
   return Boolean(row?.is_super_admin);
 }
 
+export interface SuperAdmin {
+  id: number;
+  email: string;
+  name: string | null;
+  /** Granted by SUPER_ADMIN_EMAILS: re-applied on every start, so it cannot be revoked in the app. */
+  from_env: boolean;
+}
+
+/** Emails listed in SUPER_ADMIN_EMAILS (lower case). */
+export function envSuperAdminEmails(): Set<string> {
+  const raw = process.env.SUPER_ADMIN_EMAILS?.trim() ?? '';
+  return new Set(raw.split(/[,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean));
+}
+
+export function listSuperAdmins(): SuperAdmin[] {
+  const fromEnv = envSuperAdminEmails();
+  const rows = db
+    .prepare('SELECT id, email, name FROM users WHERE is_super_admin = 1 ORDER BY email COLLATE NOCASE')
+    .all() as { id: number; email: string; name: string | null }[];
+  return rows.map((r) => ({ ...r, from_env: fromEnv.has(r.email.toLowerCase()) }));
+}
+
+export function setSuperAdmin(userId: number, value: boolean): void {
+  db.prepare("UPDATE users SET is_super_admin = ?, updated_at = datetime('now') WHERE id = ?").run(
+    value ? 1 : 0,
+    userId
+  );
+}
+
 /** All groups the user belongs to; the main group always comes first (role from users.role). */
 export function getMembershipsForUser(userId: number): Membership[] {
   const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as

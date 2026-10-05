@@ -26,6 +26,8 @@ import { refreshMyOrgs } from '../store/orgActions';
 import { setActiveOrg } from '../store/slices/orgSlice';
 import { createOrg, listAllOrgs, type Organization } from '../services/api/orgs';
 import { formatLocalDate as formatDate } from '../utils/formatLocalDate';
+import { RolesExplainer } from '../components/org/RolesExplainer';
+import { SuperAdminsPanel } from '../components/org/SuperAdminsPanel';
 
 function slugify(name: string): string {
   return name
@@ -218,6 +220,17 @@ export default function PlatformGroupsPage() {
             </Table>
           </Table.ScrollContainer>
         </Paper>
+
+        <div>
+          <Title order={3} mt='md'>
+            Roles
+          </Title>
+          <Text c='dimmed' size='sm'>
+            Who may do what. Admins and staff belong to one research group; super admins are above all groups.
+          </Text>
+        </div>
+        <RolesExplainer />
+        <SuperAdminsPanel />
       </Stack>
     </Container>
   );
