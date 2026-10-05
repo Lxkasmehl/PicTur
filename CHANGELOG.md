@@ -10,14 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **MM/DD/YYYY input masking on turtle date fields** (#234): single-date fields (Date 1st found, Last Assay Date, iButton Last Set, Transmitter On Date, Radio Replace Date) now auto-insert slashes while typing (e.g. `01272026` → `01/27/2026`), open a numeric keypad on mobile, and cap input at 10 characters. The comma-separated fields "Dates refound" and "Date DNA Extracted?" get the same masking per segment, while segments containing letters (e.g. "Yes"/"No"/"N/A") are left untouched. The caret stays in place across re-masking — including right after a just-typed comma — so an earlier typo can be fixed in place instead of the cursor jumping to the end. Placeholders now consistently show `MM/DD/YYYY`.
-
-### Fixed
-
-- **E2E general-locations mock no longer breaks the app against the Vite dev server**: the catalog mock's route matched any URL containing "general-locations", including Vite's module request for `src/services/api/general-locations.ts`, so the app never rendered when tests ran against the local dev server instead of a built frontend. The mock now skips source/module requests and only intercepts the real API call.
+- **Auto-fill Date Refound on match confirmation**: when an admin selects a match (or confirms a new turtle) in Admin Turtle Match / Records, today's date is automatically appended to "Dates Refound" if not already present, with a notification and an inline hint explaining why the field was pre-filled.
 
 ### Changed
 
 - **Turtle Records now opens on the Google Sheets Browser tab** (#276): navigating to `/admin/turtle-records` shows the Sheets Browser by default instead of the Review Queue. The Review Queue tab is still available one click away.
+
+### Fixed
+
+- **E2E general-locations mock no longer breaks the app against the Vite dev server**: the catalog mock's route matched any URL containing "general-locations", including Vite's module request for `src/services/api/general-locations.ts`, so the app never rendered when tests ran against the local dev server instead of a built frontend. The mock now skips source/module requests and only intercepts the real API call.
 
 ## [2.0.22] - 2026-07-10 — Carapace quick check opened to staff
 
