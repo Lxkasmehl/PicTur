@@ -34,11 +34,14 @@ import {
 } from '@tabler/icons-react';
 import { useUser } from '../hooks/useUser';
 import { useActiveOrg } from '../hooks/useActiveOrg';
+import { useProgramTerms } from '../hooks/useProgramTerms';
 import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import {
   getGeneralLocationCatalog,
   addGeneralLocation,
+  addProgram,
+  removeProgram,
   addSheetDefault,
   removeSheetDefault,
   getAffectedTurtleCount,
@@ -74,6 +77,7 @@ export default function AdminLocationManagementPage() {
   const { role, ready: orgReady } = useActiveOrg();
   const authChecked = userAuthChecked && orgReady;
   const navigate = useNavigate();
+  const terms = useProgramTerms();
 
   const [catalog, setCatalog] = useState<GeneralLocationCatalog | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -98,6 +102,11 @@ export default function AdminLocationManagementPage() {
   const [addingState, setAddingState] = useState<string | null>(null);
   const [newLocationName, setNewLocationName] = useState('');
   const [addingLoading, setAddingLoading] = useState(false);
+
+  // Create selectable program
+  const [createProgramOpen, setCreateProgramOpen] = useState(false);
+  const [newSelectableName, setNewSelectableName] = useState('');
+  const [creatingProgram, setCreatingProgram] = useState(false);
 
   // Create fixed program
   const [createFixedOpen, setCreateFixedOpen] = useState(false);
@@ -231,6 +240,49 @@ export default function AdminLocationManagementPage() {
   };
 
   // ---------------------------------------------------------------------------
+  // Create selectable program
+  // ---------------------------------------------------------------------------
+
+  const handleCreateProgram = async () => {
+    const name = newSelectableName.trim();
+    if (!name) return;
+    setCreatingProgram(true);
+    try {
+      const res = await addProgram(name);
+      if (res.success && res.catalog) {
+        setCatalog(res.catalog);
+        notifications.show({ color: 'green', title: 'Program added', message: `Now add General Locations to "${name}".`, icon: <IconCheck size={16} /> });
+        setCreateProgramOpen(false);
+        setNewSelectableName('');
+        // Open it right away so the first General Location can be added
+        setExpandedStates((prev) => new Set(prev).add(name));
+        setAddingState(name);
+        setNewLocationName('');
+      } else {
+        notifications.show({ color: 'red', title: 'Error', message: res.error || 'Failed to add program' });
+      }
+    } catch (err: unknown) {
+      notifications.show({ color: 'red', title: 'Error', message: err instanceof Error ? err.message : 'Failed to add program' });
+    } finally {
+      setCreatingProgram(false);
+    }
+  };
+
+  const handleRemoveProgram = async (name: string) => {
+    try {
+      const res = await removeProgram(name);
+      if (res.success && res.catalog) {
+        setCatalog(res.catalog);
+        notifications.show({ color: 'green', title: 'Program deleted', message: `"${name}" removed.`, icon: <IconCheck size={16} /> });
+      } else {
+        notifications.show({ color: 'red', title: 'Error', message: res.error || 'Failed to delete program' });
+      }
+    } catch (err: unknown) {
+      notifications.show({ color: 'red', title: 'Error', message: err instanceof Error ? err.message : 'Failed to delete program' });
+    }
+  };
+
+  // ---------------------------------------------------------------------------
   // Create fixed program
   // ---------------------------------------------------------------------------
 
@@ -323,10 +375,16 @@ export default function AdminLocationManagementPage() {
   // Derived data
   // ---------------------------------------------------------------------------
 
-  // States where at least one location is not a sheet default.
+  // States where at least one location is not a sheet default, plus new programs that have no
+  // General Locations yet (and are not fixed).
+  const fixedStates = new Set(
+    Object.values(catalog?.sheet_defaults ?? {}).map((rule) => rule.state.toLowerCase()),
+  );
   const freeChoiceStates = catalog
     ? Object.entries(catalog.states).filter(([stateName, locations]) =>
-        locations.some((loc) => !isLocked(stateName, loc)),
+        locations.length === 0
+          ? !fixedStates.has(stateName.toLowerCase())
+          : locations.some((loc) => !isLocked(stateName, loc)),
       )
     : [];
 
@@ -358,6 +416,16 @@ export default function AdminLocationManagementPage() {
         <Text c='dimmed' size='sm'>
           Manage General Location options available to admins when entering turtle data.
         </Text>
+        {terms.isDbOrg && (
+          <Alert variant='light' color='blue' icon={<IconMapPin size={16} />} title='How locations work'>
+            <Text size='sm'>
+              Every turtle belongs to a <b>program</b> (a study or project), has a <b>General Location</b> (a
+              site or area) and a free-text <b>Location</b> for the exact spot. Programs with selectable
+              locations let admins pick the General Location per turtle; a fixed program always uses the same
+              one. If your group has only one study area, a single fixed program is all you need.
+            </Text>
+          </Alert>
+        )}
 
         {catalogError && (
           <Alert color='red' icon={<IconAlertCircle size={16} />} title='Error'>
@@ -375,12 +443,25 @@ export default function AdminLocationManagementPage() {
                 Selectable locations
             ---------------------------------------------------------------- */}
             <Stack gap='sm'>
-              <Stack gap={2}>
-                <Title order={4}>Selectable Locations</Title>
-                <Text size='xs' c='dimmed'>
-                  Admins choose one of these per turtle when entering data.
-                </Text>
-              </Stack>
+              <Group justify='space-between' align='flex-end'>
+                <Stack gap={2}>
+                  <Title order={4}>Selectable Locations</Title>
+                  <Text size='xs' c='dimmed'>
+                    Admins choose one of these per turtle when entering data.
+                  </Text>
+                </Stack>
+                <Button
+                  variant='light'
+                  size='xs'
+                  leftSection={<IconPlus size={14} />}
+                  onClick={() => {
+                    setCreateProgramOpen(true);
+                    setNewSelectableName('');
+                  }}
+                >
+                  Add program
+                </Button>
+              </Group>
 
               {freeChoiceStates.length === 0 ? (
                 <Text size='sm' c='dimmed'>
@@ -432,6 +513,7 @@ export default function AdminLocationManagementPage() {
                                 <Menu.Label>Program</Menu.Label>
                                 <Menu.Item
                                   leftSection={<IconLock size={14} />}
+                                  disabled={makeFixedOptions.length === 0}
                                   onClick={() => {
                                     setMakeFixedState(stateName);
                                     setMakeFixedLocation(makeFixedOptions[0]?.value ?? '');
@@ -439,6 +521,15 @@ export default function AdminLocationManagementPage() {
                                 >
                                   Make fixed
                                 </Menu.Item>
+                                {selectableLocations.length === 0 && (
+                                  <Menu.Item
+                                    color='red'
+                                    leftSection={<IconTrash size={14} />}
+                                    onClick={() => handleRemoveProgram(stateName)}
+                                  >
+                                    Delete program
+                                  </Menu.Item>
+                                )}
                               </Menu.Dropdown>
                             </Menu>
                             <ThemeIcon variant='subtle' color='gray' size='sm'>
@@ -451,6 +542,11 @@ export default function AdminLocationManagementPage() {
                           <>
                             <Divider />
                             <Stack gap='xs' p='md'>
+                              {selectableLocations.length === 0 && (
+                                <Text size='sm' c='dimmed'>
+                                  No General Locations yet. Add the first one below.
+                                </Text>
+                              )}
                               {selectableLocations.map((loc) => (
                                 <Group key={loc} justify='space-between'>
                                   <Text size='sm'>{loc}</Text>
@@ -538,7 +634,9 @@ export default function AdminLocationManagementPage() {
                 <Stack gap={2}>
                   <Title order={4}>Fixed Programs</Title>
                   <Text size='xs' c='dimmed'>
-                    These programs always use a single General Location tied to their sheet tab.
+                    {terms.isDbOrg
+                      ? 'These programs always use the same General Location; admins do not pick one per turtle.'
+                      : 'These programs always use a single General Location tied to their sheet tab.'}
                   </Text>
                 </Stack>
                 <Button
@@ -566,7 +664,7 @@ export default function AdminLocationManagementPage() {
                       <Table.Tr>
                         <Table.Th>
                           <Text size='xs' fw={600} c='dimmed'>
-                            Program (Sheet)
+                            {terms.isDbOrg ? 'Program' : 'Program (Sheet)'}
                           </Text>
                         </Table.Th>
                         <Table.Th>
@@ -664,7 +762,10 @@ export default function AdminLocationManagementPage() {
               {deleteTarget.isFixed && (
                 <>
                   {' '}
-                  and its fixed program? This will also remove the sheet default.
+                  and its fixed program?{' '}
+                  {terms.isDbOrg
+                    ? 'The program is removed as well.'
+                    : 'This will also remove the sheet default.'}
                 </>
               )}
             </Text>
@@ -706,7 +807,9 @@ export default function AdminLocationManagementPage() {
                   searchable
                 />
                 <Text size='xs' c='dimmed'>
-                  Their General Location in Google Sheets and on-disk folders will be updated.
+                  {terms.isDbOrg
+                    ? 'Their General Location and photo folders will be updated.'
+                    : 'Their General Location in Google Sheets and on-disk folders will be updated.'}
                 </Text>
               </Stack>
             )}
@@ -733,6 +836,56 @@ export default function AdminLocationManagementPage() {
         )}
       </Modal>
 
+      {/* Create selectable program */}
+      <Modal
+        opened={createProgramOpen}
+        onClose={() => !creatingProgram && setCreateProgramOpen(false)}
+        title={
+          <Group gap='sm'>
+            <IconLockOpen size={18} />
+            <Text fw={600}>Add Program</Text>
+          </Group>
+        }
+        centered
+        size='sm'
+      >
+        <Stack gap='md'>
+          <Text size='sm' c='dimmed'>
+            {terms.isDbOrg
+              ? 'A program with selectable locations: you add its General Locations next, and admins pick one per turtle.'
+              : 'A program with selectable locations: you add its General Locations next, and admins pick one per turtle. The name should match the Google Sheets tab (or the part before "/").'}
+          </Text>
+          <TextInput
+            label='Program name'
+            placeholder={terms.isDbOrg ? 'e.g. River Survey' : 'e.g. Kansas'}
+            value={newSelectableName}
+            onChange={(e) => setNewSelectableName(e.currentTarget.value)}
+            required
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleCreateProgram();
+            }}
+          />
+          <Group justify='flex-end' gap='sm'>
+            <Button
+              variant='subtle'
+              color='gray'
+              onClick={() => setCreateProgramOpen(false)}
+              disabled={creatingProgram}
+            >
+              Cancel
+            </Button>
+            <Button
+              loading={creatingProgram}
+              disabled={!newSelectableName.trim()}
+              onClick={handleCreateProgram}
+            >
+              Add program
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       {/* Create fixed program */}
       <Modal
         opened={createFixedOpen}
@@ -748,12 +901,13 @@ export default function AdminLocationManagementPage() {
       >
         <Stack gap='md'>
           <Text size='sm' c='dimmed'>
-            A fixed program always uses one specific General Location. The program name must match
-            the Google Sheets tab name.
+            {terms.isDbOrg
+              ? 'A fixed program always uses one specific General Location, so admins do not have to pick it per turtle.'
+              : 'A fixed program always uses one specific General Location. The program name must match the Google Sheets tab name.'}
           </Text>
           <TextInput
-            label='Program name (sheet tab name)'
-            placeholder='e.g. MissouriSite'
+            label={terms.isDbOrg ? 'Program name' : 'Program name (sheet tab name)'}
+            placeholder={terms.isDbOrg ? 'e.g. Pond Study' : 'e.g. MissouriSite'}
             value={newProgramName}
             onChange={(e) => setNewProgramName(e.currentTarget.value)}
             required

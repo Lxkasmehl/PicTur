@@ -164,57 +164,59 @@ export default function PlatformGroupsPage() {
         </Paper>
 
         <Paper withBorder radius='md'>
-          <Table verticalSpacing='xs'>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Group</Table.Th>
-                <Table.Th>Storage</Table.Th>
-                <Table.Th>Members</Table.Th>
-                <Table.Th>Community</Table.Th>
-                <Table.Th>Created</Table.Th>
-                <Table.Th />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {orgs === null && (
+          <Table.ScrollContainer minWidth={640}>
+            <Table verticalSpacing='xs'>
+              <Table.Thead>
                 <Table.Tr>
-                  <Table.Td colSpan={6}>
-                    <Center py='md'>
-                      <Loader size='sm' />
-                    </Center>
-                  </Table.Td>
+                  <Table.Th>Group</Table.Th>
+                  <Table.Th>Storage</Table.Th>
+                  <Table.Th>Members</Table.Th>
+                  <Table.Th>Community</Table.Th>
+                  <Table.Th>Created</Table.Th>
+                  <Table.Th />
                 </Table.Tr>
-              )}
-              {orgs?.map((o) => (
-                <Table.Tr key={o.id}>
-                  <Table.Td>
-                    <Text size='sm' fw={500}>{o.name}</Text>
-                    <Text size='xs' c='dimmed'>{o.slug}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge size='sm' variant='light' color={o.kind === 'sheets' ? 'grape' : 'teal'}>
-                      {o.kind === 'sheets' ? 'Google Sheets' : 'Database'}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>{o.member_count ?? '–'}</Table.Td>
-                  <Table.Td>{o.accepts_community ? 'yes' : 'no'}</Table.Td>
-                  <Table.Td>{formatDate(o.created_at)}</Table.Td>
-                  <Table.Td>
-                    <Anchor
-                      component='button'
-                      size='sm'
-                      onClick={() => {
-                        dispatch(setActiveOrg(o.slug));
-                        navigate(o.kind === 'db' ? '/admin/users' : '/');
-                      }}
-                    >
-                      Open
-                    </Anchor>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+              </Table.Thead>
+              <Table.Tbody>
+                {orgs === null && (
+                  <Table.Tr>
+                    <Table.Td colSpan={6}>
+                      <Center py='md'>
+                        <Loader size='sm' />
+                      </Center>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+                {orgs?.map((o) => (
+                  <Table.Tr key={o.id}>
+                    <Table.Td>
+                      <Text size='sm' fw={500}>{o.name}</Text>
+                      <Text size='xs' c='dimmed'>{o.slug}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge size='sm' variant='light' color={o.kind === 'sheets' ? 'grape' : 'teal'}>
+                        {o.kind === 'sheets' ? 'Google Sheets' : 'Database'}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>{o.member_count ?? '–'}</Table.Td>
+                    <Table.Td>{o.accepts_community ? 'yes' : 'no'}</Table.Td>
+                    <Table.Td>{formatDate(o.created_at)}</Table.Td>
+                    <Table.Td>
+                      <Anchor
+                        component='button'
+                        size='sm'
+                        onClick={() => {
+                          dispatch(setActiveOrg(o.slug));
+                          navigate(o.kind === 'db' ? '/admin/users' : '/');
+                        }}
+                      >
+                        Open
+                      </Anchor>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
         </Paper>
       </Stack>
     </Container>

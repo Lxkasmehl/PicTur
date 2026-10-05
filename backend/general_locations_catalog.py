@@ -316,6 +316,20 @@ def add_general_location(state: str, general_location: str) -> Dict[str, Any]:
         return deepcopy(_normalize_catalog(catalog))
 
 
+def add_program(state: str) -> Dict[str, Any]:
+    """Add a selectable program (state) without General Locations yet; no-op if it exists."""
+    state_name = _normalize_text(state)
+    if not state_name:
+        raise ValueError('program name is required')
+
+    with _CATALOG_LOCK:
+        catalog = _load_catalog_unlocked()
+        if not any(key.lower() == state_name.lower() for key in catalog['states']):
+            catalog['states'][state_name] = []
+            _save_catalog_unlocked(catalog)
+        return deepcopy(_normalize_catalog(catalog))
+
+
 def delete_general_location(state: str, general_location: str, *, force: bool = False) -> Dict[str, Any]:
     """Remove a location from a state's catalog.
 
@@ -438,6 +452,23 @@ def remove_sheet_default(sheet_name: str) -> Dict[str, Any]:
 
         catalog['sheet_defaults'].pop(match_key)
         _save_catalog_unlocked(catalog)
+        return deepcopy(_normalize_catalog(catalog))
+
+
+def remove_empty_program(state: str) -> Dict[str, Any]:
+    """Remove a selectable program that has no General Locations (e.g. added by mistake)."""
+    state_name = _normalize_text(state)
+    if not state_name:
+        raise ValueError('program name is required')
+
+    with _CATALOG_LOCK:
+        catalog = _load_catalog_unlocked()
+        key = next((k for k in catalog['states'] if k.lower() == state_name.lower()), None)
+        if key is not None:
+            if catalog['states'][key]:
+                raise ValueError(f"'{key}' still has General Locations; delete them first")
+            del catalog['states'][key]
+            _save_catalog_unlocked(catalog)
         return deepcopy(_normalize_catalog(catalog))
 
 

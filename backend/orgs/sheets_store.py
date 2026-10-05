@@ -9,7 +9,7 @@ bulk_ops, migration, lookup, ...). Instead of a Google API client, their GoogleS
   spreadsheets().values().get(spreadsheetId, range)
   spreadsheets().values().update(spreadsheetId, range, valueInputOption, body)
   spreadsheets().values().batchUpdate(spreadsheetId, body)
-  spreadsheets().batchUpdate(spreadsheetId, body)  with addSheet, insertDimension,
+  spreadsheets().batchUpdate(spreadsheetId, body)  with addSheet, deleteSheet, insertDimension,
       deleteDimension, setDataValidation, repeatCell
 
 — with Google's response semantics (trailing empty cells/rows trimmed, 'values' omitted for empty
@@ -315,6 +315,9 @@ class DbSheetsApi:
             for req in requests:
                 if 'addSheet' in req:
                     replies.append(self._add_sheet(req['addSheet']))
+                elif 'deleteSheet' in req:
+                    self._delete_sheet(req['deleteSheet'])
+                    replies.append({})
                 elif 'insertDimension' in req:
                     self._insert_dimension(req['insertDimension'])
                     replies.append({})
@@ -355,6 +358,12 @@ class DbSheetsApi:
         Session.flush()
         return {'addSheet': {'properties': {'sheetId': tab.sheet_id, 'title': tab.title,
                                             'index': tab.position, 'sheetType': 'GRID'}}}
+
+    def _delete_sheet(self, spec):
+        tab = self._tab_by_sheet_id(spec.get('sheetId'))
+        self._rows_query(tab.sheet_id).delete(synchronize_session=False)
+        Session.delete(tab)
+        Session.flush()
 
     def _insert_dimension(self, spec):
         rng = spec.get('range') or {}

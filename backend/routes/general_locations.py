@@ -7,11 +7,13 @@ from flask import jsonify, request
 from auth import require_admin
 from general_locations_catalog import (
     add_general_location,
+    add_program,
     add_sheet_default,
     delete_general_location,
     get_general_location_catalog,
     get_locations_for_state,
     get_sheet_state,
+    remove_empty_program,
     remove_sheet_default,
 )
 from services import manager_service
@@ -34,6 +36,73 @@ def _serialize_catalog(catalog):
         'states': states,
         'sheet_defaults': sheet_defaults,
     }
+
+
+def _list_tabs(sheets_svc):
+    try:
+        return sheets_svc.list_sheets() or []
+    except Exception:
+        return None
+
+
+def _ensure_program_tab(program: str):
+    """Research groups: every program is a tab in the group database; create it on first use.
+    The main group's Google tabs are managed in Google Sheets (or from the turtle data form)."""
+    if tenant.current() is None:
+        return
+    svc = get_sheets_service()
+    if not svc:
+        return
+    tabs = _list_tabs(svc)
+    if tabs is not None and not any(t.lower() == program.lower() for t in tabs):
+        svc.create_sheet_with_headers(program)
+
+
+def _program_tab(svc, program: str):
+    """(tab properties, number of turtle rows) of a program's tab, or (None, 0) if it has none."""
+    meta = svc.service.spreadsheets().get(spreadsheetId=svc.spreadsheet_id).execute()
+    tab = next((s['properties'] for s in meta.get('sheets', [])
+                if s['properties']['title'].lower() == program.lower()), None)
+    if tab is None:
+        return None, 0
+    rows = svc.service.spreadsheets().values().get(
+        spreadsheetId=svc.spreadsheet_id, range=tab['title']).execute().get('values', [])
+    return tab, sum(1 for row in rows[1:] if any(str(c).strip() for c in row))
+
+
+def _drop_empty_program_tab(program: str, catalog):
+    """Research groups: when a program left the catalog (its last location was deleted), remove
+    its tab too if it holds no turtles, so it does not come back as an empty program."""
+    if tenant.current() is None or any(k.lower() == program.lower() for k in catalog['states']):
+        return
+    svc = get_sheets_service()
+    if not svc:
+        return
+    try:
+        with svc._api_lock:
+            tab, turtles = _program_tab(svc, program)
+            if tab is None or turtles:
+                return
+            svc.service.spreadsheets().batchUpdate(
+                spreadsheetId=svc.spreadsheet_id,
+                body={'requests': [{'deleteSheet': {'sheetId': tab['sheetId']}}]},
+            ).execute()
+        svc._invalidate_list_sheets_cache()
+    except Exception as exc:  # pragma: no cover - best effort cleanup
+        print(f'general-locations: could not remove empty tab {program!r}: {exc}')
+
+
+def _with_unlisted_tabs(catalog):
+    """Research groups: tabs created from the turtle data form show up as programs without
+    General Locations, so admins can add locations to them here."""
+    if tenant.current() is None:
+        return catalog
+    svc = get_sheets_service()
+    tabs = _list_tabs(svc) if svc else None
+    for tab in tabs or []:
+        if not any(k.lower() == tab.lower() for k in catalog['states']):
+            catalog['states'][tab] = []
+    return catalog
 
 
 def _get_affected_turtles_across_sheets(
@@ -92,7 +161,7 @@ def register_general_location_routes(app):
     @require_admin
     def general_locations():
         if request.method == 'GET':
-            catalog = get_general_location_catalog()
+            catalog = _with_unlisted_tabs(get_general_location_catalog())
             return jsonify({'success': True, **_serialize_catalog(catalog)})
 
         data = request.get_json(silent=True) or {}
@@ -105,6 +174,7 @@ def register_general_location_routes(app):
 
         try:
             catalog = add_general_location(state, general_location)
+            _ensure_program_tab(state)
         except ValueError as exc:
             return jsonify({'success': False, 'error': str(exc)}), 400
 
@@ -132,6 +202,47 @@ def register_general_location_routes(app):
                 'Ensure each state tab has a "General Location" header in row 1, or re-save a turtle on that tab.'
             )
         return jsonify(response)
+
+    @app.route('/api/general-locations/programs', methods=['POST'])
+    @require_admin
+    def add_program_endpoint():
+        """Add a selectable program (no General Locations yet). Research groups also get its tab."""
+        data = request.get_json(silent=True) or {}
+        name = (data.get('name') or '').strip()
+        if not name:
+            return jsonify({'success': False, 'error': 'name is required'}), 400
+        if '/' in name:
+            return jsonify({'success': False, 'error': 'Program names cannot contain "/"'}), 400
+        try:
+            catalog = add_program(name)
+            _ensure_program_tab(name)
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': True, **_serialize_catalog(_with_unlisted_tabs(catalog))})
+
+    @app.route('/api/general-locations/programs', methods=['DELETE'])
+    @require_admin
+    def remove_program_endpoint():
+        """Remove a program without General Locations (and, in research groups, its empty tab)."""
+        data = request.get_json(silent=True) or {}
+        name = (data.get('name') or '').strip()
+        if not name:
+            return jsonify({'success': False, 'error': 'name is required'}), 400
+        svc = get_sheets_service() if tenant.current() is not None else None
+        if svc:
+            with svc._api_lock:
+                _tab, turtles = _program_tab(svc, name)
+            if turtles:
+                return jsonify({
+                    'success': False,
+                    'error': f"'{name}' still has {turtles} turtle(s) and cannot be removed",
+                }), 409
+        try:
+            catalog = remove_empty_program(name)
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
+        _drop_empty_program_tab(name, catalog)
+        return jsonify({'success': True, **_serialize_catalog(_with_unlisted_tabs(catalog))})
 
     @app.route('/api/general-locations/affected-turtles', methods=['GET'])
     @require_admin
@@ -271,6 +382,7 @@ def register_general_location_routes(app):
             catalog = delete_general_location(state, general_location, force=force)
         except ValueError as exc:
             return jsonify({'success': False, 'error': str(exc)}), 400
+        _drop_empty_program_tab(state, catalog)
 
         # Sync Google Sheets validation dropdowns.
         sheets_updated = 0
@@ -311,7 +423,10 @@ def register_general_location_routes(app):
 
         # Block the conversion if existing turtles have a different General Location.
         sheets_svc = get_sheets_service()
-        if sheets_svc:
+        tabs = _list_tabs(sheets_svc) if sheets_svc else None
+        # A brand-new program has no tab yet, hence no turtles that could conflict.
+        tab_exists = tabs is None or any(t.lower() == sheet_name.lower() for t in tabs)
+        if sheets_svc and tab_exists:
             with sheets_svc._api_lock:
                 try:
                     conflicting = bulk_ops.find_rows_by_non_matching_general_location(
@@ -323,7 +438,7 @@ def register_general_location_routes(app):
                 except Exception as exc:
                     return jsonify({
                         'success': False,
-                        'error': f"Could not scan sheet '{sheet_name}' for conflicting turtles: {exc}",
+                        'error': f"Could not check '{sheet_name}' for turtles with another General Location: {exc}",
                     }), 500
             if conflicting:
                 return jsonify({
@@ -336,6 +451,7 @@ def register_general_location_routes(app):
 
         try:
             catalog = add_sheet_default(sheet_name, general_location)
+            _ensure_program_tab(sheet_name)
         except ValueError as exc:
             return jsonify({'success': False, 'error': str(exc)}), 400
 

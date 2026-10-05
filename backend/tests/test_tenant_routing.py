@@ -130,7 +130,8 @@ def test_locations_catalog_is_per_group_and_starts_empty(env):
     c = env['client']
     c.post('/api/sheets/sheets', json={'sheet_name': 'Ohio'}, headers=_h('a-admin', 'alpha'))
     r = c.get('/api/general-locations', headers=_h('a-admin', 'alpha'))
-    assert r.get_json()['states'] == []  # no Kansas seed for research groups
+    # no Kansas seed for research groups; the tab shows up as a program without locations
+    assert r.get_json()['states'] == [{'state': 'Ohio', 'locations': []}]
     r = c.post('/api/general-locations', json={'state': 'Ohio', 'general_location': 'North Site'},
                headers=_h('a-admin', 'alpha'))
     assert r.status_code == 200, r.get_json()
@@ -141,6 +142,53 @@ def test_locations_catalog_is_per_group_and_starts_empty(env):
     assert not env['main_catalog'].exists() or 'Ohio' not in env['main_catalog'].read_text()
     # other group has its own catalog
     assert c.get('/api/general-locations', headers=_h('super', 'beta')).get_json()['states'] == []
+
+
+def _tabs(c, slug='alpha'):
+    return c.get('/api/sheets/sheets', headers=_h('a-admin', slug)).get_json()['sheets']
+
+
+def test_group_programs_are_created_with_their_tab(env):
+    c = env['client']
+    r = c.post('/api/general-locations/programs', json={'name': 'River Survey'},
+               headers=_h('a-admin', 'alpha'))
+    assert r.status_code == 200, r.get_json()
+    assert {s['state']: s['locations'] for s in r.get_json()['states']} == {'River Survey': []}
+    assert _tabs(c) == ['River Survey']
+    r = c.post('/api/general-locations', json={'state': 'Lake Survey', 'general_location': 'East'},
+               headers=_h('a-admin', 'alpha'))
+    assert r.status_code == 200, r.get_json()
+    assert sorted(_tabs(c)) == ['Lake Survey', 'River Survey']
+    r = c.post('/api/general-locations/programs', json={'name': 'a/b'}, headers=_h('a-admin', 'alpha'))
+    assert r.status_code == 400
+
+    # A program with locations cannot be removed; an empty one goes away together with its tab
+    r = c.delete('/api/general-locations/programs', json={'name': 'Lake Survey'}, headers=_h('a-admin', 'alpha'))
+    assert r.status_code == 400
+    r = c.delete('/api/general-locations/programs', json={'name': 'River Survey'}, headers=_h('a-admin', 'alpha'))
+    assert r.status_code == 200, r.get_json()
+    assert _tabs(c) == ['Lake Survey']
+    assert [s['state'] for s in r.get_json()['states']] == ['Lake Survey']
+
+
+def test_fixed_program_for_a_new_name_creates_its_tab(env):
+    """Regression: creating a fixed program failed because its (not yet existing) tab was scanned."""
+    c = env['client']
+    r = c.post('/api/general-locations/sheet-defaults',
+               json={'sheet_name': 'Testzeit', 'general_location': 'Test Site'},
+               headers=_h('a-admin', 'alpha'))
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()['catalog']['sheet_defaults'] == {
+        'Testzeit': {'state': 'Testzeit', 'general_location': 'Test Site'}}
+    assert _tabs(c) == ['Testzeit']
+
+    # Deleting the (empty) fixed program removes its tab, so it does not come back as a program
+    r = c.delete('/api/general-locations',
+                 json={'state': 'Testzeit', 'general_location': 'Test Site', 'force': True},
+                 headers=_h('a-admin', 'alpha'))
+    assert r.status_code == 200, r.get_json()
+    assert _tabs(c) == []
+    assert c.get('/api/general-locations', headers=_h('a-admin', 'alpha')).get_json()['states'] == []
 
 
 def test_spawned_threads_keep_the_group():

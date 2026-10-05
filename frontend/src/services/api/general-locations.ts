@@ -98,6 +98,40 @@ export const addGeneralLocation = async (
   return await response.json();
 };
 
+/** Add a program whose General Locations admins pick per turtle (research groups also get its tab). */
+export const addProgram = async (name: string): Promise<GeneralLocationCatalogResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/general-locations/programs`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to add program');
+  }
+  return await response.json();
+};
+
+/** Remove a program that has no General Locations yet. */
+export const removeProgram = async (name: string): Promise<GeneralLocationCatalogResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/general-locations/programs`, {
+    method: 'DELETE',
+    headers,
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to remove program');
+  }
+  return await response.json();
+};
+
 export const getAffectedTurtleCount = async (
   generalLocation: string,
   state?: string,
