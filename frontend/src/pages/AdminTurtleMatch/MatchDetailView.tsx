@@ -159,7 +159,7 @@ export function MatchDetailView() {
               <Text size='sm' c='dimmed'>
                 Name
               </Text>
-              <Text fw={500}>{displayName || '—'}</Text>
+              <Text fw={500}>{displayName || '-'}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 2 }}>
               <Text size='sm' c='dimmed'>

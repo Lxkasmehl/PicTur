@@ -557,7 +557,7 @@ test.describe('Admin Turtle Match', () => {
       timeout: 15_000,
     });
 
-    // Wait for either outcome — avoids racing upload/match load on slow mobile WebKit.
+    // Wait for either outcome - avoids racing upload/match load on slow mobile WebKit.
     const noMatches = page.getByText('No matches found');
     const additionalSection = page.getByText('Additional photos');
     await expect(noMatches.or(additionalSection)).toBeVisible({ timeout: 25_000 });
@@ -632,7 +632,7 @@ test.describe('Admin Turtle Match', () => {
 
     // Photos for this upload section is rendered inside the modal above the Google Sheets divider.
     await expect(dialog.getByText('Photos for this upload', { exact: false })).toBeVisible();
-    // Upload buttons from AdditionalImagesSection are Mantine Button component="label" — render as <label>, not <button> — so match by visible text.
+    // Upload buttons from AdditionalImagesSection are Mantine Button component="label" - render as <label>, not <button> - so match by visible text.
     await expect(dialog.getByText('Microhabitat', { exact: false }).first()).toBeVisible();
     await expect(dialog.getByText('Condition', { exact: false }).first()).toBeVisible();
     await expect(dialog.getByText('Carapace', { exact: false }).first()).toBeVisible();

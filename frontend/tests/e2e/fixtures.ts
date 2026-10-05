@@ -34,7 +34,7 @@ export async function openMobileMenu(page: Page): Promise<void> {
   }
 }
 
-/** Clicks a nav control by label. In drawer mode, uses a DOM click after the drawer is visible — Mantine's slide transition breaks Playwright's stability checks on `locator.click()`. */
+/** Clicks a nav control by label. In drawer mode, uses a DOM click after the drawer is visible - Mantine's slide transition breaks Playwright's stability checks on `locator.click()`. */
 export async function navClick(page: Page, label: string): Promise<void> {
   const burger = page.getByTestId('mobile-menu-button');
   const drawer = page.getByTestId('nav-drawer');
@@ -302,7 +302,7 @@ export async function selectGeneralLocationInCreateTurtleDialog(
   }
 
   // Community flow: plain TextInput (no catalog). Admin/research: Mantine Select shows "+ Add new General Location".
-  // Do not use role="combobox" — WebKit often omits it on the input, and fill() on a Select does not pick an option.
+  // Do not use role="combobox" - WebKit often omits it on the input, and fill() on a Select does not pick an option.
   const isCatalogGeneralLocation = (await dialog.getByRole('button', { name: /\+ Add new General Location/ }).count()) > 0;
   if (!isCatalogGeneralLocation) {
     await labeled.fill(locationName);
@@ -352,7 +352,7 @@ export async function fillGeneralLocationInCreateTurtleDialog(
 }
 
 /**
- * Kansas option for Create New Turtle E2E — must exist in {@link registerKansasGeneralLocationsCatalogMock}.
+ * Kansas option for Create New Turtle E2E - must exist in {@link registerKansasGeneralLocationsCatalogMock}.
  */
 export const E2E_KANSAS_GENERAL_LOCATION = 'Lawrence';
 

@@ -318,7 +318,7 @@ function MainGroupUserManagement() {
                         {list.map((u) => (
                           <Table.Tr key={u.id}>
                             <Table.Td style={{ width: '40%' }}>{u.email}</Table.Td>
-                            <Table.Td style={{ width: '30%' }}>{u.name || '—'}</Table.Td>
+                            <Table.Td style={{ width: '30%' }}>{u.name || '-'}</Table.Td>
                             <Table.Td style={{ width: 180, verticalAlign: 'middle' }}>
                               <Group gap='xs' wrap='nowrap' align='center'>
                                 <Select

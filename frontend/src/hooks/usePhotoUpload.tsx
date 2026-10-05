@@ -239,7 +239,7 @@ export function usePhotoUpload({
           try {
             localStorage.setItem(`match_${response.request_id}`, JSON.stringify(matchData));
           } catch {
-            // localStorage full — clear stale match entries and retry
+            // localStorage full - clear stale match entries and retry
             for (let i = localStorage.length - 1; i >= 0; i--) {
               const key = localStorage.key(i);
               if (key?.startsWith('match_') && key !== `match_${response.request_id}`) {

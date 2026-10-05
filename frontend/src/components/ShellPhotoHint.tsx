@@ -4,11 +4,11 @@ import { SHELL_COLOR, type Shell } from '../utils/shell';
 
 const SHELL_TEXT: Record<Shell, { title: string; detail: string }> = {
   plastron: {
-    title: 'Plastron photo — the bottom shell',
+    title: 'Plastron photo: the bottom shell',
     detail: 'Turn the turtle over (or hold it) so the whole underside is visible.',
   },
   carapace: {
-    title: 'Carapace photo — the top shell',
+    title: 'Carapace photo: the top shell',
     detail: 'Photograph the turtle from straight above with the whole top shell in frame.',
   },
 };

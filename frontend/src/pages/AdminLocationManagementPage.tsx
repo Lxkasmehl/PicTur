@@ -62,7 +62,7 @@ import {
 interface DeleteTarget {
   state: string;
   location: string;
-  /** When true the location is a fixed sheet default — force=true is sent to backend. */
+  /** When true the location is a fixed sheet default - force=true is sent to backend. */
   isFixed: boolean;
 }
 
@@ -87,7 +87,7 @@ const STRUCTURE_TEXT: Record<LocationStructure, { label: string; description: st
   programs: {
     label: 'Several programs',
     description:
-      'Several programs (studies or projects), each with its own General Locations — or one fixed General Location — plus the exact Location per turtle.',
+      'Several programs (studies or projects), each with its own General Locations (or one fixed General Location), plus the exact Location per turtle.',
   },
 };
 
@@ -449,7 +449,7 @@ export default function AdminLocationManagementPage() {
   // All fixed programs from sheet_defaults.
   const fixedPrograms = catalog ? Object.entries(catalog.sheet_defaults) : [];
 
-  // Move-target options for the delete modal — restricted to the same state so the
+  // Move-target options for the delete modal - restricted to the same state so the
   // backend's state-scoped bulk-update accepts the target without validation errors.
   const moveOptions: { value: string; label: string }[] = (() => {
     if (!deleteTarget || !catalog) return [];
@@ -1118,7 +1118,7 @@ export default function AdminLocationManagementPage() {
               <Text span fw={600}>
                 {makeFixedState}
               </Text>{' '}
-              to a fixed program. Admins will no longer choose a location per turtle — it will
+              to a fixed program. Admins will no longer choose a location per turtle; it will
               always be locked to the selected one.
             </Text>
             <Select

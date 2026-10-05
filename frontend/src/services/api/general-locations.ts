@@ -1,5 +1,5 @@
 /**
- * General Location catalog — state-specific dropdown options for admin turtle data entry.
+ * General Location catalog - state-specific dropdown options for admin turtle data entry.
  */
 
 import { getToken, TURTLE_API_BASE_URL } from './config';

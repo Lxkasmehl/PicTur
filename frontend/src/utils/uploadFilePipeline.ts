@@ -7,7 +7,7 @@ export interface AcceptUploadFileResult {
   error?: string;
 }
 
-/** Optimize then validate — use for every user-selected upload file. */
+/** Optimize then validate - use for every user-selected upload file. */
 export async function acceptUploadFile(file: File): Promise<AcceptUploadFileResult> {
   try {
     const prepared = await prepareImageForUpload(file);

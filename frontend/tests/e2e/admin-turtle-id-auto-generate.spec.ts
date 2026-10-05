@@ -160,7 +160,7 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
     await selectSexInCreateTurtleDialog(page, dialog, 'F');
 
-    // UI assertion (covers WebKit): do not race waitForResponse with long unlock chains — that can time out before Sex is editable.
+    // UI assertion (covers WebKit): do not race waitForResponse with long unlock chains - that can time out before Sex is editable.
     const idField = dialog.getByLabel('ID', { exact: true });
     await expect(idField).toHaveValue(MOCK_BIOLOGY_ID, { timeout: 25_000 });
     await expect(idField).toBeDisabled();

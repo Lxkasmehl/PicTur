@@ -47,7 +47,7 @@ function pickPersisted(s: {
 
 /**
  * Observer gamification: any logged-in account (all roles) syncs to the auth service by user id.
- * Guests get a reset slice—no local XP storage (avoids “lost progress” confusion).
+ * Guests get a reset slice - no local XP storage (avoids “lost progress” confusion).
  */
 export default function GamePersistence(): null {
   const dispatch = useAppDispatch();

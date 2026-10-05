@@ -255,7 +255,7 @@ export async function resolveProjectStatusBacklogIds(params: {
   const projectNode = data?.node;
   if (!projectNode) {
     console.warn(
-      'GitHub project: GraphQL node(id) is null — check GITHUB_FEEDBACK_PROJECT_NODE_ID and token access to that project.',
+      'GitHub project: GraphQL node(id) is null. Check GITHUB_FEEDBACK_PROJECT_NODE_ID and token access to that project.',
     );
     return null;
   }

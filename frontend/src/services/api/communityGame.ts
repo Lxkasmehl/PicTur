@@ -1,5 +1,5 @@
 /**
- * Observer / gamification sync — auth-backend `community_game_states` (per user), not profile fields.
+ * Observer / gamification sync - auth-backend `community_game_states` (per user), not profile fields.
  */
 
 import { apiRequest } from './auth';

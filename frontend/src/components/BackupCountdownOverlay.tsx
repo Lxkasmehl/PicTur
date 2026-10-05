@@ -2,15 +2,15 @@
  * BackupCountdownOverlay
  *
  * Three-state UI for the nightly chronodrop:
- *   - idle:        before the 5-minute pre-window — renders nothing.
- *   - countdown:   T-5min … T-0 — bottom-right floating badge with mm:ss.
- *   - maintenance: T-0 … backend health-check returns ok — full-screen
+ *   - idle:        before the 5-minute pre-window - renders nothing.
+ *   - countdown:   T-5min … T-0 - bottom-right floating badge with mm:ss.
+ *   - maintenance: T-0 … backend health-check returns ok - full-screen
  *                  modal blocking interaction. Polls /api/health every 5s.
  *
  * Mounted once at the App level; gated to staff/admin only.
  *
  * The window's absolute timestamp comes from /api/backup/window so client
- * clock drift / timezone issues do not skew the countdown — the server
+ * clock drift / timezone issues do not skew the countdown - the server
  * is the source of truth.
  */
 
@@ -61,7 +61,7 @@ export default function BackupCountdownOverlay() {
   const isAdminPage = role && isStaffRole(role);
 
   // Refetch the window whenever we drop back to idle (e.g. after a maintenance
-  // window completes — fresh next_start_unix for tomorrow).
+  // window completes - fresh next_start_unix for tomorrow).
   useEffect(() => {
     if (!isAdminPage || !isLoggedIn) {
       setWindowInfo(null);
@@ -74,7 +74,7 @@ export default function BackupCountdownOverlay() {
           if (!cancelled) setWindowInfo(w);
         })
         .catch(() => {
-          /* ignore — overlay is not critical; will retry next tick */
+          /* ignore - overlay is not critical; will retry next tick */
         });
     };
     load();
@@ -167,7 +167,7 @@ export default function BackupCountdownOverlay() {
               Server backup in {formatRemaining(remaining)}
             </Text>
             <Text size="xs" style={{ opacity: 0.92 }}>
-              Please save your work — admin pages will pause briefly while the backup runs.
+              Please save your work. Admin pages will pause briefly while the backup runs.
             </Text>
           </Stack>
         </Group>

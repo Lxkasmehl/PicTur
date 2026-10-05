@@ -146,16 +146,16 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted, shell 
                 styles={{ item: { lineHeight: 1.5 } }}
               >
                 <List.Item>
-                  <strong>Full {shell} in frame</strong> — nothing cut off at the edges
+                  <strong>Full {shell} in frame</strong>: nothing cut off at the edges
                 </List.Item>
                 <List.Item>
-                  <strong>No light reflections</strong> — avoid flash and harsh light on the shell
+                  <strong>No light reflections</strong>: avoid flash and harsh light on the shell
                 </List.Item>
                 <List.Item>
-                  <strong>Centered and sharp</strong> — camera straight above, high resolution, in focus
+                  <strong>Centered and sharp</strong>: camera straight above, high resolution, in focus
                 </List.Item>
                 <List.Item>
-                  <strong>Clear pattern</strong> — scutes and markings clearly visible for ID
+                  <strong>Clear pattern</strong>: scutes and markings clearly visible for ID
                 </List.Item>
               </List>
             </Paper>
@@ -300,7 +300,7 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted, shell 
                   fit="contain"
                 />
                 <Text size="xs" c="dimmed" mt="xs" style={{ lineHeight: 1.5 }}>
-                  This is an ideal lab example with perfect lighting and background. Your field photo doesn&apos;t need to look this perfect—just ensure the full plastron is visible, sharp, and without reflections.
+                  This is an ideal lab example with perfect lighting and background. Your field photo doesn&apos;t need to look this perfect. Just make sure the full plastron is visible, sharp, and without reflections.
                 </Text>
               </Box>}
             </Stack>
@@ -389,7 +389,7 @@ export function InstructionsModal({ opened, onClose, onTrainingCompleted, shell 
               disabled={!acknowledged || !hasScrolledToBottom}
               leftSection={<IconCheck size={18} />}
             >
-              Got it — let&apos;s upload
+              Got it, let&apos;s upload
             </Button>
           )}
         </Group>

@@ -1,10 +1,10 @@
 /**
- * Google Sheets API — barrel re-export + sheet-tab management, ID generation,
+ * Google Sheets API - barrel re-export + sheet-tab management, ID generation,
  * locations, and backup archive download.
  *
  * Sub-modules:
- *   turtle-data.ts       — TurtleSheetsData type, CRUD, mark-deceased, lookup
- *   general-locations.ts — General Location catalog management
+ *   turtle-data.ts       - TurtleSheetsData type, CRUD, mark-deceased, lookup
+ *   general-locations.ts - General Location catalog management
  */
 
 export * from './turtle-data';

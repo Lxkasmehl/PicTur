@@ -624,7 +624,7 @@ export function PreviewCard({
                 )}
                 {uploadProgress >= 90 && !isGettingLocation && (
                   <Text size='xs' c='dimmed' ta='center'>
-                    Photo uploaded. Running AI matching against the dataset — this may take a minute.
+                    Photo uploaded. Running AI matching against the dataset. This may take a minute.
                   </Text>
                 )}
               </Stack>

@@ -86,12 +86,12 @@ function computeNullSubState(
   const hasPrimaryId = (turtle.primary_id || '').trim().length > 0;
   const hasBioId = (turtle.id || '').trim().length > 0;
   if (!hasPrimaryId || !hasBioId) return null;
-  if (!entry) return null; // not loaded yet — callers guard on primaryImagesLoading
+  if (!entry) return null; // not loaded yet - callers guard on primaryImagesLoading
   if (entry.folderStatus === 'no_folder' || entry.folderStatus === 'empty_folder') {
     return 'no-disk';
   }
   if (carapaceOnly) return entry.hasCarapace ? null : 'no-carapace';
-  if (entry.path) return null; // has a plastron reference — not Null
+  if (entry.path) return null; // has a plastron reference - not Null
   return entry.hasCarapace ? 'no-plastron' : 'no-plastron-no-carapace';
 }
 
@@ -175,7 +175,7 @@ export function SheetsBrowserTab() {
     setSelectedSheetFilterAndLoad: onSheetFilterChange,
   } = ctx;
 
-  /** Biology ID when present — matches on-disk folder names (e.g. F439); else primary id. */
+  /** Biology ID when present - matches on-disk folder names (e.g. F439); else primary id. */
   const diskTurtleId = selectedTurtle ? turtleDiskFolderId(selectedTurtle) : '';
   /** Matches `data/<path>/` on disk (not the Google tab name alone). */
   const dataPathHint = selectedTurtle ? turtleDataFolderHint(selectedTurtle) : null;
@@ -453,7 +453,7 @@ export function SheetsBrowserTab() {
                     variant='outline'
                     size='sm'
                   >
-                    Null — missing reference photos
+                    Null: missing reference photos
                   </Chip>
                   {nullFilterActive && primaryImagesLoading && (
                     <Loader size='xs' aria-label='Checking on-disk photo status' />
@@ -504,7 +504,7 @@ export function SheetsBrowserTab() {
                             }
                           }}
                         >
-                          Full archive — entire data directory and all sheet tabs
+                          Full archive: entire data directory and all sheet tabs
                         </Menu.Item>
                         <Menu.Item
                           disabled={!selectedSheetFilter}
@@ -533,7 +533,7 @@ export function SheetsBrowserTab() {
                           Current location tab only
                           {selectedSheetFilter
                             ? ` (${selectedSheetFilter})`
-                            : ' — pick a location above'}
+                            : ' (pick a location above)'}
                         </Menu.Item>
                       </Menu.Dropdown>
                     </Menu>

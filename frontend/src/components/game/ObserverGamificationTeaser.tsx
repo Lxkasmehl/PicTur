@@ -27,7 +27,7 @@ export function ObserverGamificationTeaser({ variant }: { variant: Variant }) {
               </Text>
             </Group>
             <Text size="xs" c="dimmed">
-              Log in or create a free account to earn XP, unlock badges, and complete weekly quests—your progress
+              Log in or create a free account to earn XP, unlock badges, and complete weekly quests. Your progress
               is saved to your profile. You can still upload sightings without an account.
             </Text>
             <Group gap="xs" wrap="wrap">
@@ -80,7 +80,7 @@ export function ObserverGamificationTeaser({ variant }: { variant: Variant }) {
           </Group>
           <Text size="md" opacity={0.92}>
             XP, badges, and weekly quests are tied to your account so nothing gets lost when you switch devices or
-            clear your browser. Anonymous uploads still help the project—they just don&apos;t count toward Observer
+            clear your browser. Anonymous uploads still help the project; they just don&apos;t count toward Observer
             progress.
           </Text>
           <Group gap="sm" wrap="wrap">
@@ -120,7 +120,7 @@ export function ObserverGamificationTeaser({ variant }: { variant: Variant }) {
             <IconTrophy size={22} />
           </ThemeIcon>
           <Text size="sm" c="dimmed">
-            Already contributing without logging in? Thank you—when you&apos;re ready, create an account and keep
+            Already contributing without logging in? Thank you! When you&apos;re ready, create an account and keep
             building your observer profile from there.
           </Text>
         </Group>

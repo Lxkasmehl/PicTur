@@ -236,7 +236,7 @@ export default function HomePage() {
       options.push({ value: state, label: state });
       // Only expand sub-locations when a state has multiple locations.
       // Single-location states (e.g. NebraskaCPBS with just CPBS) don't
-      // need a redundant child entry — the state-level prefix match covers it.
+      // need a redundant child entry - the state-level prefix match covers it.
       if (stateLocations.length > 1) {
         for (const loc of stateLocations) {
           options.push({ value: loc, label: `  ${loc.split('/').slice(1).join('/')}` });
@@ -298,7 +298,7 @@ export default function HomePage() {
   }, [matchScopePrefsHydrated]);
 
   // Drop favorites that no longer exist on the server (paths removed).
-  // While GET /locations is in flight, canonical options omit real folders — do not prune yet
+  // While GET /locations is in flight, canonical options omit real folders - do not prune yet
   // or we strip saved favorites (e.g. Kansas) before paths are known.
   useEffect(() => {
     if (!isStaff || locationsLoading || canonicalMatchScopeOptions.length === 0) return;
@@ -502,7 +502,7 @@ export default function HomePage() {
                   ? 'Upload a photo to save it in the backend and run a match. While logged in, successful uploads also count toward your Observer HQ progress.'
                   : 'Upload a photo to save it in the backend'
                 : canUseObserverGamification
-                  ? 'Submit a carapace sighting — your upload earns XP and counts toward Observer HQ quests'
+                  ? 'Submit a carapace sighting. Your upload earns XP and counts toward Observer HQ quests'
                   : 'Submit a carapace sighting to support the project. Log in or create an account to earn XP and track Observer HQ progress.'}
             </Text>
             <Group justify="center" gap="sm" wrap="wrap">
@@ -544,7 +544,7 @@ export default function HomePage() {
                     }
                     quickCheck.setEnabled(true);
                   } else if (quickCheck.status === 'idle') {
-                    // Nothing ran — leave the mode but keep the staged photo.
+                    // Nothing ran - leave the mode but keep the staged photo.
                     quickCheck.reset();
                   } else {
                     handleQuickCheckExit();
@@ -632,7 +632,7 @@ export default function HomePage() {
               variant='light'
             >
               <Text fw={600} size='sm'>
-                Carapace-only mode — read-only
+                Carapace-only mode (read-only)
               </Text>
               <Text size='sm'>
                 Matches run against carapace references only; nothing is saved.

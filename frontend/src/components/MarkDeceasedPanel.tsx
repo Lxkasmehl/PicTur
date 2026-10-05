@@ -1,5 +1,5 @@
 /**
- * Mark a turtle deceased (or clear) by sheet + biology ID, name, or primary ID — no plastron scan.
+ * Mark a turtle deceased (or clear) by sheet + biology ID, name, or primary ID - no plastron scan.
  * Used on Home (staff) and can be wrapped in Paper when standalone.
  */
 
@@ -206,13 +206,13 @@ export function MarkDeceasedPanel({ embedded = false }: MarkDeceasedPanelProps) 
         <Select
           label={lookupLabel}
           placeholder="Search and select a row from this sheet"
-          description="Only values that exist in this tab are listed — avoids typos."
+          description="Only values that exist in this tab are listed, which avoids typos."
           data={lookupOptions}
           value={lookupValue}
           onChange={(v: string | null) => setLookupValue(v ?? '')}
           searchable
           clearable
-          nothingFoundMessage="No matching value — try another search"
+          nothingFoundMessage="No matching value. Try another search"
           maxDropdownHeight={280}
           disabled={submitting}
         />

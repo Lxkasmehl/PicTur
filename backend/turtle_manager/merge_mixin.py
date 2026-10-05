@@ -341,7 +341,7 @@ class TurtleMergeMixin:
                             return False, (
                                 f"Could not read secondary turtle '{secondary_id}' from Sheets "
                                 f"(row not found or transient read error). Aborting to prevent "
-                                f"metadata loss — retry or check the sheet manually."
+                                f"metadata loss. Retry or check the sheet manually."
                             )
                 except Exception as e:
                     print(f"   ⚠️ Could not fetch Sheets data: {e}")

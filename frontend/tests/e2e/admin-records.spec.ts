@@ -52,7 +52,7 @@ test.describe('Admin Turtle Records (Review Queue)', () => {
 
     const tabPanel = page.getByRole('tabpanel', { name: /Review Queue/ });
     await tabPanel.waitFor({ state: 'visible', timeout: 5000 });
-    // Wait for the queue panel to settle (items or empty state) before branching —
+    // Wait for the queue panel to settle (items or empty state) before branching  - 
     // webkit/Mobile Safari can otherwise race the count check ahead of the fetch.
     await Promise.race([
       tabPanel.getByText('No pending reviews').waitFor({ state: 'visible', timeout: 10_000 }),

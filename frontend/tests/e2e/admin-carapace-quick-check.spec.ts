@@ -11,7 +11,7 @@ import {
  * Carapace-only quick check (staff + admin, strictly read-only).
  *
  * The quick-check endpoint and image serving are mocked, so these tests need
- * no carapace fixture data on disk — they pin the frontend contract: role
+ * no carapace fixture data on disk - they pin the frontend contract: role
  * gating (staff and admin yes, community no), mode indication, read-only
  * results, click-to-compare, and the full reset on back-out.
  */
@@ -107,7 +107,7 @@ test.describe('Carapace-only quick check', () => {
     await runButton.click();
 
     // Read-only results from the mocked carapace pool
-    await expect(page.getByText('Read-only result — nothing was saved.', { exact: false })).toBeVisible({
+    await expect(page.getByText('Read-only result: nothing was saved.', { exact: false })).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByText('Top Carapace Matches')).toBeVisible();

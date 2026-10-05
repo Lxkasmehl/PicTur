@@ -38,7 +38,7 @@ export default function AboutPage() {
             <Text size='sm'>
               PicTur identifies individual turtles from photos. The shell pattern of a turtle is as unique as
               a fingerprint: take a picture, and PicTur checks it against the turtles a research group already
-              knows — is this a turtle they have seen before, or a new one? If it is known, everything recorded
+              knows. Is this a turtle they have seen before, or a new one? If it is known, everything recorded
               about it so far is right there.
             </Text>
             <Text size='sm'>
@@ -55,7 +55,7 @@ export default function AboutPage() {
             icon={<IconCamera size={22} />}
             color='blue'
             title='Photograph'
-            text='Researchers and community members upload a photo of the shell — in the field, straight from the phone.'
+            text='Researchers and community members upload a photo of the shell, right in the field from their phone.'
           />
           <FeatureCard
             icon={<IconSearch size={22} />}
@@ -91,7 +91,7 @@ export default function AboutPage() {
               <Text span fw={600}>
                 Dr. Benjamin Reed
               </Text>
-              , professor of biology, studies turtles with his students — finding them in the field, examining
+              , professor of biology, studies turtles with his students: finding them in the field, examining
               them outdoors and in the lab, and following individuals over the years. His idea: take a photo
               of a turtle and immediately know whether the team has met it before and what they already know
               about it.
@@ -129,7 +129,7 @@ export default function AboutPage() {
             </Group>
             <Text size='sm'>
               PicTur is a small project, developed and maintained by its two developers in their spare time,
-              together with the researchers who use it. It is not a commercial product — it exists to help
+              together with the researchers who use it. It is not a commercial product; it exists to help
               people study and protect turtles.
             </Text>
             <Text size='sm'>
@@ -196,7 +196,7 @@ export default function AboutPage() {
                   Education through research:{' '}
                 </Text>
                 students gain hands-on experience in field methods, data analysis, and science
-                communication—skills that transfer to conservation careers and informed citizenship.
+                communication, skills that transfer to conservation careers and informed citizenship.
               </Text>
             </Group>
             <Anchor

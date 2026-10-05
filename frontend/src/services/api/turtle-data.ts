@@ -1,5 +1,5 @@
 /**
- * Turtle row data — Google Sheets CRUD, mark-deceased, lookup, and list operations.
+ * Turtle row data - Google Sheets CRUD, mark-deceased, lookup, and list operations.
  */
 
 import { getToken, TURTLE_API_BASE_URL } from './config';
@@ -34,7 +34,7 @@ export interface TurtleSheetsData {
   general_location?: string;
   location?: string;
   health_status?: string;
-  /** Google Sheets column "Deceased?" — Yes / No */
+  /** Google Sheets column "Deceased?" - Yes / No */
   deceased?: string;
   notes?: string;
   transmitter_put_on_by?: string;
@@ -73,7 +73,7 @@ export function turtleDiskFolderId(
  * Folder hint for turtle image APIs: matches `data/<...>/` on disk.
  * The on-disk top-level folder IS the spreadsheet tab (`sheet_name`, e.g.
  * `Kansas`, `NebraskaCPBS`); `general_location` / `location` are subpaths under
- * it. Lead with the tab so the backend scopes the lookup to the correct sheet —
+ * it. Lead with the tab so the backend scopes the lookup to the correct sheet  - 
  * biology IDs repeat across sheets, so a hint missing the tab can resolve to
  * the wrong turtle's photos.
  */

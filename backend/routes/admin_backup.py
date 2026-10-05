@@ -257,8 +257,8 @@ def _iter_backup_zip(ctx):
             readme = (
                 "TurtleTracker offline backup (admin download)\n"
                 "=============================================\n"
-                "data/     — mirror of the server backend data directory for this scope.\n"
-                "sheets_export/ — CSV + JSON snapshots from Google Sheets (research + community).\n"
+                "data/          mirror of the server backend data directory for this scope.\n"
+                "sheets_export/ CSV + JSON snapshots from Google Sheets (research + community).\n"
                 "\n"
                 "Restore: copy contents of data/ over the backend data folder. "
                 "If spreadsheets are lost, recreate tabs and import the matching CSV files.\n"

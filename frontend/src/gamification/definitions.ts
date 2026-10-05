@@ -51,7 +51,7 @@ export type BadgeDefinition = {
   id: string;
   title: string;
   description: string;
-  /** Tabler icon name fragment (e.g. IconCamera) — resolved in UI */
+  /** Tabler icon name fragment (e.g. IconCamera) - resolved in UI */
   icon: string;
 };
 
@@ -71,7 +71,7 @@ export const BADGE_DEFINITIONS: BadgeDefinition[] = [
   {
     id: 'sightings_25',
     title: 'Field Regular',
-    description: 'Twenty-five sightings — the turtles know your camera.',
+    description: 'Twenty-five sightings. The turtles know your camera.',
     icon: 'IconTrekking',
   },
   {
@@ -107,7 +107,7 @@ export const BADGE_DEFINITIONS: BadgeDefinition[] = [
   {
     id: 'verified_observer',
     title: 'Verified Observer',
-    description: 'Verified your email — thank you for helping us stay in touch.',
+    description: 'Verified your email. Thank you for helping us stay in touch.',
     icon: 'IconMailCheck',
   },
   {

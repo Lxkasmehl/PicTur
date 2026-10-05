@@ -13,7 +13,7 @@ import { MapPicker } from './MapPicker.tsx';
 import type { FindMetadata } from '../services/api';
 
 const PHYSICAL_FLAG_OPTIONS = [
-  { value: '', label: '—' },
+  { value: '', label: 'Not set' },
   { value: 'yes', label: 'Yes' },
   { value: 'no', label: 'No' },
   { value: 'no_flag', label: 'No flag (ran out)' },

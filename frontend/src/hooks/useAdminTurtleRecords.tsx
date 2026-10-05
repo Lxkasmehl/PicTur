@@ -125,7 +125,7 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
       );
       setSelectedItem((prev) => {
         if (prev?.request_id === requestId) {
-          // Candidates may have changed (e.g. after classify) — clear stale state
+          // Candidates may have changed (e.g. after classify) - clear stale state
           setSelectedCandidate(null);
           setCandidateNames({});
           setCandidateOriginalIds({});
@@ -622,7 +622,7 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
   const filteredTurtles = useMemo(
     () =>
       allTurtles.filter((turtle) => {
-        // "Null" filter eligibility — cheap, sheet-data only (no disk/batch lookup):
+        // "Null" filter eligibility - cheap, sheet-data only (no disk/batch lookup):
         // a turtle can only be "Null" if it has both a Primary ID and a Bio ID. The
         // SheetsBrowser narrows further by on-disk status once the batch resolves.
         if (nullFilterActive) {

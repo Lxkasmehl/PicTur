@@ -4,7 +4,7 @@ const ROLES = [
   {
     name: 'Super admin',
     color: 'grape',
-    scope: 'The whole platform — every research group',
+    scope: 'The whole platform: every research group',
     can: [
       'Creates research groups and names their first admin',
       'Acts as admin in every group, including PicTur Research (the main group)',

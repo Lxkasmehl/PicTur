@@ -265,7 +265,7 @@ export async function prepareImageForUpload(file: File): Promise<File> {
     } catch (e) {
       const passthrough = tryPassThroughOnClientDecodeFailure(e, file);
       if (passthrough) return passthrough;
-      // Fall through — re-encode corrupt/small Word/email exports instead of passing them through.
+      // Fall through - re-encode corrupt/small Word/email exports instead of passing them through.
     }
   }
 
