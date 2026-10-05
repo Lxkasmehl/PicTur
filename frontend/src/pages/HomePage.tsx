@@ -56,6 +56,8 @@ import { SightingRewardsModal } from '../components/game/SightingRewardsModal';
 import { ObserverHomeSummary } from '../components/game/ObserverHomeSummary';
 import { ObserverGamificationTeaser } from '../components/game/ObserverGamificationTeaser';
 import { MarkDeceasedPanel } from '../components/MarkDeceasedPanel';
+import { ShellPhotoHint } from '../components/ShellPhotoHint';
+import { SHELL_COLOR, type Shell } from '../utils/shell';
 import { UploadGroupPicker } from '../components/org/UploadGroupPicker';
 import {
   loadHomeMatchScopeFavorites,
@@ -100,6 +102,9 @@ export default function HomePage() {
   const quickCheck = useCarapaceQuickCheck();
   // Research groups upload carapace photos as their normal workflow: no separate quick check.
   const carapaceMode = isStaff && quickCheck.enabled && !isDbOrg;
+  // Only the main group's staff photograph the plastron; community uploads, research groups and
+  // the quick check use the carapace.
+  const shell: Shell = isStaff && !isDbOrg && !carapaceMode ? 'plastron' : 'carapace';
   const canUseObserverGamification = authChecked && isLoggedIn;
   const isMobile = useMediaQuery('(max-width: 768px)', undefined, { getInitialValueInEffect: false });
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -632,6 +637,8 @@ export default function HomePage() {
             </Alert>
           )}
 
+          {!(carapaceMode && quickCheck.status !== 'idle') && authChecked && <ShellPhotoHint shell={shell} />}
+
           {carapaceMode && quickCheck.status !== 'idle' ? (
             <CarapaceQuickCheckResults
               status={quickCheck.status}
@@ -668,7 +675,7 @@ export default function HomePage() {
             <Stack gap='md'>
               <Button
                 size='lg'
-                color={carapaceMode ? 'orange' : undefined}
+                color={SHELL_COLOR[shell]}
                 leftSection={<IconCamera size={20} />}
                 onClick={handleCameraClick}
                 disabled={uploadState === 'uploading'}
@@ -679,7 +686,7 @@ export default function HomePage() {
               <Button
                 size='lg'
                 variant='light'
-                color={carapaceMode ? 'orange' : undefined}
+                color={SHELL_COLOR[shell]}
                 leftSection={<IconPhoto size={20} />}
                 onClick={handleFileSelectClick}
                 disabled={uploadState === 'uploading'}
@@ -701,11 +708,7 @@ export default function HomePage() {
               }}
               multiple={false}
               disabled={uploadState === 'uploading'}
-              style={
-                carapaceMode
-                  ? { borderColor: 'var(--mantine-color-orange-6)' }
-                  : undefined
-              }
+              style={{ borderColor: `var(--mantine-color-${SHELL_COLOR[shell]}-6)` }}
             >
               <Group
                 justify='center'
@@ -725,7 +728,7 @@ export default function HomePage() {
 
                 <div>
                   <Text size='xl' inline ta='center'>
-                    Drop photo here or click to select
+                    Drop the {shell} photo here or click to select
                   </Text>
                   <Text
                     size='sm'
@@ -773,7 +776,7 @@ export default function HomePage() {
       </Paper>
 
       <InstructionsModal
-        shell={isDbOrg ? 'carapace' : 'plastron'}
+        shell={shell}
         opened={instructionsOpened}
         onClose={() => setInstructionsOpened(false)}
         onTrainingCompleted={
@@ -787,7 +790,7 @@ export default function HomePage() {
         title={
           <Group gap="sm" wrap="nowrap">
             <IconSkull size={22} stroke={1.5} />
-            <span>Mortality without plastron match</span>
+            <span>{isDbOrg ? 'Mortality without ID match' : 'Mortality without plastron match'}</span>
           </Group>
         }
         size="lg"
