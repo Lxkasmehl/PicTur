@@ -14,7 +14,8 @@ import {
   Paper,
   Loader,
 } from '@mantine/core';
-import { useImperativeHandle, forwardRef } from 'react';
+import { useEffect, useImperativeHandle, forwardRef } from 'react';
+import { useLocationStructure } from '../hooks/useLocationStructure';
 import { IconInfoCircle, IconSkull } from '@tabler/icons-react';
 import { useTurtleSheetsDataForm } from '../hooks/useTurtleSheetsDataForm';
 import type { UseTurtleSheetsDataFormReturn } from './TurtleSheetsDataForm.types';
@@ -82,6 +83,19 @@ export const TurtleSheetsDataForm = forwardRef<
     submit: hook.handleSubmit,
   }));
 
+  // Research groups with one location or several areas have a single program: it is selected
+  // silently, and with one location the (fixed) General Location is hidden as well.
+  const locationStructure = useLocationStructure();
+  const silentProgram = sheetSource === 'admin' ? locationStructure.program : null;
+  const hideGeneralLocation = !!silentProgram && locationStructure.structure === 'single';
+  const { selectedSheetName, setSelectedSheetName } = hook;
+  const choosesSheet = mode === 'create' || requireNewSheetForCommunityMatch;
+  useEffect(() => {
+    if (silentProgram && choosesSheet && selectedSheetName !== silentProgram) {
+      setSelectedSheetName(silentProgram);
+    }
+  }, [silentProgram, choosesSheet, selectedSheetName, setSelectedSheetName]);
+
   return (
     <Paper shadow='sm' p='xl' radius='md' withBorder style={{ position: 'relative' }}>
       {hook.loading && (
@@ -144,7 +158,7 @@ export const TurtleSheetsDataForm = forwardRef<
         )}
 
           <Grid gutter='md'>
-            <Grid.Col span={12}>
+            <Grid.Col span={12} display={silentProgram ? 'none' : undefined}>
               <SheetSelectionRow
                 loadingSheets={hook.loadingSheets}
                 isFieldModeRestricted={
@@ -204,6 +218,7 @@ export const TurtleSheetsDataForm = forwardRef<
               }
               generalLocationSelectRemountKey={hook.selectedSheetName}
               matchPageColumnLayout={matchPageColumnLayout}
+              hideGeneralLocation={hideGeneralLocation}
             />
           </Grid>
 

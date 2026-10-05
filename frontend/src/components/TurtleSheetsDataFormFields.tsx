@@ -51,6 +51,7 @@ export function TurtleSheetsDataFormFields({
   onCreateGeneralLocation,
   generalLocationSelectRemountKey,
   matchPageColumnLayout = false,
+  hideGeneralLocation = false,
 }: TurtleSheetsDataFormFieldsProps) {
   const useMatchEditLocks = matchPageColumnLayout && isFieldModeRestricted;
 
@@ -218,6 +219,7 @@ export function TurtleSheetsDataFormFields({
 
         const config = configByKey[key];
         if (!config) return null;
+        if (hideGeneralLocation && config.key === 'general_location') return null;
 
         const span = toSpan(config.span);
         const rawVal = formData[config.key];
@@ -254,7 +256,7 @@ export function TurtleSheetsDataFormFields({
               placeholder={config.placeholder}
               description={
                 config.key === 'id' && mode === 'create'
-                  ? 'Auto-generated from sex + sequence for this sheet (e.g. M001, F002)'
+                  ? 'Auto-generated from sex + sequence (e.g. M001, F002)'
                   : generalLocationDescription
               }
               infoTooltip={config.infoTooltip}

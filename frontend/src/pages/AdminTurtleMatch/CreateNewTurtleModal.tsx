@@ -30,7 +30,7 @@ export function CreateNewTurtleModal() {
     >
       <Stack gap='md'>
         <Text size='sm' c='dimmed'>
-          Create a new turtle entry for this uploaded image. Select a sheet and fill in the
+          Create a new turtle entry for this uploaded image. Fill in the
           turtle data below. Primary ID will be automatically generated. ID and ID2 can be
           entered manually if needed.
         </Text>

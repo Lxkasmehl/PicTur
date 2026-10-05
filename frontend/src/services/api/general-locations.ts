@@ -115,6 +115,47 @@ export const addProgram = async (name: string): Promise<GeneralLocationCatalogRe
   return await response.json();
 };
 
+/** single: one location; areas: one program with selectable areas; programs: several programs. */
+export type LocationStructure = 'single' | 'areas' | 'programs';
+
+export interface LocationStructureResponse extends GeneralLocationCatalogResponse {
+  structure: LocationStructure;
+  /** The group's only program (single / areas), else null. */
+  program: string | null;
+  /** Its fixed General Location (single), else null. */
+  general_location: string | null;
+}
+
+export const getLocationStructure = async (): Promise<LocationStructureResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/location-structure`, { method: 'GET', headers });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to load location setup');
+  }
+  return await response.json();
+};
+
+export const setLocationStructure = async (
+  structure: LocationStructure,
+): Promise<LocationStructureResponse> => {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${TURTLE_API_BASE_URL}/location-structure`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ structure }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to change location setup');
+  }
+  return await response.json();
+};
+
 /** Remove a program that has no General Locations yet. */
 export const removeProgram = async (name: string): Promise<GeneralLocationCatalogResponse> => {
   const token = getToken();

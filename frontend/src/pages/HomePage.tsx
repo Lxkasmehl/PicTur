@@ -35,6 +35,7 @@ import { MAX_RAW_FILE_BYTES } from '../utils/uploadConstants';
 import { dropzoneRejectionMessage } from '../utils/uploadErrorMessages';
 import { useUser } from '../hooks/useUser';
 import { useActiveOrg } from '../hooks/useActiveOrg';
+import { useLocationStructure } from '../hooks/useLocationStructure';
 import { usePhotoUpload } from '../hooks/usePhotoUpload';
 import { isStaffRole } from '../services/api/auth';
 import { PreviewCard } from '../components/PreviewCard';
@@ -366,8 +367,10 @@ export default function HomePage() {
     });
   }, []);
 
+  // A research group with one location has nothing to narrow the match down to.
+  const singleLocation = useLocationStructure().structure === 'single';
   const matchSheetForUpload = isStaff
-    ? selectedMatchSheet === MATCH_ALL_VALUE
+    ? singleLocation || selectedMatchSheet === MATCH_ALL_VALUE
       ? ''
       : selectedMatchSheet
     : undefined;
@@ -552,7 +555,7 @@ export default function HomePage() {
           </Stack>
 
           {/* Staff/Admin: select which location (backend folder / state) to test against */}
-          {isStaff && (
+          {isStaff && !singleLocation && (
             <Stack gap='xs'>
               <Text size='sm' fw={500}>
                 Which location to test against?

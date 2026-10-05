@@ -18,8 +18,10 @@ import {
   Table,
   ThemeIcon,
   Menu,
+  SegmentedControl,
 } from '@mantine/core';
 import { useState, useEffect, useCallback } from 'react';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   IconMapPin,
   IconTrash,
@@ -35,6 +37,7 @@ import {
 import { useUser } from '../hooks/useUser';
 import { useActiveOrg } from '../hooks/useActiveOrg';
 import { useProgramTerms } from '../hooks/useProgramTerms';
+import { publishLocationStructure } from '../hooks/useLocationStructure';
 import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import {
@@ -42,6 +45,9 @@ import {
   addGeneralLocation,
   addProgram,
   removeProgram,
+  getLocationStructure,
+  setLocationStructure,
+  type LocationStructure,
   addSheetDefault,
   removeSheetDefault,
   getAffectedTurtleCount,
@@ -67,6 +73,24 @@ interface AffectedInfo {
   error: string | null;
 }
 
+const STRUCTURE_TEXT: Record<LocationStructure, { label: string; description: string }> = {
+  single: {
+    label: 'One location',
+    description:
+      'All turtles come from one study site. When entering data, admins only type the exact Location (spot) of each turtle.',
+  },
+  areas: {
+    label: 'Several areas',
+    description:
+      'Your study site has a few areas (General Locations). Admins pick the area for each turtle and type the exact Location.',
+  },
+  programs: {
+    label: 'Several programs',
+    description:
+      'Several programs (studies or projects), each with its own General Locations — or one fixed General Location — plus the exact Location per turtle.',
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -74,10 +98,16 @@ interface AffectedInfo {
 export default function AdminLocationManagementPage() {
   const { authChecked: userAuthChecked } = useUser();
   // Role in the active research group (the account role for the main group)
-  const { role, ready: orgReady } = useActiveOrg();
+  const { role, ready: orgReady, isDbOrg, active } = useActiveOrg();
+  const activeSlug = active.slug;
   const authChecked = userAuthChecked && orgReady;
   const navigate = useNavigate();
   const terms = useProgramTerms();
+
+  // Research groups: one location / several areas / several programs (main group: programs)
+  const [structure, setStructure] = useState<LocationStructure>('programs');
+  const [changingStructure, setChangingStructure] = useState(false);
+  const isPhone = useMediaQuery('(max-width: 576px)');
 
   const [catalog, setCatalog] = useState<GeneralLocationCatalog | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -139,6 +169,14 @@ export default function AdminLocationManagementPage() {
   const loadCatalog = useCallback(() => {
     setCatalogLoading(true);
     setCatalogError(null);
+    if (isDbOrg) {
+      getLocationStructure()
+        .then((res) => {
+          setStructure(res.structure);
+          publishLocationStructure(activeSlug, res);
+        })
+        .catch(() => setStructure('programs'));
+    }
     getGeneralLocationCatalog()
       .then((res) => {
         if (res.success && res.catalog) {
@@ -154,7 +192,23 @@ export default function AdminLocationManagementPage() {
       })
       .catch((err: Error) => setCatalogError(err.message))
       .finally(() => setCatalogLoading(false));
-  }, []);
+  }, [isDbOrg, activeSlug]);
+
+  const handleStructureChange = async (next: LocationStructure) => {
+    if (next === structure) return;
+    setChangingStructure(true);
+    try {
+      const res = await setLocationStructure(next);
+      setStructure(res.structure);
+      publishLocationStructure(activeSlug, res);
+      notifications.show({ color: 'green', title: 'Location setup changed', message: STRUCTURE_TEXT[next].label, icon: <IconCheck size={16} /> });
+      loadCatalog();
+    } catch (err: unknown) {
+      notifications.show({ color: 'red', title: 'Could not change the setup', message: err instanceof Error ? err.message : 'Failed' });
+    } finally {
+      setChangingStructure(false);
+    }
+  };
 
   useEffect(() => {
     if (role === 'admin') loadCatalog();
@@ -388,6 +442,10 @@ export default function AdminLocationManagementPage() {
       )
     : [];
 
+  // One location / several areas: the group's only program
+  const programNames = catalog ? Object.keys(catalog.states) : [];
+  const onlyProgram = programNames.length === 1 ? programNames[0] : null;
+
   // All fixed programs from sheet_defaults.
   const fixedPrograms = catalog ? Object.entries(catalog.sheet_defaults) : [];
 
@@ -416,15 +474,29 @@ export default function AdminLocationManagementPage() {
         <Text c='dimmed' size='sm'>
           Manage General Location options available to admins when entering turtle data.
         </Text>
-        {terms.isDbOrg && (
-          <Alert variant='light' color='blue' icon={<IconMapPin size={16} />} title='How locations work'>
-            <Text size='sm'>
-              Every turtle belongs to a <b>program</b> (a study or project), has a <b>General Location</b> (a
-              site or area) and a free-text <b>Location</b> for the exact spot. Programs with selectable
-              locations let admins pick the General Location per turtle; a fixed program always uses the same
-              one. If your group has only one study area, a single fixed program is all you need.
-            </Text>
-          </Alert>
+        {isDbOrg && (
+          <Paper withBorder radius='md' p='md'>
+            <Stack gap='xs'>
+              <Text fw={600} size='sm'>
+                How does your group record where a turtle was found?
+              </Text>
+              <SegmentedControl
+                fullWidth
+                orientation={isPhone ? 'vertical' : 'horizontal'}
+                data-testid='location-structure'
+                value={structure}
+                disabled={changingStructure || catalogLoading}
+                onChange={(v) => handleStructureChange(v as LocationStructure)}
+                data={(Object.keys(STRUCTURE_TEXT) as LocationStructure[]).map((value) => ({
+                  value,
+                  label: STRUCTURE_TEXT[value].label,
+                }))}
+              />
+              <Text size='sm' c='dimmed'>
+                {STRUCTURE_TEXT[structure].description}
+              </Text>
+            </Stack>
+          </Paper>
         )}
 
         {catalogError && (
@@ -437,6 +509,90 @@ export default function AdminLocationManagementPage() {
           <Center h={160}>
             <Loader />
           </Center>
+        ) : catalog && isDbOrg && structure !== 'programs' ? (
+          onlyProgram === null ? (
+            <Alert color='orange' icon={<IconAlertCircle size={16} />}>
+              This group has more than one program. Switch to “Several programs” to manage them.
+            </Alert>
+          ) : structure === 'single' ? (
+            <Paper withBorder radius='md' p='md'>
+              <Text size='sm'>
+                Nothing else to set up. Turtles are stored under{' '}
+                <Text span fw={600}>
+                  {onlyProgram}
+                </Text>
+                {catalog.sheet_defaults[onlyProgram] && (
+                  <>
+                    {' '}
+                    /{' '}
+                    <Text span fw={600}>
+                      {catalog.sheet_defaults[onlyProgram].general_location}
+                    </Text>
+                  </>
+                )}
+                ; admins enter the exact Location for each turtle.
+              </Text>
+            </Paper>
+          ) : (
+            <Stack gap='sm'>
+              <Stack gap={2}>
+                <Title order={4}>Areas</Title>
+                <Text size='xs' c='dimmed'>
+                  Admins pick one of these General Locations for each turtle.
+                </Text>
+              </Stack>
+              <Paper withBorder radius='md' p='md'>
+                <Stack gap='xs'>
+                  {(catalog.states[onlyProgram] ?? []).length === 0 && (
+                    <Text size='sm' c='dimmed'>
+                      No areas yet. Add the first one below.
+                    </Text>
+                  )}
+                  {(catalog.states[onlyProgram] ?? []).map((loc, _i, all) => (
+                    <Group key={loc} justify='space-between'>
+                      <Text size='sm'>{loc}</Text>
+                      <ActionIcon
+                        color='red'
+                        variant='light'
+                        size='sm'
+                        disabled={all.length === 1}
+                        onClick={() => setDeleteTarget({ state: onlyProgram, location: loc, isFixed: false })}
+                        title={all.length === 1 ? 'The last area cannot be deleted' : `Delete "${loc}"`}
+                      >
+                        <IconTrash size={14} />
+                      </ActionIcon>
+                    </Group>
+                  ))}
+                  <Divider my={4} />
+                  <Group gap='sm'>
+                    <TextInput
+                      placeholder='New area name'
+                      value={addingState === onlyProgram ? newLocationName : ''}
+                      onFocus={() => setAddingState(onlyProgram)}
+                      onChange={(e) => {
+                        setAddingState(onlyProgram);
+                        setNewLocationName(e.currentTarget.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleAddLocation(onlyProgram);
+                      }}
+                      size='sm'
+                      style={{ flex: 1 }}
+                    />
+                    <Button
+                      size='sm'
+                      leftSection={<IconPlus size={14} />}
+                      loading={addingLoading}
+                      disabled={addingState !== onlyProgram || !newLocationName.trim()}
+                      onClick={() => handleAddLocation(onlyProgram)}
+                    >
+                      Add area
+                    </Button>
+                  </Group>
+                </Stack>
+              </Paper>
+            </Stack>
+          )
         ) : catalog ? (
           <Stack gap='xl'>
             {/* ----------------------------------------------------------------

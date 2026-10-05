@@ -167,7 +167,7 @@ test.describe('Admin Create New Turtle – auto-generated ID field', () => {
 
     // Create mode: ID description explains auto-generation (branch: ID always read-only)
     await expect(
-      dialog.getByText('Auto-generated from sex + sequence for this sheet (e.g. M001, F002)'),
+      dialog.getByText('Auto-generated from sex + sequence (e.g. M001, F002)'),
     ).toBeVisible();
   });
 

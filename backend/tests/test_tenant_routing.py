@@ -191,6 +191,51 @@ def test_fixed_program_for_a_new_name_creates_its_tab(env):
     assert c.get('/api/general-locations', headers=_h('a-admin', 'alpha')).get_json()['states'] == []
 
 
+def _structure(c, structure=None, user='a-admin'):
+    if structure is None:
+        return c.get('/api/location-structure', headers=_h(user, 'alpha'))
+    return c.post('/api/location-structure', json={'structure': structure}, headers=_h(user, 'alpha'))
+
+
+def test_location_structure_single_areas_programs(env):
+    c = env['client']
+    r = _structure(c)
+    assert r.get_json()['structure'] == 'programs'
+
+    # One location: a single fixed program is set up
+    r = _structure(c, 'single')
+    assert r.status_code == 200, r.get_json()
+    body = r.get_json()
+    assert (body['structure'], body['program'], body['general_location']) == ('single', 'Turtles', 'Study Area')
+    assert _tabs(c) == ['Turtles']
+
+    # Several areas: the same program becomes selectable and keeps its location as the first area
+    r = _structure(c, 'areas')
+    body = r.get_json()
+    assert (body['structure'], body['program'], body['general_location']) == ('areas', 'Turtles', None)
+    assert {s['state']: s['locations'] for s in body['states']} == {'Turtles': ['Study Area']}
+
+    # Staff read the structure (the data form needs it) but cannot change it
+    assert _structure(c, user='a-staff').get_json()['structure'] == 'areas'
+    assert _structure(c, 'programs', user='a-staff').status_code == 403
+
+    # With a second program, going back to one program is refused until it is deleted
+    assert _structure(c, 'programs').status_code == 200
+    c.post('/api/general-locations/programs', json={'name': 'Second'}, headers=_h('a-admin', 'alpha'))
+    r = _structure(c, 'single')
+    assert r.status_code == 409
+    assert 'Second' in r.get_json()['error']
+    c.delete('/api/general-locations/programs', json={'name': 'Second'}, headers=_h('a-admin', 'alpha'))
+    assert _structure(c, 'single').status_code == 200
+
+
+def test_main_group_location_structure_is_fixed(env):
+    c = env['client']
+    assert c.get('/api/location-structure', headers=_h('main-admin')).get_json()['structure'] == 'programs'
+    r = c.post('/api/location-structure', json={'structure': 'single'}, headers=_h('main-admin'))
+    assert r.status_code == 400
+
+
 def test_spawned_threads_keep_the_group():
     import tenant
 

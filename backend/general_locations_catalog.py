@@ -49,6 +49,46 @@ def _catalog_file() -> str:
     return os.path.join(tenant.data_dir(t.id), 'general_locations.json')
 
 
+# How a research group structures locations (the main group always uses 'programs'):
+#   'single'   one fixed program: admins enter only the free-text Location per turtle
+#   'areas'    one selectable program: admins pick a General Location (area) per turtle
+#   'programs' any number of programs, each selectable or fixed (the main group's model)
+LOCATION_STRUCTURES = ('single', 'areas', 'programs')
+DEFAULT_PROGRAM_NAME = 'Turtles'
+DEFAULT_SINGLE_LOCATION = 'Study Area'
+
+
+def _structure_file() -> Optional[str]:
+    import tenant
+
+    t = tenant.current()
+    return None if t is None else os.path.join(tenant.data_dir(t.id), 'location_structure.json')
+
+
+def get_location_structure() -> str:
+    path = _structure_file()
+    if path is None or not os.path.exists(path):
+        return 'programs'
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            value = (json.load(f) or {}).get('structure')
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return 'programs'
+    return value if value in LOCATION_STRUCTURES else 'programs'
+
+
+def set_location_structure(structure: str) -> None:
+    path = _structure_file()
+    if path is None:
+        raise ValueError('The main group always uses programs')
+    if structure not in LOCATION_STRUCTURES:
+        raise ValueError(f'structure must be one of {", ".join(LOCATION_STRUCTURES)}')
+    with _CATALOG_LOCK:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump({'structure': structure}, f)
+
+
 def _seed_catalog() -> Dict[str, Any]:
     """Seed for a missing catalog: the main group's programs; research groups start empty and
     define their own tabs and General Locations on the Locations page."""

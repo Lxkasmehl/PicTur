@@ -19,25 +19,57 @@ async function login(page: Page, email: string, password: string): Promise<void>
   await page.waitForURL('/', { timeout: 15_000 });
 }
 
+/** Logs in as super admin, creates a closed group and opens it (lands on its members page). */
+async function createAndOpenGroup(page: Page): Promise<string> {
+  const slug = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const name = `E2E Group ${slug}`;
+
+  await login(page, SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD);
+  await page.goto('/platform/groups');
+  await page.getByLabel('Name', { exact: true }).fill(name);
+  await page.getByLabel('URL name').fill(slug);
+  await page.getByText('Accept photos from the community').click();
+  await expect(page.getByLabel('Accept photos from the community')).not.toBeChecked();
+  await page.getByTestId('platform-create-group').click();
+  await expect(page.getByText(slug, { exact: true })).toBeVisible({ timeout: 15_000 });
+
+  // Open the group: same User Management route, now showing the group's members
+  await page.getByRole('row', { name: new RegExp(slug) }).getByRole('button', { name: 'Open' }).click();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+  await expect(page.getByRole('heading', { name: `Members of ${name}` })).toBeVisible({ timeout: 15_000 });
+  return name;
+}
+
 test.describe('Research groups', () => {
+  test('admins choose how their group records locations', async ({ page }) => {
+    test.setTimeout(90_000);
+    await createAndOpenGroup(page);
+    await page.goto('/admin/locations');
+    const setup = page.getByTestId('location-structure');
+    await expect(setup).toBeVisible({ timeout: 15_000 });
+
+    // One location: nothing to manage, the group's single program is set up automatically
+    await setup.getByText('One location').click();
+    await expect(page.getByText(/Nothing else to set up/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Study Area', { exact: true })).toBeVisible();
+
+    // Several areas: the location becomes the first area; more can be added
+    await setup.getByText('Several areas').click();
+    await expect(page.getByRole('heading', { name: 'Areas' })).toBeVisible({ timeout: 15_000 });
+    await page.getByPlaceholder('New area name').fill('North Pond');
+    await page.getByRole('button', { name: 'Add area' }).click();
+    await expect(page.getByText('North Pond', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Study Area', { exact: true })).toBeVisible();
+
+    // Several programs: the full view, with the program holding both areas
+    await setup.getByText('Several programs').click();
+    await expect(page.getByRole('heading', { name: 'Selectable Locations' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Turtles', { exact: true })).toBeVisible();
+  });
+
   test('super admin creates a group, opens it and switches back', async ({ page }) => {
     test.setTimeout(90_000);
-    const slug = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-    const name = `E2E Group ${slug}`;
-
-    await login(page, SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD);
-    await page.goto('/platform/groups');
-    await page.getByLabel('Name', { exact: true }).fill(name);
-    await page.getByLabel('URL name').fill(slug);
-    await page.getByText('Accept photos from the community').click();
-    await expect(page.getByLabel('Accept photos from the community')).not.toBeChecked();
-    await page.getByTestId('platform-create-group').click();
-    await expect(page.getByText(slug, { exact: true })).toBeVisible({ timeout: 15_000 });
-
-    // Open the group: same User Management route, now showing the group's members
-    await page.getByRole('row', { name: new RegExp(slug) }).getByRole('button', { name: 'Open' }).click();
-    await expect(page).toHaveURL(/\/admin\/users$/);
-    await expect(page.getByRole('heading', { name: `Members of ${name}` })).toBeVisible({ timeout: 15_000 });
+    const name = await createAndOpenGroup(page);
 
     // The classic pages work for the group (empty to start with)
     await page.goto('/admin/locations');

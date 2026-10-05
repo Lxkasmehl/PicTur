@@ -76,6 +76,8 @@ export interface TurtleSheetsDataFormFieldsProps {
   /** Remount General Location select when sheet changes (Mantine Select can show stale label otherwise). */
   generalLocationSelectRemountKey?: string;
   matchPageColumnLayout?: boolean;
+  /** Research group with a single location: General Location is fixed and not shown. */
+  hideGeneralLocation?: boolean;
 }
 
 /** Return type of useTurtleSheetsDataForm hook */
