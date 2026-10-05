@@ -187,7 +187,6 @@ export function TurtleFormField({
     return (
       <>
         <TextInput
-          ref={dateMask.ref}
           label={labelNode}
           placeholder={placeholder}
           value={value}
@@ -208,7 +207,6 @@ export function TurtleFormField({
     return (
       <>
         <TextInput
-          ref={multiDateMask.ref}
           label={labelNode}
           placeholder={placeholder}
           value={value}

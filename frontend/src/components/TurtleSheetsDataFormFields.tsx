@@ -131,7 +131,6 @@ export function TurtleSheetsDataFormFields({
                     description='Read-only; add new dates below'
                   />
                   <TextInput
-                    ref={additionalDatesRefoundMask.ref}
                     label='Add dates refound'
                     placeholder='MM/DD/YYYY, MM/DD/YYYY, ...'
                     value={additionalDatesRefound}
@@ -142,7 +141,6 @@ export function TurtleSheetsDataFormFields({
                 </>
               ) : (
                 <TextInput
-                  ref={datesRefoundMask.ref}
                   label='Dates refound'
                   placeholder='MM/DD/YYYY, MM/DD/YYYY, ...'
                   value={formData.dates_refound || ''}
