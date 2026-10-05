@@ -468,6 +468,85 @@ test.describe('Admin Turtle Match', () => {
     ).toBeVisible();
   });
 
+  test('Create New Turtle: re-selecting the preselected fixed sheet keeps the locked General Location default', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    // Regression: with only one sheet the dialog preselects it on load. Choosing that same sheet again
+    // (a NativeSelect change event with an unchanged value on mobile) cleared general_location, and the
+    // sheet-default effect never re-applied "CPBS" because neither the sheet nor its default changed.
+    const e2eRequestId = 'admin_e2e-single-fixed-sheet-gl';
+    await page.route('**/upload', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          request_id: e2eRequestId,
+          uploaded_image_path: '/e2e/single-fixed-sheet-gl.png',
+          matches: [],
+          message: 'Uploaded',
+        }),
+      });
+    });
+    await page.route('**/api/locations', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, locations: ['NebraskaCPBS'] }),
+      });
+    });
+    await page.route('**/api/general-locations', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          catalog: {
+            states: { Nebraska: ['CPBS', 'Crescent Lake'] },
+            sheet_defaults: { NebraskaCPBS: { state: 'Nebraska', general_location: 'CPBS' } },
+          },
+          states: [{ state: 'Nebraska', locations: ['CPBS', 'Crescent Lake'] }],
+          sheet_defaults: [{ sheet_name: 'NebraskaCPBS', state: 'Nebraska', general_location: 'CPBS' }],
+        }),
+      });
+    });
+    await page.route('**/api/sheets/turtle-names', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, names: [] }),
+      });
+    });
+
+    await loginAsAdmin(page);
+    const fileInput = page.locator('input[type="file"]:not([capture])').first();
+    await fileInput.setInputFiles({
+      name: 'single-fixed-sheet-gl-e2e.png',
+      mimeType: 'image/png',
+      buffer: getTestImageBuffer(),
+    });
+    await page.waitForSelector('button:has-text("Upload Photo")', { timeout: 5000 });
+    await clickUploadPhotoButton(page);
+    await expect(page).toHaveURL(/\/admin\/turtle-match\/[^/]+/, { timeout: 30_000 });
+
+    await page.getByRole('button', { name: 'Create New Turtle' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    // The only sheet is preselected on load; choosing it again must not clear the locked default.
+    await expect(dialog.getByLabel('Sheet / Location')).toHaveValue('NebraskaCPBS', { timeout: 10_000 });
+    await selectSheetInCreateTurtleDialog(page, dialog, 'NebraskaCPBS');
+
+    const generalLocationField = dialog.getByLabel(/General Location/);
+    await expect(generalLocationField).toBeDisabled({ timeout: 10_000 });
+    await expect(generalLocationField).toHaveValue('CPBS');
+  });
+
   test('Create New Turtle: Sheet/Location dropdown shows only top-level states (no sublocations or system folders)', async ({
     page,
   }) => {

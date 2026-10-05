@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Re-selecting the current Sheet / Location no longer clears General Location**: in the turtle sheets form (e.g. "Create New Turtle" on the match page), choosing the sheet that is already selected was treated as a sheet change and reset General Location to empty. For sheets with a fixed sheet rule (e.g. NebraskaCPBS → CPBS) the locked default was then never re-applied, because neither the sheet nor its default had changed — the disabled field stayed empty and the value was missing from the form. This showed up on mobile, where the Sheet / Location picker is a native select, most visibly when a location has only one sheet and it is preselected on load. Choosing the same sheet again is now a no-op; actually switching sheets still resets General Location as before.
+
 ### Added
 
 - **Auto-fill Date Refound on match confirmation**: when an admin selects a match (or confirms a new turtle) in Admin Turtle Match / Records, today's date is automatically appended to "Dates Refound" if not already present, with a notification and an inline hint explaining why the field was pre-filled.
