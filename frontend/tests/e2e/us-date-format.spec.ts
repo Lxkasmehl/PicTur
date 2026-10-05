@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin, registerKansasGeneralLocationsCatalogMock } from './fixtures';
+import { loginAsAdmin, registerKansasGeneralLocationsCatalogMock, todayUsSlash } from './fixtures';
 
 const REQUEST_ID = 'e2e-us-dates';
 
@@ -156,7 +156,10 @@ test.describe('US date display (MM/DD/YYYY)', () => {
 
     await expect(page.getByLabel('Date 1st found')).toHaveValue('03/15/2024', { timeout: 20_000 });
     await expect(page.getByLabel('Last Assay Date')).toHaveValue('12/25/2020');
-    await expect(page.getByLabel('Dates refound')).toHaveValue('06/15/2021, 07/04/2022');
+    // Selecting the match auto-fills today's date into "Dates refound" (see appendTodayToDatesRefound).
+    await expect(page.getByLabel('Dates refound')).toHaveValue(
+      `06/15/2021, 07/04/2022, ${todayUsSlash()}`,
+    );
     await expect(page.getByLabel('Radio Replace Date')).toHaveValue('11/30/2023');
   });
 });
