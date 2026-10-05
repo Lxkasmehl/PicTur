@@ -7,9 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **Re-selecting the current Sheet / Location no longer clears General Location**: in the turtle sheets form (e.g. "Create New Turtle" on the match page), choosing the sheet that is already selected was treated as a sheet change and reset General Location to empty. For sheets with a fixed sheet rule (e.g. NebraskaCPBS → CPBS) the locked default was then never re-applied, because neither the sheet nor its default had changed — the disabled field stayed empty and the value was missing from the form. This showed up on mobile, where the Sheet / Location picker is a native select, most visibly when a location has only one sheet and it is preselected on load. Choosing the same sheet again is now a no-op; actually switching sheets still resets General Location as before.
+## [2.0.23] - 2026-10-04 — Date masking, refound-date autofill, Sheets Browser first
 
 ### Added
 
@@ -22,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Re-selecting the current Sheet / Location no longer clears General Location**: in the turtle sheets form (e.g. "Create New Turtle" on the match page), choosing the sheet that is already selected was treated as a sheet change and reset General Location to empty. For sheets with a fixed sheet rule (e.g. NebraskaCPBS → CPBS) the locked default was then never re-applied, because neither the sheet nor its default had changed — the disabled field stayed empty and the value was missing from the form. This showed up on mobile, where the Sheet / Location picker is a native select, most visibly when a location has only one sheet and it is preselected on load. Choosing the same sheet again is now a no-op; actually switching sheets still resets General Location as before.
 - **E2E general-locations mock no longer breaks the app against the Vite dev server**: the catalog mock's route matched any URL containing "general-locations", including Vite's module request for `src/services/api/general-locations.ts`, so the app never rendered when tests ran against the local dev server instead of a built frontend. The mock now skips source/module requests and only intercepts the real API call.
 
 ## [2.0.22] - 2026-07-10 — Carapace quick check opened to staff
