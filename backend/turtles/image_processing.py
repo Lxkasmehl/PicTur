@@ -1,4 +1,5 @@
 import threading
+import weakref
 
 import torch
 from lightglue import LightGlue, SuperPoint, utils
@@ -50,6 +51,8 @@ class TurtleDeepMatcher:
         self.feature_cache = {}
         self.vram_cache_plastron = []
         self.vram_cache_carapace = []
+        # Research-group views (BrainView) sharing these models; their caches move with set_device.
+        self._views = weakref.WeakSet()
         # Serializes all GPU operations — prevents crashes from concurrent
         # community upload threads hitting CUDA simultaneously.
         self._gpu_lock = threading.Lock()
@@ -69,7 +72,8 @@ class TurtleDeepMatcher:
 
         # Migrate both caches to the new hardware
         total_migrated = 0
-        for cache in (self.vram_cache_plastron, self.vram_cache_carapace):
+        view_caches = [c for v in list(self._views) for c in (v.vram_cache_plastron, v.vram_cache_carapace)]
+        for cache in (self.vram_cache_plastron, self.vram_cache_carapace, *view_caches):
             for cand in cache:
                 cand['feats'] = {k: v.to(self.device) for k, v in cand['feats'].items()}
             total_migrated += len(cache)
@@ -262,16 +266,24 @@ class TurtleDeepMatcher:
             logger.warning(f"⚠️ VRAM cache empty for {photo_type}! Returning no matches.")
             return []
 
+        keep = None
+        if location_filter and location_filter != "All Locations":
+            # Uses prefix matching so a state like "Kansas" matches
+            # "Kansas/Lawrence", "Kansas/North Topeka", etc.
+            allowed = list(location_filter) if isinstance(location_filter, list) else [location_filter]
+
+            def keep(cand):
+                return any(cand['location'] == a or cand['location'].startswith(a + '/') for a in allowed)
+
+        return self._match_cache_list_unlocked(query_feats_list, cache, keep)
+
+    def _match_cache_list_unlocked(self, query_feats_list, cache, keep=None):
         results = []
 
         for cand in cache:
-            # Apply location filter early to skip unnecessary math.
-            # Uses prefix matching so a state like "Kansas" matches
-            # "Kansas/Lawrence", "Kansas/North Topeka", etc.
-            if location_filter and location_filter != "All Locations":
-                allowed = list(location_filter) if isinstance(location_filter, list) else [location_filter]
-                if not any(cand['location'] == a or cand['location'].startswith(a + '/') for a in allowed):
-                    continue
+            # Apply the filter early to skip unnecessary math.
+            if keep is not None and not keep(cand):
+                continue
 
             cand_feats_safe = {k: v.to(self.device) for k, v in cand['feats'].items()}
 
@@ -364,6 +376,41 @@ class TurtleDeepMatcher:
             match_count = int(valid.sum().item())
             avg_conf = float(scores[valid].mean().item()) if match_count > 0 else 0.0
             return avg_conf, match_count
+
+
+class BrainView:
+    """
+    The matcher as seen by one research group: same SuperPoint/LightGlue models and GPU lock as
+    the shared ``brain``, but its own reference caches. A group's TurtleManager uses a view, so
+    loading, adding, evicting and matching only ever touch that group's turtles.
+    """
+
+    # Cache-touching methods run unchanged on the view's own vram_cache_* lists.
+    load_database_to_vram = TurtleDeepMatcher.load_database_to_vram
+    _load_database_to_vram_unlocked = TurtleDeepMatcher._load_database_to_vram_unlocked
+    match_against_cache = TurtleDeepMatcher.match_against_cache
+    _match_against_cache_unlocked = TurtleDeepMatcher._match_against_cache_unlocked
+    _match_cache_list_unlocked = TurtleDeepMatcher._match_cache_list_unlocked
+    add_single_to_vram = TurtleDeepMatcher.add_single_to_vram
+    _add_single_to_vram_unlocked = TurtleDeepMatcher._add_single_to_vram_unlocked
+    filter_vram_cache = TurtleDeepMatcher.filter_vram_cache
+    evict_from_vram = TurtleDeepMatcher.evict_from_vram
+    match_query_robust_vram = TurtleDeepMatcher.match_query_robust_vram
+
+    def __init__(self, base):
+        self._base = base
+        self.vram_cache_plastron = []
+        self.vram_cache_carapace = []
+        views = getattr(base, '_views', None)
+        if views is not None:
+            views.add(self)
+
+    def set_device(self, device_mode):
+        return self._base.set_device(device_mode)
+
+    def __getattr__(self, name):
+        # models, device, _gpu_lock, extraction and LightGlue helpers come from the shared brain
+        return getattr(self._base, name)
 
 
 brain = TurtleDeepMatcher()

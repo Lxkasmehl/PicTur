@@ -119,6 +119,20 @@ This document describes the backup strategy for the PicTur web app: **Google Spr
 
 ---
 
+## 6b. Additional research groups (PostgreSQL + org_data)
+
+Research groups other than the main one ([RESEARCH_GROUPS.md](RESEARCH_GROUPS.md)) do not use Sheets.
+Their data lives in the `postgres` service (volume `pg-data`) and their photos in volume `org-data`.
+`scripts/daily-backup.sh` runs `scripts/backup-org-data.sh` as its last step, which writes:
+
+- `backups/orgs/YYYY-MM-DD/pictur.sql.gz` – `pg_dump --clean` of the whole database
+- `backups/orgs/YYYY-MM-DD/org_data/` – copy of all group photos and feature files
+
+Restore: `gunzip -c pictur.sql.gz | docker compose exec -T postgres psql -U pictur -d pictur`, then copy
+`org_data/` back with `docker compose cp org_data/. backend:/app/org_data` and restart the backend.
+
+---
+
 ## 7. Summary
 
 - **Sheets:** Daily CSV (one file per sheet) is a good, common approach; optional JSON for automation.

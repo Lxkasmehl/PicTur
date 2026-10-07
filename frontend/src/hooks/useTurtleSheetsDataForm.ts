@@ -21,6 +21,7 @@ import type {
   UseTurtleSheetsDataFormReturn,
 } from '../components/TurtleSheetsDataForm.types';
 import { normalizeTurtleSheetsDateFieldsToUs } from '../utils/usDateFormat';
+import { useProgramTerms } from './useProgramTerms';
 
 export type { UseTurtleSheetsDataFormReturn } from '../components/TurtleSheetsDataForm.types';
 
@@ -45,6 +46,7 @@ export function useTurtleSheetsDataForm(
     requireNewSheetForCommunityMatch = false,
     matchPageColumnLayout = false,
   } = props;
+  const terms = useProgramTerms();
 
   const [formData, setFormData] = useState<TurtleSheetsData>(initialData || {});
   const [loading, setLoading] = useState(false);
@@ -438,7 +440,7 @@ export function useTurtleSheetsDataForm(
     if (!sheetName?.trim()) {
       notifications.show({
         title: 'Error',
-        message: 'Please enter a sheet name',
+        message: `Please enter a ${terms.tab} name`,
         color: 'red',
       });
       return;
@@ -468,7 +470,7 @@ export function useTurtleSheetsDataForm(
         setNewSheetName('');
         notifications.show({
           title: 'Success',
-          message: `Sheet "${sheetName}" created successfully`,
+          message: `${terms.Tab} "${sheetName}" created successfully`,
           color: 'green',
         });
       } else {
@@ -492,7 +494,7 @@ export function useTurtleSheetsDataForm(
     if (!state) {
       notifications.show({
         title: 'Error',
-        message: 'Please select a sheet or state before adding a General Location',
+        message: `Please select a ${terms.tab} before adding a General Location`,
         color: 'red',
       });
       return;
@@ -660,7 +662,7 @@ export function useTurtleSheetsDataForm(
     if (!selectedSheetName) {
       notifications.show({
         title: 'Validation Error',
-        message: 'Please select a sheet',
+        message: `Please select a ${terms.tab}`,
         color: 'red',
         icon: React.createElement(IconX, { size: 18 }),
       });

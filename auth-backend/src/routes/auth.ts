@@ -7,6 +7,13 @@ import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import { validatePassword } from '../utils/passwordPolicy.js';
 import { sendVerificationEmail } from '../services/email.js';
 import type { RegisterRequest, LoginRequest, User } from '../types/user.js';
+import {
+  acceptInvitation,
+  getActiveInvitation,
+  getMembershipsForUser,
+  getOrgBySlug,
+  isSuperAdmin,
+} from '../db/orgsRepo.js';
 
 const router = express.Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -51,7 +58,13 @@ function sendVerifySuccess(res: Response, userId: number): void {
 // Register new user
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { email, password, name, token }: RegisterRequest & { token?: string } = req.body;
+    const {
+      email,
+      password,
+      name,
+      token,
+      org_invite_token: orgInviteToken,
+    }: RegisterRequest & { token?: string; org_invite_token?: string } = req.body;
 
     if (!email || !password) {
       res.status(400).json({ error: 'Email and password are required' });
@@ -100,6 +113,21 @@ router.post('/register', async (req: Request, res: Response) => {
       }
     }
 
+    // Research-group invitation: the emailed link already proves ownership of the address.
+    let orgInviteValid = false;
+    if (orgInviteToken) {
+      const orgInvitation = getActiveInvitation(orgInviteToken);
+      if (!orgInvitation) {
+        res.status(400).json({ error: 'Invalid or expired invitation' });
+        return;
+      }
+      if (orgInvitation.email.toLowerCase() !== email.toLowerCase()) {
+        res.status(400).json({ error: 'This invitation was sent to a different email address' });
+        return;
+      }
+      orgInviteValid = true;
+    }
+
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
@@ -115,6 +143,12 @@ router.post('/register', async (req: Request, res: Response) => {
 
     // Reload database to ensure we have the latest data
     const newId = Number(result.lastInsertRowid);
+    if (orgInviteValid && orgInviteToken) {
+      db.prepare(
+        `UPDATE users SET email_verified = 1, email_verified_at = datetime('now') WHERE id = ?`
+      ).run(newId);
+      acceptInvitation(orgInviteToken, newId, emailNormalized);
+    }
     const user = db
       .prepare('SELECT id, email, name, role, google_id, created_at, email_verified, email_verified_at FROM users WHERE id = ?')
       .get(newId) as User;
@@ -127,18 +161,20 @@ router.post('/register', async (req: Request, res: Response) => {
     }
 
     // Create email verification token and send verification email
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + VERIFICATION_EXPIRY_HOURS);
-    db.prepare(
-      'INSERT INTO email_verifications (user_id, token, expires_at) VALUES (?, ?, ?)'
-    ).run(user.id, verificationToken, expiresAt.toISOString());
-    const verificationUrl = `${FRONTEND_URL}/verify-email?token=${verificationToken}`;
-    await sendVerificationEmail({
-      email: user.email,
-      verificationUrl,
-      expiresInHours: VERIFICATION_EXPIRY_HOURS,
-    });
+    if (!user.email_verified) {
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + VERIFICATION_EXPIRY_HOURS);
+      db.prepare(
+        'INSERT INTO email_verifications (user_id, token, expires_at) VALUES (?, ?, ?)'
+      ).run(user.id, verificationToken, expiresAt.toISOString());
+      const verificationUrl = `${FRONTEND_URL}/verify-email?token=${verificationToken}`;
+      await sendVerificationEmail({
+        email: user.email,
+        verificationUrl,
+        expiresInHours: VERIFICATION_EXPIRY_HOURS,
+      });
+    }
 
     // Generate JWT token
     const jwtSecret = process.env.JWT_SECRET;
@@ -298,7 +334,9 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
         name: user.name,
         role: user.role,
         email_verified: Boolean(user.email_verified),
+        is_super_admin: isSuperAdmin(user.id),
       },
+      memberships: getMembershipsForUser(user.id),
     });
   } catch (error) {
     console.error('Get user error:', error);
@@ -313,7 +351,27 @@ router.post('/validate', authenticateToken, (req: Request, res: Response) => {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-  res.json({ valid: true, user: authUser });
+  // Research-group roles are resolved live here (never from the JWT) so membership changes apply
+  // on the next request.
+  // ?org=<slug> additionally returns that group's public descriptor (lets Flask resolve groups
+  // the caller is not a member of, e.g. for super admins or community uploads).
+  const orgSlug = typeof req.query.org === 'string' ? req.query.org : '';
+  const org = orgSlug ? getOrgBySlug(orgSlug) : null;
+  res.json({
+    valid: true,
+    user: authUser,
+    is_super_admin: isSuperAdmin(authUser.id),
+    memberships: getMembershipsForUser(authUser.id),
+    org: org
+      ? {
+          id: org.id,
+          slug: org.slug,
+          name: org.name,
+          kind: org.kind,
+          accepts_community: org.accepts_community,
+        }
+      : null,
+  });
 });
 
 // Logout (client-side token removal, but we can track it here if needed)

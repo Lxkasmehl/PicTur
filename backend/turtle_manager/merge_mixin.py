@@ -72,7 +72,7 @@ class TurtleMergeMixin:
             staged_pt = os.path.join(pri_ref_dir, f"{primary_stem}_staged_{op_ts}.pt")
             shutil.copy2(sec_ref_img, staged_img)
             try:
-                staged_ok = brain.process_and_save(staged_img, staged_pt)
+                staged_ok = _matcher(self).process_and_save(staged_img, staged_pt)
             except Exception as e:
                 print(f"   ⚠️ SuperPoint failed during merge reference swap ({photo_type}): {e}")
                 staged_ok = False
@@ -122,7 +122,7 @@ class TurtleMergeMixin:
                 self._evict_from_vram(pri_ref_pt, photo_type)
                 rel = os.path.relpath(pri_ref_dir, self.base_dir)
                 location_name = "/".join(rel.split(os.sep)[:-2])
-                brain.add_single_to_vram(new_pt, primary_stem, location_name, photo_type=photo_type)
+                _matcher(self).add_single_to_vram(new_pt, primary_stem, location_name, photo_type=photo_type)
                 return
 
         # source == 'primary': archive secondary's reference into primary's Old References
@@ -341,7 +341,7 @@ class TurtleMergeMixin:
                             return False, (
                                 f"Could not read secondary turtle '{secondary_id}' from Sheets "
                                 f"(row not found or transient read error). Aborting to prevent "
-                                f"metadata loss — retry or check the sheet manually."
+                                f"metadata loss. Retry or check the sheet manually."
                             )
                 except Exception as e:
                     print(f"   ⚠️ Could not fetch Sheets data: {e}")
@@ -427,7 +427,7 @@ class TurtleMergeMixin:
             except OSError:
                 secondary_real = secondary_dir
             for ptype in ('plastron', 'carapace'):
-                brain.filter_vram_cache(
+                _matcher(self).filter_vram_cache(
                     lambda c: not os.path.realpath(c.get('file_path', '')).startswith(
                         secondary_real + os.sep
                     ),
@@ -481,3 +481,8 @@ class TurtleMergeMixin:
             s_bio = secondary_data.get('id') or secondary_id
             print(f"✅ Merge complete: {s_bio} → {p_bio}")
             return True, f"Successfully merged {s_bio} into {p_bio}"
+
+def _matcher(manager):
+    """This manager's matcher: a research group's BrainView, else the shared module-level brain
+    (looked up at call time so tests can patch it)."""
+    return getattr(manager, '_brain_view', None) or brain

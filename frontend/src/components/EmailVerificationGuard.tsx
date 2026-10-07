@@ -12,6 +12,7 @@ const ALLOWED_WITHOUT_VERIFICATION = [
   '/contact',
   '/feedback',
   '/observer',
+  '/accept-invite',
 ];
 
 /**

@@ -7,7 +7,7 @@ export type QuickCheckStatus = 'idle' | 'running' | 'done' | 'error';
 /**
  * State for the admin-only, read-only carapace quick check.
  *
- * `run` is the ONLY submit path in carapace mode — it never touches
+ * `run` is the ONLY submit path in carapace mode - it never touches
  * localStorage, navigation, or the review queue, so no write path from the
  * normal upload flow is reachable while the mode is active.
  */

@@ -30,7 +30,7 @@ test.describe('Home – mortality without plastron (mark deceased)', () => {
       });
     });
 
-    // Match any host (localhost vs 127.0.0.1, CI) — unmocked lookup shows TextInput, not Select (no role=option).
+    // Match any host (localhost vs 127.0.0.1, CI) - unmocked lookup shows TextInput, not Select (no role=option).
     await page.route(
       (url) => url.pathname.includes('/api/sheets/mark-deceased/lookup-options'),
       async (route) => {
@@ -99,7 +99,7 @@ test.describe('Home – mortality without plastron (mark deceased)', () => {
       timeout: 15_000,
     });
 
-    // Exclude the "Biology ID …" radio option — it also associates with label text containing "Biology ID".
+    // Exclude the "Biology ID …" radio option - it also associates with label text containing "Biology ID".
     const biologyField = markModal.getByRole('textbox', { name: 'Biology ID' });
     await expect(biologyField).toBeVisible({ timeout: 15_000 });
     await biologyField.scrollIntoViewIfNeeded();

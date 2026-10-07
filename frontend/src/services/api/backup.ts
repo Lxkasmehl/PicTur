@@ -1,5 +1,5 @@
 /**
- * Backup-window API — feeds the admin-page countdown overlay with the
+ * Backup-window API - feeds the admin-page countdown overlay with the
  * next chronodrop start time and expected duration.
  */
 

@@ -25,7 +25,7 @@ export interface QuickCheckMatch {
   location: string;
   confidence: number;
   score: number;
-  /** May still be a `.pt` path when no sibling image exists — treat as "no image". */
+  /** May still be a `.pt` path when no sibling image exists - treat as "no image". */
   image_path: string;
 }
 
@@ -160,13 +160,13 @@ export interface ApproveReviewResponse {
 
 /**
  * Optional knobs for ``getImageUrl``:
- * - ``version`` — cache-bust suffix appended as ``&v=<version>``. Active
+ * - ``version`` - cache-bust suffix appended as ``&v=<version>``. Active
  *   reference paths are stable across replacements (the new file lands at
  *   the same on-disk location), so without a version the browser keeps
  *   serving the previously-cached bytes. Pass primary_info.upload_ts /
  *   primary_ts wherever you render an active reference; non-version-aware
  *   callers (e.g. archived photos under unique paths) can omit it.
- * - ``maxDim`` — server-side downscaled JPEG preview (longest edge in
+ * - ``maxDim`` - server-side downscaled JPEG preview (longest edge in
  *   pixels, clamped 32–2048). Returns the original when it's already
  *   smaller than ``maxDim``.
  */
@@ -186,7 +186,7 @@ export interface TurtleImageAdditional {
   exif_date?: string | null;
   /** When the system stored the file (from manifest, filename stamp, or folder name). */
   upload_date?: string | null;
-  /** Epoch ms — finer-grained than upload_date; used as sort tiebreaker. */
+  /** Epoch ms - finer-grained than upload_date; used as sort tiebreaker. */
   upload_ts?: number | null;
   uploaded_by?: string | null;
 }
@@ -207,7 +207,7 @@ export interface TurtleLooseImage {
   timestamp?: string | null;
   exif_date?: string | null;
   upload_date?: string | null;
-  /** Epoch ms — finer-grained than upload_date; used as sort tiebreaker. */
+  /** Epoch ms - finer-grained than upload_date; used as sort tiebreaker. */
   upload_ts?: number | null;
 }
 
@@ -219,7 +219,7 @@ export interface TurtlePrimaryInfo {
   timestamp?: string | null;
   exif_date?: string | null;
   upload_date?: string | null;
-  /** Epoch ms — used as cache-bust on the image URL since active-reference
+  /** Epoch ms - used as cache-bust on the image URL since active-reference
    *  paths stay identical across replacements. */
   upload_ts?: number | null;
 }

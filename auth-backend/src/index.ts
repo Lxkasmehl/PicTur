@@ -36,6 +36,8 @@ import communityGameRoutes from './routes/communityGame.js';
 import userUiPreferencesRoutes from './routes/userUiPreferences.js';
 import contactRoutes from './routes/contact.js';
 import feedbackRoutes from './routes/feedback.js';
+import orgRoutes from './routes/orgs.js';
+import platformRoutes from './routes/platform.js';
 import passport from './config/passport.js';
 // Import email service to initialize SMTP configuration check
 import './services/email.js';
@@ -93,6 +95,8 @@ app.use('/api/auth', communityGameRoutes);
 app.use('/api/auth', userUiPreferencesRoutes);
 app.use('/api/auth', googleAuthRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/orgs', orgRoutes);
+app.use('/api/platform', platformRoutes);
 app.use('/api', contactRoutes);
 app.use('/api', feedbackRoutes);
 

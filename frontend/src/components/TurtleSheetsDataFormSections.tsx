@@ -2,6 +2,8 @@
  * Reusable sections for TurtleSheetsDataForm: header, sheet row, modals, community hint
  */
 
+import { StorageName } from './StorageName';
+import { useProgramTerms } from '../hooks/useProgramTerms';
 import {
   Stack,
   TextInput,
@@ -30,11 +32,11 @@ export function FormHeader({
 }) {
   return (
     <div>
-      <Title order={3}>Turtle Data - Google Sheets</Title>
+      <Title order={3}>Turtle Data - <StorageName /></Title>
       <Text size='sm' c='dimmed' mt='xs'>
         {mode === 'create'
-          ? 'Enter turtle data to add to Google Sheets'
-          : 'Edit turtle data in Google Sheets'}
+          ? <>Enter turtle data to add to <StorageName inline /></>
+          : <>Edit turtle data in <StorageName inline /></>}
       </Text>
       {primaryId && (
         <Text size='sm' c='dimmed' mt='xs'>
@@ -67,12 +69,15 @@ export function SheetSelectionRow({
   allowCreateNewSheet?: boolean;
 }) {
   const isMobile = useMediaQuery('(max-width: 768px)');
+  const terms = useProgramTerms();
   const sheetOptionsForSelect = [
     ...availableSheets.map((name) => ({ value: name, label: name })),
-    ...(allowCreateNewSheet !== false ? [{ value: '__create_new__' as const, label: '+ Create New Sheet' }] : []),
+    ...(allowCreateNewSheet !== false ? [{ value: '__create_new__' as const, label: `+ Create New ${terms.Tab}` }] : []),
   ];
+  const placeholder = `Select a ${terms.tab} or create new`;
+  const requiredError = `${terms.Tab} selection is required`;
   const sheetOptionsForNative = [
-    { value: '', label: 'Select a sheet or create new' },
+    { value: '', label: placeholder },
     ...sheetOptionsForSelect,
   ];
 
@@ -81,7 +86,7 @@ export function SheetSelectionRow({
       <Group gap='sm'>
         <Loader size='sm' />
         <Text size='sm' c='dimmed'>
-          Loading available sheets...
+          Loading available {terms.tabs}...
         </Text>
       </Group>
     );
@@ -101,10 +106,10 @@ export function SheetSelectionRow({
           </Button>
         </Group>
         <TextInput
-          label='Sheet / Location'
+          label={terms.fieldLabel}
           value={selectedSheetName}
           disabled
-          description='Select the Google Sheets tab where this turtle data should be stored'
+          description={terms.fieldDescription}
         />
       </>
     );
@@ -123,28 +128,28 @@ export function SheetSelectionRow({
   if (isMobile) {
     return (
       <NativeSelect
-        label='Sheet / Location'
+        label={terms.fieldLabel}
         data={sheetOptionsForNative}
         value={selectedSheetName}
         onChange={(e) => handleSheetChange(e.currentTarget.value || null)}
         required
-        description='Select the Google Sheets tab where this turtle data should be stored'
-        error={!selectedSheetName ? 'Sheet selection is required' : undefined}
+        description={terms.fieldDescription}
+        error={!selectedSheetName ? requiredError : undefined}
       />
     );
   }
 
   return (
     <Select
-      label='Sheet / Location'
-      placeholder='Select a sheet or create new'
+      label={terms.fieldLabel}
+      placeholder={placeholder}
       data={sheetOptionsForSelect}
       value={selectedSheetName}
       onChange={handleSheetChange}
       required
       allowDeselect={false}
-      description='Select the Google Sheets tab where this turtle data should be stored'
-      error={!selectedSheetName ? 'Sheet selection is required' : undefined}
+      description={terms.fieldDescription}
+      error={!selectedSheetName ? requiredError : undefined}
       comboboxProps={{ keepMounted: true }}
     />
   );
@@ -245,19 +250,22 @@ export function CreateSheetModal({
   creatingSheet: boolean;
   onCreate: (name: string) => void;
 }) {
+  const terms = useProgramTerms();
   return (
     <Modal
       opened={opened}
       onClose={onClose}
-      title='Create New Sheet'
+      title={`Create New ${terms.Tab}`}
     >
       <Stack gap='md'>
         <Text size='sm' c='dimmed'>
-          Create a new Google Sheets tab with all required headers.
+          {terms.isDbOrg
+            ? 'Create a new program (study or project) for this research group.'
+            : 'Create a new Google Sheets tab with all required headers.'}
         </Text>
         <TextInput
-          label='Sheet Name'
-          placeholder='Enter sheet name (e.g., Location A)'
+          label={`${terms.Tab} Name`}
+          placeholder={terms.isDbOrg ? 'e.g. River Survey 2026' : 'Enter sheet name (e.g., Location A)'}
           value={newSheetName}
           onChange={(e) => setNewSheetName(e.target.value)}
           required
@@ -271,7 +279,7 @@ export function CreateSheetModal({
             loading={creatingSheet}
             disabled={!newSheetName.trim() || creatingSheet}
           >
-            Create Sheet
+            Create {terms.Tab}
           </Button>
         </Group>
       </Stack>

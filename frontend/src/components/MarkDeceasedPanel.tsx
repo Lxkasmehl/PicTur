@@ -1,5 +1,5 @@
 /**
- * Mark a turtle deceased (or clear) by sheet + biology ID, name, or primary ID — no plastron scan.
+ * Mark a turtle deceased (or clear) by sheet + biology ID, name, or primary ID - no plastron scan.
  * Used on Home (staff) and can be wrapped in Paper when standalone.
  */
 
@@ -20,7 +20,7 @@ import {
 import { IconInfoCircle, IconSkull } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { markTurtleDeceased, getTurtleLookupOptions, type TurtleLookupField } from '../services/api';
-import { useUser } from '../hooks/useUser';
+import { useActiveOrg } from '../hooks/useActiveOrg';
 import { useAvailableSheets } from '../hooks/useAvailableSheets';
 
 type LookupMode = TurtleLookupField;
@@ -31,7 +31,8 @@ export interface MarkDeceasedPanelProps {
 }
 
 export function MarkDeceasedPanel({ embedded = false }: MarkDeceasedPanelProps) {
-  const { role } = useUser();
+  // Role in the active research group (the account role for the main group)
+  const { role } = useActiveOrg();
   const { sheets: availableSheets, loading: sheetsListLoading } = useAvailableSheets(role);
   const [sheetName, setSheetName] = useState<string>('');
   const [lookupMode, setLookupMode] = useState<LookupMode>('biology_id');
@@ -205,13 +206,13 @@ export function MarkDeceasedPanel({ embedded = false }: MarkDeceasedPanelProps) 
         <Select
           label={lookupLabel}
           placeholder="Search and select a row from this sheet"
-          description="Only values that exist in this tab are listed — avoids typos."
+          description="Only values that exist in this tab are listed, which avoids typos."
           data={lookupOptions}
           value={lookupValue}
           onChange={(v: string | null) => setLookupValue(v ?? '')}
           searchable
           clearable
-          nothingFoundMessage="No matching value — try another search"
+          nothingFoundMessage="No matching value. Try another search"
           maxDropdownHeight={280}
           disabled={submitting}
         />

@@ -104,7 +104,7 @@ interface AdditionalImagesSectionProps {
 // Display ordering for the rendered staged-photos grid: scratchpad-only
 // role variants first (active ref → old ref → other), then the canonical
 // generic kinds (the eleven main introduced), then the legacy loose bucket.
-// Keep separate from BUTTON_KINDS — only canonical kinds get an upload
+// Keep separate from BUTTON_KINDS - only canonical kinds get an upload
 // button (scratchpad-only kinds are derived from on-disk location).
 const TYPE_ORDER: DisplayKind[] = [
   'plastron_active',
@@ -171,7 +171,7 @@ type StagedRow = {
   id: string;
   file: File;
   previewUrl: string;
-  /** Canonical kind only — staged uploads route through one of the eleven
+  /** Canonical kind only - staged uploads route through one of the eleven
    *  canonical buttons. Scratchpad-only kinds never appear here. */
   type: AdditionalPhotoKind;
   labels: string[];
@@ -256,7 +256,7 @@ export function AdditionalImagesSection({
   const [savingInline, setSavingInline] = useState<string | null>(null);
   // Per-image controlled "currently-typed" text inside each TagsInput.
   // Tracked separately from the committed value array so the autosave on
-  // blur can pick up text the user typed without pressing Enter — Mantine
+  // blur can pick up text the user typed without pressing Enter - Mantine
   // v8's acceptValueOnBlur does not reliably call onChange before our
   // onBlur prop in this version, so we merge the pending text in
   // ourselves.

@@ -55,7 +55,7 @@ RUN pip install --no-cache-dir \
 COPY . .
 
 ENV DATA_DIR=/app/data
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/org_data
 
 EXPOSE 5000
 ENV PORT=5000

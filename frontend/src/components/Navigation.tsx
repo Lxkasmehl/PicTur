@@ -28,8 +28,11 @@ import {
   IconFlag,
   IconCompass,
   IconMapPin,
+  IconBuildingCommunity,
 } from '@tabler/icons-react';
 import { useUser } from '../hooks/useUser';
+import { useActiveOrg } from '../hooks/useActiveOrg';
+import OrgSwitcher from './OrgSwitcher';
 import { logout as apiLogout } from '../services/api';
 import { isStaffRole } from '../services/api/auth';
 import { notifications } from '@mantine/notifications';
@@ -55,7 +58,10 @@ export default function Navigation({ children }: NavigationProps) {
   const location = useLocation();
   const theme = useMantineTheme();
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
-  const { role, isLoggedIn, user, logout: setUserLogout } = useUser();
+  const { isLoggedIn, user, logout: setUserLogout } = useUser();
+  // Role in the selected research group (for the main group this is the account role as before)
+  const { role, isSuperAdmin, options: orgOptions } = useActiveOrg();
+  const showOrgSwitcher = orgOptions.length > 1;
 
   const isStaff = isStaffRole(role);
   const isAdmin = role === 'admin';
@@ -66,6 +72,15 @@ export default function Navigation({ children }: NavigationProps) {
 
   // Get navigation items in the correct order based on role
   const getNavigationItems = () => {
+    // Same pages for every research group; what is shown depends on the role in the active group
+    const items = getMainNavigationItems();
+    if (isSuperAdmin) {
+      items.push({ label: 'Research Groups', path: '/platform/groups', icon: IconBuildingCommunity });
+    }
+    return items;
+  };
+
+  const getMainNavigationItems = () => {
     const items = [...navigationItems];
     items.splice(1, 0, {
       label: 'Observer HQ',
@@ -106,7 +121,8 @@ export default function Navigation({ children }: NavigationProps) {
     const baseBreakpoint = 1000; // Base breakpoint for customer view with normal name
 
     // Home + Observer HQ (+ staff/admin ops); About/Contact are in the footer
-    const itemCount = isAdmin ? 6 : isStaff ? 4 : 2;
+    // (+1 for the research group switcher, which takes about one item's width)
+    const itemCount = getNavigationItems().length + (showOrgSwitcher ? 1 : 0);
 
     // Admin has 2 extra items, increase breakpoint by ~167px per extra item
     // This makes drawer appear earlier when there are more nav items
@@ -122,7 +138,8 @@ export default function Navigation({ children }: NavigationProps) {
 
     // Calculate final breakpoint (higher = drawer appears at larger screen width)
     return baseBreakpoint + itemAdjustment + userNameAdjustment;
-  }, [isStaff, isAdmin, user?.name, user?.email]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- item list derives from these values
+  }, [isStaff, isAdmin, isSuperAdmin, showOrgSwitcher, user?.name, user?.email]);
 
   // Use dynamic breakpoint; on mobile (< 768px) always show drawer for best touch UX
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -225,6 +242,7 @@ export default function Navigation({ children }: NavigationProps) {
             >
               {role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Community'}
             </Badge>
+            {!showDrawer && <OrgSwitcher />}
           </Group>
 
           {/* Center - Desktop Navigation */}
@@ -349,6 +367,7 @@ export default function Navigation({ children }: NavigationProps) {
           <Stack gap='xs' h='90vh' justify='space-between'>
           {/* Main navigation links at top */}
           <Stack gap='xs'>
+            <OrgSwitcher fullWidth onSwitched={close} />
             {getNavigationItems().map((item) => (
               <NavButton key={item.path} item={item} variant='light' />
             ))}

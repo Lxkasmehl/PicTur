@@ -18,7 +18,7 @@ test.describe('Navigation (public)', () => {
     await clickFooterNav(page, 'About');
     await expect(page).toHaveURL('/about');
     await expect(
-      page.getByRole('heading', { level: 1, name: /PicTur.*Washburn turtle team/i }),
+      page.getByRole('heading', { level: 1, name: 'About PicTur' }),
     ).toBeVisible();
 
     await clickFooterNav(page, 'Contact');
@@ -43,7 +43,7 @@ test.describe('Navigation (public)', () => {
     await page.getByTestId('footer-link-about').click();
     await expect(page).toHaveURL('/about');
     await expect(
-      page.getByRole('heading', { level: 1, name: /PicTur.*Washburn turtle team/i }),
+      page.getByRole('heading', { level: 1, name: 'About PicTur' }),
     ).toBeVisible();
   });
 });

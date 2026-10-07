@@ -104,7 +104,7 @@ class TurtleDeletionMixin:
     def _evict_from_vram(self, pt_path, photo_type):
         # Delegate to the brain so the cache swap happens under _gpu_lock and
         # can't race a concurrent add_single_to_vram (lost update).
-        brain.evict_from_vram(pt_path, photo_type)
+        _matcher(self).evict_from_vram(pt_path, photo_type)
 
     def _location_name_for_ref_dir(self, ref_dir):
         rel_path = os.path.relpath(ref_dir, self.base_dir)
@@ -201,13 +201,13 @@ class TurtleDeletionMixin:
                     except OSError as e:
                         return True, {**info, 'error_promoting': f"Moved deleted ref but failed to promote previous: {e}"}
                     try:
-                        ok = brain.process_and_save(new_master_path, new_pt_path)
+                        ok = _matcher(self).process_and_save(new_master_path, new_pt_path)
                     except Exception as e:
                         print(f"   ⚠️ SuperPoint crashed during auto-revert for {turtle_id}: {e}")
                         ok = False
                     if ok:
                         loc_name = self._location_name_for_ref_dir(ref_dir)
-                        brain.add_single_to_vram(new_pt_path, ref_stem, loc_name, photo_type=was_reference)
+                        _matcher(self).add_single_to_vram(new_pt_path, ref_stem, loc_name, photo_type=was_reference)
                         info['reverted'] = True
                         info['new_reference_path'] = new_master_path
                         print(f"   ✅ Auto-reverted {turtle_id} {was_reference} to most recent Old Reference.")
@@ -281,7 +281,7 @@ class TurtleDeletionMixin:
                 # Defensive: evict any stale VRAM entry pointing at this turtle+type.
                 self._evict_from_vram(new_pt_path, is_reference)
                 try:
-                    ok = brain.process_and_save(target_abs, new_pt_path)
+                    ok = _matcher(self).process_and_save(target_abs, new_pt_path)
                 except Exception as e:
                     print(f"   ⚠️ SuperPoint crashed during restore for {turtle_id}: {e}")
                     ok = False
@@ -289,7 +289,7 @@ class TurtleDeletionMixin:
                     info['warning'] = "Image restored but .pt extraction failed; try again or restart backend"
                 else:
                     loc_name = self._location_name_for_ref_dir(ref_dir)
-                    brain.add_single_to_vram(new_pt_path, ref_stem, loc_name, photo_type=is_reference)
+                    _matcher(self).add_single_to_vram(new_pt_path, ref_stem, loc_name, photo_type=is_reference)
                     print(f"   ✅ Restored {turtle_id} {is_reference} reference and refreshed VRAM.")
 
             # Clean up now-empty parent dirs inside Deleted/ (purely cosmetic).
@@ -367,3 +367,7 @@ class TurtleDeletionMixin:
                 })
         return out
 
+def _matcher(manager):
+    """This manager's matcher: a research group's BrainView, else the shared module-level brain
+    (looked up at call time so tests can patch it)."""
+    return getattr(manager, '_brain_view', None) or brain

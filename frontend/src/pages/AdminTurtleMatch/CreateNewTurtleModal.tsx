@@ -1,3 +1,4 @@
+import { StorageName } from '../../components/StorageName';
 import { Divider, Modal, Paper, Stack, Text } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
@@ -29,7 +30,7 @@ export function CreateNewTurtleModal() {
     >
       <Stack gap='md'>
         <Text size='sm' c='dimmed'>
-          Create a new turtle entry for this uploaded image. Select a sheet and fill in the
+          Create a new turtle entry for this uploaded image. Fill in the
           turtle data below. Primary ID will be automatically generated. ID and ID2 can be
           entered manually if needed.
         </Text>
@@ -59,7 +60,7 @@ export function CreateNewTurtleModal() {
           </Paper>
         )}
 
-        <Divider label='Google Sheets Data' labelPosition='center' />
+        <Divider label={<><StorageName /> Data</>} labelPosition='center' />
 
         <TurtleSheetsDataForm
           initialData={newTurtleSheetsData || undefined}

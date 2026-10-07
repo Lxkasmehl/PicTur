@@ -12,6 +12,7 @@ from image_utils import UploadImageError
 from upload_rate_limit import upload_rate_limit_ok, upload_rate_limit_response
 from upload_validation import ingest_saved_upload, upload_error_response
 from services import manager_service
+import tenant
 from additional_image_labels import (
     normalize_label_list,
     parse_additional_type_filter,
@@ -481,7 +482,7 @@ def register_turtle_routes(app):
         # reference photo create its canonical <bio_id>_<primary_id> folder.
         bio_id = (request.form.get('bio_id') or '').strip() or None
         create_if_missing = (request.form.get('create_if_missing') or '').strip().lower() in ('1', 'true', 'yes')
-        photo_type = (request.form.get('photo_type') or 'plastron').strip().lower()
+        photo_type = (request.form.get('photo_type') or tenant.upload_photo_type()).strip().lower()
         if not turtle_id:
             return jsonify({'error': 'turtle_id required'}), 400
         if photo_type not in ('plastron', 'carapace'):

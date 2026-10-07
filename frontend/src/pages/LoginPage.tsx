@@ -56,6 +56,10 @@ export default function LoginPage({
 
   // Get invitation token from URL if present
   const invitationToken = searchParams.get('token');
+  // Optional in-app return path (e.g. back to an invitation link); relative paths only.
+  const redirectParam = searchParams.get('redirect');
+  const redirectTo =
+    redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//') ? redirectParam : '/';
 
   // If there's a token in the URL, automatically switch to signup mode and fetch invitation details
   useEffect(() => {
@@ -155,7 +159,7 @@ export default function LoginPage({
       !invitationToken
     ) {
       hasRedirected.current = true;
-      navigate('/');
+      navigate(redirectTo);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn, invitationToken]);
@@ -206,7 +210,7 @@ export default function LoginPage({
           color: 'green',
           icon: <IconCheck size={18} />,
         });
-        navigate(needsVerification ? '/verify-email' : '/');
+        navigate(needsVerification ? '/verify-email' : redirectTo);
       }
     } catch (err) {
       const errorMessage =

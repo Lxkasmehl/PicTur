@@ -2,10 +2,10 @@ import { test, expect } from '@playwright/test';
 import { loginAsAdmin, navClick } from './fixtures';
 
 /**
- * Google Sheets Browser — Photo tags mode: label search UI and grouped results (API mocked).
+ * Google Sheets Browser - Photo tags mode: label search UI and grouped results (API mocked).
  */
 
-test.describe('Admin Turtle Records — Sheets browser photo tags', () => {
+test.describe('Admin Turtle Records - Sheets browser photo tags', () => {
   test('Photo tags search shows matches from search-labels API', async ({ page }) => {
     test.setTimeout(60_000);
 

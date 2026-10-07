@@ -8,6 +8,7 @@
 # Sequence:
 #   1. Export sheets to CSV/JSON         — current Sheets state is authoritative.
 #   2. Data backup                       — captures the current disk state.
+#   3. Research groups                   — PostgreSQL dump + org_data photos.
 #
 # QUARANTINED 2026-05-04: backfill_folder_names.py --apply is no longer
 # invoked by this wrapper. Run backfill manually instead:
@@ -54,6 +55,11 @@ echo "=== $(date -Iseconds) daily-backup: backend data/ (images) ==="
 BACKUP_OUTPUT_DIR="${BACKUP_OUTPUT_DIR:-$COMPOSE_DIR/backups}" \
   COMPOSE_DIR="$COMPOSE_DIR" \
   bash "$SCRIPT_DIR/backup-backend-data.sh"
+
+echo "=== $(date -Iseconds) daily-backup: research groups (PostgreSQL + org_data) ==="
+BACKUP_OUTPUT_DIR="${BACKUP_OUTPUT_DIR:-$COMPOSE_DIR/backups}" \
+  COMPOSE_DIR="$COMPOSE_DIR" \
+  bash "$SCRIPT_DIR/backup-org-data.sh"
 
 # DISABLED 2026-05-04 — restart-on-changes branch removed alongside backfill.
 # Restart backend manually after running backfill --apply by hand.

@@ -120,7 +120,7 @@ export default function ObserverHubPage() {
                 </Title>
                 <Text size="md" opacity={0.92}>
                   Log sightings, earn XP and badges, and complete weekly quests. The core workflow is still a
-                  simple photo upload — this layer celebrates your contribution.
+                  simple photo upload. This layer celebrates your contribution.
                 </Text>
               </Stack>
               <Button
@@ -162,7 +162,7 @@ export default function ObserverHubPage() {
                 <Text size="xs" c="white" opacity={0.85}>
                   {needed > 0
                     ? `${intoLevel} XP into this level · ${needed} XP to level ${currentLevel + 1}`
-                    : 'Max level bracket reached — you are carrying the team.'}
+                    : 'Max level bracket reached. You are carrying the team.'}
                 </Text>
               </Stack>
             </Group>
@@ -266,7 +266,7 @@ export default function ObserverHubPage() {
                     </Group>
                     <Progress value={done ? 100 : p} size="sm" radius="xl" color="teal" />
                     <Text size="xs" c="dimmed" mt={6}>
-                      {done ? 'Completed — nice work!' : `${prog} / ${q.target}`}
+                      {done ? 'Completed, nice work!' : `${prog} / ${q.target}`}
                     </Text>
                   </Paper>
                 );

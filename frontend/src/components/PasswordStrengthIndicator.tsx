@@ -94,7 +94,7 @@ export function PasswordStrengthIndicator({
       </Stack>
       {requirements.length && requirements.upper && requirements.lower && requirements.digit && requirements.special && (
         <Text size="xs" c="dimmed" mt={6}>
-          Avoid common passwords — the server will reject them.
+          Avoid common passwords. The server will reject them.
         </Text>
       )}
     </Box>

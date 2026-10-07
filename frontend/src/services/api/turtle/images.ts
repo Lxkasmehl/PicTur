@@ -1,4 +1,5 @@
 import { TURTLE_API_BASE_URL } from '../config';
+import { withOrgParam } from '../orgContext';
 import { prepareImageForUpload } from '../../../utils/prepareImageForUpload';
 import { authHeaders, throwJsonError, throwUploadHttpError } from './http';
 import type {
@@ -33,7 +34,7 @@ export const getImageUrl = (
   if (opts.version != null && opts.version !== '') {
     params.push(`v=${encodeURIComponent(String(opts.version))}`);
   }
-  return `${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?${params.join('&')}`;
+  return withOrgParam(`${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?${params.join('&')}`);
 };
 
 export const getTurtleImageDownloadUrl = (imagePath: string): string => {
@@ -41,7 +42,7 @@ export const getTurtleImageDownloadUrl = (imagePath: string): string => {
     return imagePath;
   }
   const encodedPath = encodeURIComponent(imagePath);
-  return `${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?path=${encodedPath}&download=1`;
+  return withOrgParam(`${TURTLE_API_BASE_URL.replace('/api', '')}/api/images?path=${encodedPath}&download=1`);
 };
 
 export const getTurtleImages = async (

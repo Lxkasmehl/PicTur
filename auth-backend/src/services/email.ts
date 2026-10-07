@@ -202,6 +202,59 @@ export const sendAdminPromotionEmail = async ({
   }
 };
 
+export interface SendOrgInvitationEmailParams {
+  email: string;
+  orgName: string;
+  role: 'staff' | 'admin';
+  /** Existing accounts were added directly; new addresses get a registration link. */
+  hasAccount: boolean;
+  invitationToken?: string;
+}
+
+/** Invitation to (or notification about) membership in a research group. */
+export const sendOrgInvitationEmail = async ({
+  email,
+  orgName,
+  role,
+  hasAccount,
+  invitationToken,
+}: SendOrgInvitationEmailParams): Promise<void> => {
+  const roleLabel = role === 'admin' ? 'Admin' : 'Staff';
+  const safeOrg = escapeHtml(orgName);
+  if (hasAccount) {
+    const html = wrapEmailHtml(
+      'Research group access',
+      `<p>Hello,</p>
+      <p>You have been added to the research group <strong>${safeOrg}</strong> in PicTur as <strong>${roleLabel}</strong>.</p>
+      <p>Log in with your existing account and pick the group in the group switcher.</p>
+      <p><a href="${FRONTEND_URL}/login">${FRONTEND_URL}/login</a></p>`
+    );
+    const text = `Hello,\n\nYou have been added to the research group "${orgName}" in PicTur as ${roleLabel}.\n\nLog in with your existing account and pick the group in the group switcher:\n${FRONTEND_URL}/login\n\nBest regards,\nThe PicTur Team`;
+    await sendMailSafe(email, `You were added to ${orgName} – PicTur`, html, text);
+    return;
+  }
+  if (!invitationToken) {
+    throw new Error('Invitation token is required for new users');
+  }
+  const url = `${FRONTEND_URL}/accept-invite?token=${invitationToken}`;
+  const html = wrapEmailHtml(
+    'Research group invitation',
+    `<p>Hello,</p>
+    <p>You have been invited to join the research group <strong>${safeOrg}</strong> in PicTur as <strong>${roleLabel}</strong>.</p>
+    <p style="margin: 30px 0;">
+      <a href="${url}"
+         style="background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
+        Accept invitation
+      </a>
+    </p>
+    <p>Or copy and paste this link into your browser:</p>
+    <p style="color: #666; word-break: break-all;">${url}</p>
+    <p>This invitation expires in 7 days.</p>`
+  );
+  const text = `Hello,\n\nYou have been invited to join the research group "${orgName}" in PicTur as ${roleLabel}.\n\nAccept the invitation here:\n\n${url}\n\nThis invitation expires in 7 days.\n\nBest regards,\nThe PicTur Team`;
+  await sendMailSafe(email, `Invitation to ${orgName} – PicTur`, html, text);
+};
+
 /** Comma- or semicolon-separated inbox list (server-only env). */
 export function parseContactFormRecipients(): string[] {
   const raw = process.env.CONTACT_FORM_RECIPIENTS?.trim();

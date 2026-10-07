@@ -193,7 +193,7 @@ export function useStagedPhotos({
       bioId: (formData.id || '').trim() || null,
     };
     const committed = await commitStagedPhotos(uploadCtx);
-    if (!committed) throw new Error('Photo commit failed — aborting sheet save');
+    if (!committed) throw new Error('Photo commit failed, so the turtle data was not saved');
     await onSaveTurtle(formData, formSheetName);
     if (uploadCtx.turtleId) {
       try {

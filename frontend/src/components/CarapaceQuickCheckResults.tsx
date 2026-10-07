@@ -21,7 +21,7 @@ import type { QuickCheckStatus } from '../hooks/useCarapaceQuickCheck';
 interface CarapaceQuickCheckResultsProps {
   status: Exclude<QuickCheckStatus, 'idle'>;
   error: string | null;
-  /** Local preview data URL of the uploaded photo — rendered raw, never persisted. */
+  /** Local preview data URL of the uploaded photo - rendered raw, never persisted. */
   queryPreviewUrl: string;
   matches: QuickCheckMatch[];
   elapsed: number | null;
@@ -149,7 +149,7 @@ export function CarapaceQuickCheckResults({
     <Paper shadow='sm' p='md' radius='md' withBorder>
       <Stack gap='md'>
         <Alert icon={<IconEyeCheck size={18} />} color='orange' radius='md'>
-          Read-only result — nothing was saved. Click a match to compare side by
+          Read-only result: nothing was saved. Click a match to compare side by
           side.
         </Alert>
 

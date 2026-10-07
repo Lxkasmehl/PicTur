@@ -49,7 +49,7 @@ import {
   turtleDiskFolderId,
   type TurtleSheetsData,
 } from '../../services/api/sheets';
-import { useUser } from '../../hooks/useUser';
+import { useActiveOrg } from '../../hooks/useActiveOrg';
 import { TurtleSheetsDataForm } from '../../components/TurtleSheetsDataForm';
 import { AdditionalImagesSection } from '../../components/AdditionalImagesSection';
 import { OldTurtlePhotosSection } from '../../components/OldTurtlePhotosSection';
@@ -75,20 +75,23 @@ import { useStagedPhotos } from './hooks/useStagedPhotos';
 /** "Null" sub-state: which kind of reference gap a sheet turtle has, or null
  *  when it is not Null (has a plastron ref, or lacks the Primary ID + Bio ID
  *  that make it eligible). */
-type NullSubState = 'no-disk' | 'no-plastron-no-carapace' | 'no-plastron' | null;
+type NullSubState = 'no-disk' | 'no-plastron-no-carapace' | 'no-plastron' | 'no-carapace' | null;
 
 function computeNullSubState(
   turtle: TurtleSheetsData,
   entry: PrimaryImageEntry | undefined,
+  /** Research groups identify by carapace: a carapace photo is their reference. */
+  carapaceOnly = false,
 ): NullSubState {
   const hasPrimaryId = (turtle.primary_id || '').trim().length > 0;
   const hasBioId = (turtle.id || '').trim().length > 0;
   if (!hasPrimaryId || !hasBioId) return null;
-  if (!entry) return null; // not loaded yet — callers guard on primaryImagesLoading
+  if (!entry) return null; // not loaded yet - callers guard on primaryImagesLoading
   if (entry.folderStatus === 'no_folder' || entry.folderStatus === 'empty_folder') {
     return 'no-disk';
   }
-  if (entry.path) return null; // has a plastron reference — not Null
+  if (carapaceOnly) return entry.hasCarapace ? null : 'no-carapace';
+  if (entry.path) return null; // has a plastron reference - not Null
   return entry.hasCarapace ? 'no-plastron' : 'no-plastron-no-carapace';
 }
 
@@ -96,6 +99,7 @@ const NULL_BADGE = {
   'no-disk': { color: 'red', label: 'No photos on disk' },
   'no-plastron-no-carapace': { color: 'orange', label: 'No plastron or carapace' },
   'no-plastron': { color: 'yellow', label: 'No plastron ref' },
+  'no-carapace': { color: 'orange', label: 'No carapace ref' },
 } as const;
 
 function sheetRowsSame(a: TurtleSheetsData | null, b: TurtleSheetsData): boolean {
@@ -138,7 +142,8 @@ function findTurtleForMatch(
 }
 
 export function SheetsBrowserTab() {
-  const { role } = useUser();
+  // Role in the active research group (the account role for the main group)
+  const { role, isDbOrg } = useActiveOrg();
   const ctx = useAdminTurtleRecordsContext();
   const [turtleImages, setTurtleImages] = useState<TurtleImagesResponse | null>(null);
   const [listMode, setListMode] = useState<'records' | 'tags'>('records');
@@ -170,7 +175,7 @@ export function SheetsBrowserTab() {
     setSelectedSheetFilterAndLoad: onSheetFilterChange,
   } = ctx;
 
-  /** Biology ID when present — matches on-disk folder names (e.g. F439); else primary id. */
+  /** Biology ID when present - matches on-disk folder names (e.g. F439); else primary id. */
   const diskTurtleId = selectedTurtle ? turtleDiskFolderId(selectedTurtle) : '';
   /** Matches `data/<path>/` on disk (not the Google tab name alone). */
   const dataPathHint = selectedTurtle ? turtleDataFolderHint(selectedTurtle) : null;
@@ -389,7 +394,7 @@ export function SheetsBrowserTab() {
   const listForRecords =
     nullFilterActive && !primaryImagesLoading
       ? filteredTurtles.filter(
-          (t) => computeNullSubState(t, primaryImages[turtleKey(t)]) !== null,
+          (t) => computeNullSubState(t, primaryImages[turtleKey(t)], isDbOrg) !== null,
         )
       : filteredTurtles;
 
@@ -448,7 +453,7 @@ export function SheetsBrowserTab() {
                     variant='outline'
                     size='sm'
                   >
-                    Null — missing reference photos
+                    Null: missing reference photos
                   </Chip>
                   {nullFilterActive && primaryImagesLoading && (
                     <Loader size='xs' aria-label='Checking on-disk photo status' />
@@ -499,7 +504,7 @@ export function SheetsBrowserTab() {
                             }
                           }}
                         >
-                          Full archive — entire data directory and all sheet tabs
+                          Full archive: entire data directory and all sheet tabs
                         </Menu.Item>
                         <Menu.Item
                           disabled={!selectedSheetFilter}
@@ -528,7 +533,7 @@ export function SheetsBrowserTab() {
                           Current location tab only
                           {selectedSheetFilter
                             ? ` (${selectedSheetFilter})`
-                            : ' — pick a location above'}
+                            : ' (pick a location above)'}
                         </Menu.Item>
                       </Menu.Dropdown>
                     </Menu>
@@ -599,6 +604,7 @@ export function SheetsBrowserTab() {
                                   const sub = computeNullSubState(
                                     turtle,
                                     primaryImages[turtleKey(turtle)],
+                                    isDbOrg,
                                   );
                                   if (!sub) return null;
                                   const cfg = NULL_BADGE[sub];

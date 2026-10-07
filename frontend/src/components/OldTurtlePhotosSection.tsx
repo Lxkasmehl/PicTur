@@ -14,13 +14,13 @@ import { additionalPhotoKindLabel } from '../constants/additionalPhotoKinds';
 interface OldTurtlePhotosSectionProps {
   /** All dates (YYYY-MM-DD) for which this turtle has photos. */
   historyDates: string[];
-  /** Additional photos (microhabitat / condition / etc) — have timestamps. */
+  /** Additional photos (microhabitat / condition / etc) - have timestamps. */
   additional: TurtleImageAdditional[];
   /** Structured loose photos (old references + other plastrons/carapaces + legacy). */
   loose: TurtleLooseImage[];
-  /** Active plastron reference — shown under its capture/upload date. */
+  /** Active plastron reference - shown under its capture/upload date. */
   primaryInfo?: TurtlePrimaryInfo | null;
-  /** Active carapace reference — shown under its capture/upload date. */
+  /** Active carapace reference - shown under its capture/upload date. */
   primaryCarapaceInfo?: TurtlePrimaryInfo | null;
   /** Soft-deleted images. When present + an onRestore callback is provided,
    *  a "Deleted photos (restorable)" option appears in the date dropdown. */
@@ -91,7 +91,7 @@ interface HistoryPhoto {
   labels?: string[];
   exifDate?: string | null;
   uploadDate?: string | null;
-  /** Epoch ms — finer-grained than uploadDate; used as the sort tiebreaker
+  /** Epoch ms - finer-grained than uploadDate; used as the sort tiebreaker
    *  so multiple uploads on the same day order by actual time. Also used
    *  as the cache-bust ``v`` on active-reference image URLs. */
   uploadTs?: number | null;
@@ -149,7 +149,7 @@ export function OldTurtlePhotosSection({
 
   // Collect every photo once with a stable category key. Keeps filter and
   // sort logic uniform across the two dropdowns and guards against ever
-  // mixing in another turtle's data — only props from THIS turtle feed in.
+  // mixing in another turtle's data - only props from THIS turtle feed in.
   const allPhotos: HistoryPhoto[] = useMemo(() => {
     const out: HistoryPhoto[] = [];
     if (primaryInfo) {
@@ -181,7 +181,7 @@ export function OldTurtlePhotosSection({
       out.push({
         path: a.path,
         // Pretty label (e.g. 'Left side' rather than the raw 'left-side')
-        // — falls back to the helper for any canonical kind, including the
+        // - falls back to the helper for any canonical kind, including the
         // ones main expanded into (anterior / posterior / left-side /
         // right-side / people / injury).
         label: additionalPhotoKindLabel(cat),
@@ -208,7 +208,7 @@ export function OldTurtlePhotosSection({
     return out.filter((p) => (seen.has(p.path) ? false : (seen.add(p.path), true)));
   }, [additional, loose, primaryInfo, primaryCarapaceInfo]);
 
-  // Build category dropdown from the actual data — fixed keys first, then any
+  // Build category dropdown from the actual data - fixed keys first, then any
   // additional types present in the response (sorted alphabetically).
   const categoryOptions = useMemo(() => {
     const opts: Array<{ value: string; label: string }> = [
@@ -231,7 +231,7 @@ export function OldTurtlePhotosSection({
       }
     }
 
-    // Additional.type values — anything not already covered above. This is
+    // Additional.type values - anything not already covered above. This is
     // where microhabitat / condition + the post-merge canonical kinds
     // (anterior / posterior / left-side / right-side / people / injury)
     // surface automatically.
@@ -255,14 +255,14 @@ export function OldTurtlePhotosSection({
 
   const dateOptions = useMemo(() => {
     const base = [
-      { value: DATE_ALL_EXIF_DESC, label: 'All photos — newest EXIF first' },
-      { value: DATE_ALL_EXIF_ASC, label: 'All photos — oldest EXIF first' },
-      { value: DATE_ALL_UPLOAD_DESC, label: 'All photos — newest upload first' },
-      { value: DATE_ALL_UPLOAD_ASC, label: 'All photos — oldest upload first' },
+      { value: DATE_ALL_EXIF_DESC, label: 'All photos, newest EXIF first' },
+      { value: DATE_ALL_EXIF_ASC, label: 'All photos, oldest EXIF first' },
+      { value: DATE_ALL_UPLOAD_DESC, label: 'All photos, newest upload first' },
+      { value: DATE_ALL_UPLOAD_ASC, label: 'All photos, oldest upload first' },
     ];
     const hasDeleted = (deleted?.length ?? 0) > 0 && !!onRestore;
     if (hasDeleted) {
-      base.push({ value: DATE_DELETED_ONLY, label: `Deleted photos (restorable) — ${deleted!.length}` });
+      base.push({ value: DATE_DELETED_ONLY, label: `Deleted photos (restorable): ${deleted!.length}` });
     }
     return [...base, ...historyDates.map((d) => ({ value: d, label: d }))];
   }, [historyDates, deleted, onRestore]);
@@ -278,7 +278,7 @@ export function OldTurtlePhotosSection({
       const ascending = selectedDate === DATE_ALL_EXIF_ASC || selectedDate === DATE_ALL_UPLOAD_ASC;
       byDate = [...allPhotos].sort((a, b) => {
         // In upload modes prefer the ms-resolution upload_ts as the primary
-        // key — multiple uploads on the same day used to all tie on the
+        // key - multiple uploads on the same day used to all tie on the
         // YYYY-MM-DD slice and fall back to array build order, which made
         // the active plastron+carapace+microhabitat+condition always sit
         // above 9 plastron archives uploaded seconds earlier.
@@ -301,7 +301,7 @@ export function OldTurtlePhotosSection({
         return av < bv ? 1 : -1;
       });
     } else {
-      // Specific date — use backend-matching canonical date precedence so each
+      // Specific date - use backend-matching canonical date precedence so each
       // photo appears under exactly one date.
       const canonicalDate = (p: HistoryPhoto): string => {
         const exif = (p.exifDate || '').slice(0, 10);

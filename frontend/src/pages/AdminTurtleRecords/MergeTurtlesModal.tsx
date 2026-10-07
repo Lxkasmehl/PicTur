@@ -70,7 +70,7 @@ function TurtleSummaryCard({
       <Text size='xs' c='dimmed' mb={4}>
         {label}
       </Text>
-      <Text fw={600}>{turtle.id || turtle.primary_id || '—'}</Text>
+      <Text fw={600}>{turtle.id || turtle.primary_id || '-'}</Text>
       {turtle.name && <Text size='sm'>{turtle.name}</Text>}
       <Group gap='xs' mt={4}>
         {turtle.sex && (
@@ -228,7 +228,7 @@ export function MergeTurtlesModal({
           .filter((t) => (t.primary_id || t.id) !== (primaryTurtle.primary_id || primaryTurtle.id))
           .map((t) => {
             const id = t.id || t.primary_id || '';
-            const name = t.name ? ` — ${t.name}` : '';
+            const name = t.name ? ` (${t.name})` : '';
             const sheet = t.sheet_name ? ` (${t.sheet_name})` : '';
             // Include sheet_name in value so turtles with the same bio-ID across sheets don't collide
             const value = `${t.sheet_name || ''}::${t.primary_id || t.id || ''}`;

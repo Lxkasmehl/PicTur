@@ -26,6 +26,13 @@ export default defineConfig([
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
+      // No em dashes in text shown on the site: use a colon, comma, period or parentheses.
+      'no-restricted-syntax': [
+        'error',
+        ...['Literal[value=/—/]', 'TemplateElement[value.raw=/—/]', 'JSXText[value=/—/]'].map(
+          (selector) => ({ selector, message: 'No em dashes in UI text (use : , . or parentheses).' }),
+        ),
+      ],
     },
   },
 ])

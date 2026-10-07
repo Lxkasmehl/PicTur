@@ -354,7 +354,7 @@ export function ReviewQueueTab() {
                 </Stack>
               ) : (
                 <Stack gap='xs'>
-                  <Text fw={500} size='sm'>Community upload — review the photo and proceed when ready.</Text>
+                  <Text fw={500} size='sm'>Community upload: review the photo and proceed when ready.</Text>
                   <Group gap='sm'>
                     <Button size='sm' variant='filled' onClick={() => setMatchingConfirm('match')}>
                       Proceed with matching

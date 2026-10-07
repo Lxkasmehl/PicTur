@@ -1,3 +1,4 @@
+import { useActiveOrg } from './useActiveOrg';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -38,6 +39,9 @@ export function useAdminTurtleMatch(
   imageId: string | undefined,
 ) {
   const navigate = useNavigate();
+  // Research groups photograph the carapace; the main group's default stays the plastron
+  const { isDbOrg } = useActiveOrg();
+  const defaultPhotoType = isDbOrg ? 'carapace' : 'plastron';
   const [matchData, setMatchData] = useState<MatchData | null>(null);
   const [packetItem, setPacketItem] = useState<ReviewQueueItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -368,7 +372,7 @@ export function useAdminTurtleMatch(
         },
         match_from_community: isMatchFromCommunity,
         community_sheet_name: isMatchFromCommunity ? communitySheetName : undefined,
-        photo_type: matchData.photo_type ?? 'plastron',
+        photo_type: matchData.photo_type ?? defaultPhotoType,
         replace_reference: replaceReference || undefined,
         replace_carapace_reference: replaceCarapaceReference || undefined,
       });
@@ -538,7 +542,7 @@ export function useAdminTurtleMatch(
               primary_id: finalPrimaryId ?? undefined,
             }
           : undefined,
-        photo_type: matchData?.photo_type ?? 'plastron',
+        photo_type: matchData?.photo_type ?? defaultPhotoType,
       });
 
       localStorage.removeItem(`match_${imageId}`);

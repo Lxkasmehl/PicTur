@@ -34,6 +34,8 @@ import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback } fr
 import { MAX_RAW_FILE_BYTES } from '../utils/uploadConstants';
 import { dropzoneRejectionMessage } from '../utils/uploadErrorMessages';
 import { useUser } from '../hooks/useUser';
+import { useActiveOrg } from '../hooks/useActiveOrg';
+import { useLocationStructure } from '../hooks/useLocationStructure';
 import { usePhotoUpload } from '../hooks/usePhotoUpload';
 import { isStaffRole } from '../services/api/auth';
 import { PreviewCard } from '../components/PreviewCard';
@@ -55,6 +57,9 @@ import { SightingRewardsModal } from '../components/game/SightingRewardsModal';
 import { ObserverHomeSummary } from '../components/game/ObserverHomeSummary';
 import { ObserverGamificationTeaser } from '../components/game/ObserverGamificationTeaser';
 import { MarkDeceasedPanel } from '../components/MarkDeceasedPanel';
+import { ShellPhotoHint } from '../components/ShellPhotoHint';
+import { SHELL_COLOR, type Shell } from '../utils/shell';
+import { UploadGroupPicker } from '../components/org/UploadGroupPicker';
 import {
   loadHomeMatchScopeFavorites,
   saveHomeMatchScopeFavorites,
@@ -90,10 +95,17 @@ function flattenMatchScopeOptions(data: ComboboxData): ComboboxItem[] {
 export default function HomePage() {
   const dispatch = useAppDispatch();
   const pendingRewards = useAppSelector((s) => s.communityGame.pendingRewards);
-  const { role, isLoggedIn, authChecked } = useUser();
+  const { isLoggedIn, authChecked: userAuthChecked } = useUser();
+  // Role in the active research group (the account role for the main group)
+  const { role, ready: orgReady, isDbOrg } = useActiveOrg();
+  const authChecked = userAuthChecked && orgReady;
   const isStaff = isStaffRole(role);
   const quickCheck = useCarapaceQuickCheck();
-  const carapaceMode = isStaff && quickCheck.enabled;
+  // Research groups upload carapace photos as their normal workflow: no separate quick check.
+  const carapaceMode = isStaff && quickCheck.enabled && !isDbOrg;
+  // Only the main group's staff photograph the plastron; community uploads, research groups and
+  // the quick check use the carapace.
+  const shell: Shell = isStaff && !isDbOrg && !carapaceMode ? 'plastron' : 'carapace';
   const canUseObserverGamification = authChecked && isLoggedIn;
   const isMobile = useMediaQuery('(max-width: 768px)', undefined, { getInitialValueInEffect: false });
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -224,7 +236,7 @@ export default function HomePage() {
       options.push({ value: state, label: state });
       // Only expand sub-locations when a state has multiple locations.
       // Single-location states (e.g. NebraskaCPBS with just CPBS) don't
-      // need a redundant child entry — the state-level prefix match covers it.
+      // need a redundant child entry - the state-level prefix match covers it.
       if (stateLocations.length > 1) {
         for (const loc of stateLocations) {
           options.push({ value: loc, label: `  ${loc.split('/').slice(1).join('/')}` });
@@ -286,7 +298,7 @@ export default function HomePage() {
   }, [matchScopePrefsHydrated]);
 
   // Drop favorites that no longer exist on the server (paths removed).
-  // While GET /locations is in flight, canonical options omit real folders — do not prune yet
+  // While GET /locations is in flight, canonical options omit real folders - do not prune yet
   // or we strip saved favorites (e.g. Kansas) before paths are known.
   useEffect(() => {
     if (!isStaff || locationsLoading || canonicalMatchScopeOptions.length === 0) return;
@@ -355,8 +367,10 @@ export default function HomePage() {
     });
   }, []);
 
+  // A research group with one location has nothing to narrow the match down to.
+  const singleLocation = useLocationStructure().structure === 'single';
   const matchSheetForUpload = isStaff
-    ? selectedMatchSheet === MATCH_ALL_VALUE
+    ? singleLocation || selectedMatchSheet === MATCH_ALL_VALUE
       ? ''
       : selectedMatchSheet
     : undefined;
@@ -473,6 +487,7 @@ export default function HomePage() {
     <Container size='sm' py={{ base: 'md', sm: 'xl' }} px={{ base: 'xs', sm: 'md' }}>
       <Paper shadow='sm' p={{ base: 'md', sm: 'xl' }} radius='md' withBorder>
         <Stack gap='lg'>
+          <UploadGroupPicker />
           {!isStaff && authChecked && !isLoggedIn && (
             <ObserverGamificationTeaser variant="home" />
           )}
@@ -487,7 +502,7 @@ export default function HomePage() {
                   ? 'Upload a photo to save it in the backend and run a match. While logged in, successful uploads also count toward your Observer HQ progress.'
                   : 'Upload a photo to save it in the backend'
                 : canUseObserverGamification
-                  ? 'Submit a carapace sighting — your upload earns XP and counts toward Observer HQ quests'
+                  ? 'Submit a carapace sighting. Your upload earns XP and counts toward Observer HQ quests'
                   : 'Submit a carapace sighting to support the project. Log in or create an account to earn XP and track Observer HQ progress.'}
             </Text>
             <Group justify="center" gap="sm" wrap="wrap">
@@ -508,11 +523,11 @@ export default function HomePage() {
                   leftSection={<IconSkull size={16} stroke={1.5} />}
                   onClick={() => setMarkDeceasedModalOpen(true)}
                 >
-                  Mortality without plastron ID
+                  {isDbOrg ? 'Mortality without ID match' : 'Mortality without plastron ID'}
                 </Button>
               )}
             </Group>
-            {isStaff && (
+            {isStaff && !isDbOrg && (
               <Switch
                 label='Carapace-only quick check'
                 color='orange'
@@ -529,7 +544,7 @@ export default function HomePage() {
                     }
                     quickCheck.setEnabled(true);
                   } else if (quickCheck.status === 'idle') {
-                    // Nothing ran — leave the mode but keep the staged photo.
+                    // Nothing ran - leave the mode but keep the staged photo.
                     quickCheck.reset();
                   } else {
                     handleQuickCheckExit();
@@ -540,7 +555,7 @@ export default function HomePage() {
           </Stack>
 
           {/* Staff/Admin: select which location (backend folder / state) to test against */}
-          {isStaff && (
+          {isStaff && !singleLocation && (
             <Stack gap='xs'>
               <Text size='sm' fw={500}>
                 Which location to test against?
@@ -617,13 +632,15 @@ export default function HomePage() {
               variant='light'
             >
               <Text fw={600} size='sm'>
-                Carapace-only mode — read-only
+                Carapace-only mode (read-only)
               </Text>
               <Text size='sm'>
                 Matches run against carapace references only; nothing is saved.
               </Text>
             </Alert>
           )}
+
+          {!(carapaceMode && quickCheck.status !== 'idle') && authChecked && <ShellPhotoHint shell={shell} />}
 
           {carapaceMode && quickCheck.status !== 'idle' ? (
             <CarapaceQuickCheckResults
@@ -661,7 +678,7 @@ export default function HomePage() {
             <Stack gap='md'>
               <Button
                 size='lg'
-                color={carapaceMode ? 'orange' : undefined}
+                color={SHELL_COLOR[shell]}
                 leftSection={<IconCamera size={20} />}
                 onClick={handleCameraClick}
                 disabled={uploadState === 'uploading'}
@@ -672,7 +689,7 @@ export default function HomePage() {
               <Button
                 size='lg'
                 variant='light'
-                color={carapaceMode ? 'orange' : undefined}
+                color={SHELL_COLOR[shell]}
                 leftSection={<IconPhoto size={20} />}
                 onClick={handleFileSelectClick}
                 disabled={uploadState === 'uploading'}
@@ -694,11 +711,7 @@ export default function HomePage() {
               }}
               multiple={false}
               disabled={uploadState === 'uploading'}
-              style={
-                carapaceMode
-                  ? { borderColor: 'var(--mantine-color-orange-6)' }
-                  : undefined
-              }
+              style={{ borderColor: `var(--mantine-color-${SHELL_COLOR[shell]}-6)` }}
             >
               <Group
                 justify='center'
@@ -718,7 +731,7 @@ export default function HomePage() {
 
                 <div>
                   <Text size='xl' inline ta='center'>
-                    Drop photo here or click to select
+                    Drop the {shell} photo here or click to select
                   </Text>
                   <Text
                     size='sm'
@@ -766,6 +779,7 @@ export default function HomePage() {
       </Paper>
 
       <InstructionsModal
+        shell={shell}
         opened={instructionsOpened}
         onClose={() => setInstructionsOpened(false)}
         onTrainingCompleted={
@@ -779,7 +793,7 @@ export default function HomePage() {
         title={
           <Group gap="sm" wrap="nowrap">
             <IconSkull size={22} stroke={1.5} />
-            <span>Mortality without plastron match</span>
+            <span>{isDbOrg ? 'Mortality without ID match' : 'Mortality without plastron match'}</span>
           </Group>
         }
         size="lg"

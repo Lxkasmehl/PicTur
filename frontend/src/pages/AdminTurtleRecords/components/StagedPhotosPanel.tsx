@@ -102,7 +102,7 @@ export function StagedPhotosPanel({
         {collidingTypes.length > 0 && (
           <Alert color='orange' icon={<IconAlertTriangle size={16} />} p='xs'>
             <Text size='xs'>
-              Multiple replacements staged for {collidingTypes.join(' and ')} — only the last one
+              Multiple replacements staged for {collidingTypes.join(' and ')}. Only the last one
               of each type will become the new reference. Earlier ones will be saved to the Other
               folder instead.
             </Text>
@@ -111,7 +111,7 @@ export function StagedPhotosPanel({
         <Divider />
         <Group justify='space-between' align='center' wrap='wrap' gap='xs'>
           <Text size='xs' c='dimmed'>
-            Staged photos haven't been saved yet. This button saves images only — to update the
+            Staged photos haven't been saved yet. This button saves images only. To update the
             turtle's record fields, use the Update button in the turtle info section below.
           </Text>
           <Button
