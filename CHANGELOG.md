@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-06 - Independent research groups
+
+### Added
+
+- **Independent research groups (multi-tenancy)** (#282): PicTur can now host several research groups on the same server and code base. Every group uses exactly the same pages, workflow and 40 turtle columns as PicTur Research; only the storage behind them differs. Additional groups keep their records in the new PostgreSQL database (same tabs and rows as in Google Sheets), their photos under `ORG_DATA_DIR/<org_id>/data/` (same folder layout) and work with carapace photos. Groups are fully isolated: records, photos, matching caches, locations catalog and permissions are all per group. Full guide: `docs/RESEARCH_GROUPS.md`.
+- **Group switcher** in the header and on the upload page: users who belong to several groups switch the active group, and every page reloads for it. Community users and visitors pick a group that accepts community uploads.
+- **Research Groups page** (`/platform/groups`) for platform super admins: create groups, assign their first admin, and promote or remove other super admins. Super admins are granted via `SUPER_ADMIN_EMAILS`, `npm run set-super-admin` in `auth-backend/`, or on that page.
+- **Group members and invitations**: for database-backed groups, "User Management" lists the group's members (invite by email, change role between staff and admin, remove; the last admin cannot be removed) and whether the group accepts community uploads. New addresses receive an invitation link to `/accept-invite`, which creates the account with a verified email.
+- **Location setup per group**: on the Locations page a group admin chooses one location, several areas, or several programs; the data form and the home page adapt to that choice.
+- **About page** describing PicTur as a platform used by several research groups.
+- **Home page tells users whether to photograph the plastron or the carapace** for the active group.
+- **Backups of research groups**: `scripts/backup-org-data.sh` (`pg_dump` plus a copy of `org_data`) runs as part of `scripts/daily-backup.sh`; the admin "Offline backup (ZIP)" works per group.
+
+### Changed
+
+- **Docker Compose runs a `postgres:16-alpine` service** (volumes `pg-data` and `org-data`). The main group never waits for PostgreSQL; the research-group API connects lazily. Without `DATABASE_URL` (local `python app.py`) a SQLite file is used instead.
+- **Roles are resolved per group on every request**: the existing auth decorators use the user's role in the active group (sent as `X-Org-Slug`, `?org=` on image and download URLs). The JWT `role` claim still describes only the main group, which behaves exactly as before.
+- **No em dashes in site text**: all user-visible text uses colons, commas or parentheses instead, and an ESLint rule keeps it that way.
+
+### Upgrade notes
+
+- Nothing about the main group changes and no existing data is migrated. The research-group tables are created by Alembic migrations on backend start.
+- Set `POSTGRES_PASSWORD` in `.env` for production (the default is a placeholder). Optional: `MAIN_ORG_NAME`, `SUPER_ADMIN_EMAILS`.
+- With a path-based reverse proxy, also route `/api/orgs` and `/api/platform` to the auth backend (:3001), see `.env.docker.example`.
+
 ## [2.0.23] - 2026-10-04 — Date masking, refound-date autofill, Sheets Browser first
 
 ### Added
@@ -643,7 +668,9 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.22...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.23...v2.1.0
+[2.0.23]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.22...v2.0.23
 [2.0.22]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.21...v2.0.22
 [2.0.21]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.20...v2.0.21
 [2.0.20]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.19...v2.0.20
