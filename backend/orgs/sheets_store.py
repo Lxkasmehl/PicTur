@@ -40,6 +40,13 @@ def _book_lock(org_id, book):
         return lock
 
 
+def forget_org(org_id):
+    """Release the locks of a deleted research group."""
+    with _book_locks_guard:
+        for key in [k for k in _book_locks if k[0] == int(org_id)]:
+            _book_locks.pop(key, None)
+
+
 def _http_error(status, message):
     resp = httplib2.Response({'status': status})
     resp.reason = message

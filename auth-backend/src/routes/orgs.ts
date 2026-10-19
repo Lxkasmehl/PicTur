@@ -16,6 +16,7 @@ import {
   createInvitation,
   createOrg,
   deleteInvitation,
+  deleteOrg,
   getActiveInvitation,
   getMembershipsForUser,
   getOrgById,
@@ -231,6 +232,34 @@ router.patch(
     }
     if (accepts_community !== undefined) patch.accepts_community = Boolean(accepts_community);
     res.json({ success: true, org: updateOrg(org.id, patch) });
+  }
+);
+
+// Delete a research group. Super admins only; the body must repeat the group's slug. The Flask
+// backend (DELETE /api/org) checks for turtle data and calls this before it purges the files.
+router.delete(
+  '/:orgId',
+  authenticateToken,
+  requireEmailVerified,
+  requireSuperAdmin,
+  (req: Request, res: Response) => {
+    const orgId = Number(req.params.orgId);
+    const org = Number.isInteger(orgId) ? getOrgById(orgId) : null;
+    if (!org) {
+      res.status(404).json({ error: 'Research group not found' });
+      return;
+    }
+    if (org.id === MAIN_ORG_ID || org.kind !== 'db') {
+      res.status(400).json({ error: 'The main research group cannot be deleted' });
+      return;
+    }
+    const confirm = typeof req.body?.confirm === 'string' ? req.body.confirm.trim().toLowerCase() : '';
+    if (confirm !== org.slug.toLowerCase()) {
+      res.status(400).json({ error: 'Type the URL name of the group to confirm' });
+      return;
+    }
+    deleteOrg(org.id);
+    res.json({ success: true, org: publicOrg(org) });
   }
 );
 

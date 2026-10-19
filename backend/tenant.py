@@ -71,6 +71,8 @@ class Tenant:
     role: str
     #: True when the Authorization header was already validated (and not revoked) for this request
     token_validated: bool = False
+    #: True when the requesting user is a platform super admin (may delete the group)
+    super_admin: bool = False
 
 
 _current = contextvars.ContextVar('pictur_tenant', default=None)
@@ -135,6 +137,7 @@ def resolve_request_tenant():
     org = None
     role = 'community'
     validated = False
+    super_admin = False
     # Backup download links carry no Authorization header; their signed token names the group.
     # No role is granted from it — the archive route authorizes the token itself.
     dl_org = auth_module.download_token_org(request.args.get('dl') or '') if request.args.get('dl') else None
@@ -157,6 +160,7 @@ def resolve_request_tenant():
                 return jsonify({'error': 'Research group not found'}), 404
             if body.get('is_super_admin'):
                 role = 'admin'
+                super_admin = True
             else:
                 membership = next(
                     (m for m in body.get('memberships') or [] if m.get('org_id') == org.get('id')),
@@ -182,7 +186,7 @@ def resolve_request_tenant():
 
     g._tenant_token = activate(
         Tenant(id=int(org['id']), slug=org['slug'], name=org.get('name') or org['slug'], role=role,
-               token_validated=validated)
+               token_validated=validated, super_admin=super_admin)
     )
     return None
 

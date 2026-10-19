@@ -23,11 +23,12 @@ import { useActiveOrg } from '../hooks/useActiveOrg';
 import { useUser } from '../hooks/useUser';
 import { useAppDispatch } from '../store/hooks';
 import { refreshMyOrgs } from '../store/orgActions';
-import { setActiveOrg } from '../store/slices/orgSlice';
+import { MAIN_ORG_SLUG, setActiveOrg } from '../store/slices/orgSlice';
 import { createOrg, listAllOrgs, type Organization } from '../services/api/orgs';
 import { formatLocalDate as formatDate } from '../utils/formatLocalDate';
 import { RolesExplainer } from '../components/org/RolesExplainer';
 import { SuperAdminsPanel } from '../components/org/SuperAdminsPanel';
+import { DeleteGroupModal } from '../components/org/DeleteGroupModal';
 
 function slugify(name: string): string {
   return name
@@ -44,7 +45,7 @@ export default function PlatformGroupsPage() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { authChecked } = useUser();
-  const { isSuperAdmin, loaded } = useActiveOrg();
+  const { active, isSuperAdmin, loaded, select } = useActiveOrg();
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -52,6 +53,7 @@ export default function PlatformGroupsPage() {
   const [adminEmail, setAdminEmail] = useState('');
   const [acceptsCommunity, setAcceptsCommunity] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState<Organization | null>(null);
 
   const load = useCallback(() => {
     listAllOrgs().then(setOrgs).catch(() => setOrgs([]));
@@ -108,6 +110,19 @@ export default function PlatformGroupsPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const onDeleted = (org: Organization) => {
+    setDeleting(null);
+    if (active.slug === org.slug) select(MAIN_ORG_SLUG);
+    notifications.show({
+      color: 'green',
+      icon: <IconCheck size={18} />,
+      title: 'Research group deleted',
+      message: `${org.name} and its data were removed.`,
+    });
+    load();
+    refreshMyOrgs(dispatch);
   };
 
   return (
@@ -213,6 +228,18 @@ export default function PlatformGroupsPage() {
                       >
                         Open
                       </Anchor>
+                      {o.kind === 'db' && (
+                        <Anchor
+                          component='button'
+                          size='sm'
+                          c='red'
+                          ml='md'
+                          onClick={() => setDeleting(o)}
+                          data-testid={`platform-delete-group-${o.slug}`}
+                        >
+                          Delete
+                        </Anchor>
+                      )}
                     </Table.Td>
                   </Table.Tr>
                 ))}
@@ -232,6 +259,7 @@ export default function PlatformGroupsPage() {
         <RolesExplainer />
         <SuperAdminsPanel />
       </Stack>
+      <DeleteGroupModal org={deleting} onClose={() => setDeleting(null)} onDeleted={onDeleted} />
     </Container>
   );
 }
