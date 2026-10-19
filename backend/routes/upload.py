@@ -128,6 +128,39 @@ def convert_pt_to_image_path(pt_path):
     """Backwards-compatible wrapper — delegates to case-insensitive lookup."""
     return find_image_for_pt(pt_path)
 
+def _wants_all_groups(req):
+    return (req.form.get('all_groups') or '').strip().lower() in ('1', 'true', 'yes')
+
+
+def community_upload_targets():
+    """[(group, name)] for every group that accepts community photos; group is None for the main
+    group and a Tenant otherwise. Falls back to the main group alone when the list is unavailable."""
+    from orgs import db as org_db
+
+    targets = []
+    db_ready = None
+    for org in tenant._fetch_public_orgs():
+        name = org.get('name') or org.get('slug')
+        if org.get('kind') != 'db':
+            if not any(t is None for t, _ in targets):
+                targets.append((None, name))
+            continue
+        if db_ready is None:
+            db_ready = org_db.ensure_engine()
+        if db_ready:
+            targets.append((tenant.Tenant(id=int(org['id']), slug=org['slug'], name=name,
+                                          role='community'), name))
+    return targets or [(None, None)]
+
+
+def _copy_for(path, req_id):
+    """Copy of an uploaded temp file for another group's packet."""
+    stem, ext = os.path.splitext(os.path.basename(path))
+    dest = os.path.join(UPLOAD_FOLDER, f"{stem}_{req_id[-6:]}{ext}")
+    shutil.copy2(path, dest)
+    return dest
+
+
 def register_upload_routes(app):
     """Register upload routes"""
 
@@ -376,9 +409,6 @@ def register_upload_routes(app):
                     'finder': finder_name,
                     'email': user_email,
                     'uploaded_at': time.time(),
-                    # Main group: staff classify plastron/carapace later. Research groups are
-                    # carapace-only, so the packet is matched right away.
-                    'photo_type': 'unclassified' if tenant.current() is None else 'carapace',
                 }
 
                 if state and location:
@@ -401,12 +431,23 @@ def register_upload_routes(app):
                     if digital_flag_source in ('gps', 'manual'):
                         user_info['digital_flag_source'] = digital_flag_source
 
-                # Pre-generate request_id so it can be returned immediately
+                # "All research groups": sent without X-Org-Slug, every group that accepts
+                # community photos gets its own packet and decides on its own.
+                if _wants_all_groups(request) and tenant.current() is None:
+                    named_targets = community_upload_targets()
+                else:
+                    named_targets = [(tenant.current(), None)]
+                targets = [t for t, _ in named_targets]
+                if len(targets) > 1:
+                    user_info['shared_with'] = [name for _, name in named_targets]
+
                 safe_name = os.path.basename(temp_path).replace(" ", "_")
-                request_id = f"Req_{int(time.time() * 1000)}_{safe_name}_{uuid.uuid4().hex[:6]}"
+                request_ids = [
+                    f"Req_{int(time.time() * 1000)}_{safe_name}_{uuid.uuid4().hex[:6]}" for _ in targets
+                ]
 
                 # Save extra files to disk now (must happen inside request context)
-                files_with_types = _collect_extra_upload_files(request, request_id)
+                files_with_types = _collect_extra_upload_files(request, request_ids[0])
 
                 # Run matching and packet creation in the background so the
                 # community member is not blocked waiting for AI processing
@@ -437,13 +478,35 @@ def register_upload_routes(app):
                             except OSError:
                                 pass
 
-                # tenant.spawn keeps the research-group context (packet lands in the right group)
-                tenant.spawn(_build_packet, temp_path, user_info, request_id, files_with_types)
+                # Copies first (each packet build deletes its own files), then one build per group.
+                jobs = []
+                for i, (target, req_id) in enumerate(zip(targets, request_ids)):
+                    if i == 0:
+                        jobs.append((target, req_id, temp_path, files_with_types))
+                        continue
+                    img_copy = _copy_for(temp_path, req_id)
+                    fwt_copy = [{**item, 'path': _copy_for(item['path'], req_id)}
+                                for item in files_with_types if item.get('path')]
+                    jobs.append((target, req_id, img_copy, fwt_copy))
+                for target, req_id, img_path, fwt in jobs:
+                    # Main group: staff classify plastron/carapace later. Research groups are
+                    # carapace-only, so the packet is matched right away.
+                    u_info = {**user_info, 'photo_type': 'unclassified' if target is None else 'carapace'}
+                    # tenant.spawn keeps the research-group context (packet lands in the right group)
+                    token = tenant.activate(target)
+                    try:
+                        tenant.spawn(_build_packet, img_path, u_info, req_id, fwt)
+                    finally:
+                        tenant.deactivate(token)
 
                 return jsonify({
                     'success': True,
-                    'request_id': request_id,
+                    'request_id': request_ids[0],
+                    'request_ids': request_ids,
+                    'groups': [t.slug if t else tenant.MAIN_SLUG for t in targets],
                     'message': 'Photo uploaded successfully. Waiting for admin review.'
+                    if len(targets) == 1
+                    else f'Photo sent to {len(targets)} research groups. Each will review it.',
                 })
 
         except Exception as e:

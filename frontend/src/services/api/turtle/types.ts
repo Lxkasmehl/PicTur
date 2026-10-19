@@ -13,6 +13,9 @@ export type PhotoType = 'plastron' | 'carapace' | 'unclassified';
 export interface UploadPhotoResponse {
   success: boolean;
   request_id?: string;
+  /** Community upload to all research groups: one review packet per group. */
+  request_ids?: string[];
+  groups?: string[];
   matches?: TurtleMatch[];
   uploaded_image_path?: string;
   photo_type?: PhotoType;

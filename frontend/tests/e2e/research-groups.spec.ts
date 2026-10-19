@@ -112,6 +112,21 @@ test.describe('Research groups', () => {
     await expect(page.getByRole('heading', { name: `Members of ${name}` })).toHaveCount(0);
   });
 
+  test('super admins delete an empty group after typing its URL name', async ({ page }) => {
+    test.setTimeout(90_000);
+    const name = await createAndOpenGroup(page);
+    const slug = name.replace('E2E Group ', '');
+    await page.goto('/platform/groups');
+    await page.getByTestId(`platform-delete-group-${slug}`).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText(/holds no turtles, records or photos/)).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.getByTestId('delete-group-submit')).toBeDisabled();
+    await dialog.getByTestId('delete-group-confirm-slug').fill(slug);
+    await dialog.getByTestId('delete-group-submit').click();
+    await expect(page.getByText('Research group deleted')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(slug, { exact: true })).toHaveCount(0);
+  });
+
   test('main-group admin keeps the classic user management', async ({ page }) => {
     await login(page, process.env.E2E_ADMIN_EMAIL ?? 'admin@test.com', process.env.E2E_ADMIN_PASSWORD ?? 'testpassword123');
     // Main-group staff photograph the plastron

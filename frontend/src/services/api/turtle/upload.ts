@@ -2,6 +2,7 @@ import { removeToken, TURTLE_API_BASE_URL } from '../config';
 import { prepareImageForUpload } from '../../../utils/prepareImageForUpload';
 import { parseUploadApiErrorBody } from '../../../utils/uploadErrorMessages';
 import { authHeaders } from './http';
+import { MAIN_ORG_SLUG } from '../orgContext';
 import type {
   LocationHint,
   QuickCheckResponse,
@@ -23,6 +24,8 @@ export const uploadTurtlePhoto = async (
   flagOptions?: UploadFlagOptions,
   /** Optional: microhabitat or condition photos (community upload, same request) */
   extraFiles?: UploadExtraFile[],
+  /** Community upload: send to every research group that accepts community photos */
+  allGroups?: boolean,
 ): Promise<UploadPhotoResponse> => {
   const preparedMain = await prepareImageForUpload(file);
   const preparedExtras = extraFiles?.length
@@ -58,6 +61,9 @@ export const uploadTurtlePhoto = async (
       formData.append('digital_flag_source', flagOptions.digitalFlag.source);
     }
   }
+  if (allGroups) {
+    formData.append('all_groups', '1');
+  }
   if (preparedExtras?.length) {
     preparedExtras.forEach((ef, i) => {
       formData.append(`extra_${ef.type}_${i}`, ef.file);
@@ -69,7 +75,8 @@ export const uploadTurtlePhoto = async (
 
   const response = await fetch(`${TURTLE_API_BASE_URL}/upload`, {
     method: 'POST',
-    headers: authHeaders(),
+    // "All groups" is fanned out by the backend from the main group's context.
+    headers: authHeaders(allGroups ? { 'X-Org-Slug': MAIN_ORG_SLUG } : {}),
     body: formData,
   });
 
