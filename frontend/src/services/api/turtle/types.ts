@@ -86,6 +86,8 @@ export interface ReviewQueueItem {
     digital_flag_lat?: number;
     digital_flag_lon?: number;
     digital_flag_source?: 'gps' | 'manual';
+    /** Community upload sent to every research group: names of all groups that got a copy. */
+    shared_with?: string[];
   };
   /** Microhabitat / condition photos uploaded with this find */
   additional_images?: AdditionalImage[];
