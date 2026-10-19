@@ -5,7 +5,7 @@ CRUD operations for Google Sheets turtle data
 from typing import Dict, List, Optional, Any
 from googleapiclient.errors import HttpError
 from .helpers import escape_sheet_name, get_sheet_name_for_region, column_index_to_letter
-from .columns import COLUMN_MAPPING
+from .columns import active_column_mapping
 from .row_formatting import apply_deceased_row_background, is_deceased_yes
 from . import sheet_management
 from .value_normalize import format_field_value_for_sheet, normalize_turtle_row_after_read
@@ -71,9 +71,10 @@ def get_turtle_data(service, spreadsheet_id: str, primary_id: str, sheet_name: s
         
         # Map row data to field names
         turtle_data = {}
+        column_mapping = active_column_mapping(service)
         for header, col_idx in column_indices.items():
-            if header in COLUMN_MAPPING:
-                field_name = COLUMN_MAPPING[header]
+            if header in column_mapping:
+                field_name = column_mapping[header]
                 value = row_data[col_idx] if col_idx < len(row_data) else ''
                 turtle_data[field_name] = value.strip() if value else ''
         
@@ -173,9 +174,10 @@ def create_turtle_data(service, spreadsheet_id: str, turtle_data: Dict[str, Any]
         row_data = [''] * (max_col_idx + 1)
         
         # Fill in the data
+        column_mapping = active_column_mapping(service)
         for header, col_idx in column_indices.items():
-            if header in COLUMN_MAPPING:
-                field_name = COLUMN_MAPPING[header]
+            if header in column_mapping:
+                field_name = column_mapping[header]
                 if field_name in turtle_data:
                     row_data[col_idx] = format_field_value_for_sheet(
                         field_name, turtle_data[field_name]
@@ -291,9 +293,10 @@ def update_turtle_data(service, spreadsheet_id: str, primary_id: str, turtle_dat
         row_data = list(values[0])
         
         # Update the row data
+        column_mapping = active_column_mapping(service)
         for header, col_idx in column_indices.items():
-            if header in COLUMN_MAPPING:
-                field_name = COLUMN_MAPPING[header]
+            if header in column_mapping:
+                field_name = column_mapping[header]
                 if field_name in turtle_data:
                     # Extend row_data if necessary
                     while len(row_data) <= col_idx:

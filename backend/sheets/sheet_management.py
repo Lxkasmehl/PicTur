@@ -10,6 +10,7 @@ from .helpers import escape_sheet_name, column_index_to_letter, is_backup_sheet
 from .columns import (
     CANONICAL_COLUMN_ORDER,
     FIELD_TO_COLUMN,
+    active_field_to_column,
     collect_missing_headers_for_turtle_data,
     compute_insert_index_for_missing_column,
 )
@@ -252,7 +253,7 @@ def ensure_missing_columns_for_turtle_write(
     if is_backup_sheet(sheet_name):
         return False
     if field_to_column is None:
-        field_to_column = FIELD_TO_COLUMN
+        field_to_column = active_field_to_column(service)
 
     try:
         column_indices = get_all_column_indices_func(sheet_name)

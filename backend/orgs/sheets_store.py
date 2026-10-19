@@ -441,4 +441,11 @@ def make_sheets_service(org_id, book):
         def _reinitialize_service(self):
             self._invalidate_list_sheets_cache()
 
+        def _new_tab_headers(self):
+            # The group's chosen columns (turtle_columns.json); hidden ones are added back only
+            # when data for them is written.
+            from turtle_columns import tab_headers
+
+            return tab_headers(self.org_id)
+
     return DbSheetsService()

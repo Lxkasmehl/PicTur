@@ -127,6 +127,24 @@ test.describe('Research groups', () => {
     await expect(page.getByText(slug, { exact: true })).toHaveCount(0);
   });
 
+  test('group admins choose the turtle data fields and add their own', async ({ page }) => {
+    test.setTimeout(90_000);
+    await createAndOpenGroup(page);
+    const panel = page.getByTestId('group-data-fields');
+    await expect(panel.getByTestId('turtle-column-species')).toBeChecked({ timeout: 15_000 });
+    // required fields cannot be turned off
+    await expect(panel.getByTestId('turtle-column-sex')).toBeDisabled();
+    await panel.getByTestId('turtle-column-species').click();
+    await panel.getByTestId('custom-column-add').click();
+    await panel.getByTestId('custom-column-label-0').fill('Eye color');
+    await panel.getByTestId('group-data-fields-save').click();
+    await expect(page.getByText('Data fields saved')).toBeVisible({ timeout: 15_000 });
+
+    await page.reload();
+    await expect(panel.getByTestId('custom-column-label-0')).toHaveValue('Eye color', { timeout: 15_000 });
+    await expect(panel.getByTestId('turtle-column-species')).not.toBeChecked();
+  });
+
   test('main-group admin keeps the classic user management', async ({ page }) => {
     await login(page, process.env.E2E_ADMIN_EMAIL ?? 'admin@test.com', process.env.E2E_ADMIN_PASSWORD ?? 'testpassword123');
     // Main-group staff photograph the plastron

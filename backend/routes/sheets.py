@@ -15,6 +15,7 @@ from general_locations_catalog import resolve_general_location_from_sheet_and_va
 from sheets import sheet_management
 from sheets import lookup as sheets_lookup
 from sheets.value_normalize import normalize_turtle_row_after_read
+from sheets.columns import active_column_mapping
 
 # Timeout for single attempt to find sheet + get turtle data (avoids hanging on SSL/slow API)
 SHEETS_TURTLE_DATA_TIMEOUT_SEC = 25
@@ -916,6 +917,7 @@ def register_sheets_routes(app):
                             column_indices[header.strip()] = idx
                     
                     # Process data rows
+                    column_mapping = active_column_mapping(service)
                     for row_idx, row_data in enumerate(values[1:], start=2):
                         if not row_data or len(row_data) == 0:
                             continue
@@ -923,8 +925,8 @@ def register_sheets_routes(app):
                         # Map row data to field names
                         turtle_data = {}
                         for header, col_idx in column_indices.items():
-                            if header in service.COLUMN_MAPPING:
-                                field_name = service.COLUMN_MAPPING[header]
+                            if header in column_mapping:
+                                field_name = column_mapping[header]
                                 value = row_data[col_idx] if col_idx < len(row_data) else ''
                                 turtle_data[field_name] = value.strip() if value else ''
 
