@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { clickUploadPhotoButton, getTestImageBuffer, loginAsCommunity } from './fixtures';
 
 /**
  * Research groups (multi-tenancy): a super admin creates a database-backed group and opens it.
@@ -143,6 +144,82 @@ test.describe('Research groups', () => {
     await page.reload();
     await expect(panel.getByTestId('custom-column-label-0')).toHaveValue('Eye color', { timeout: 15_000 });
     await expect(panel.getByTestId('turtle-column-species')).not.toBeChecked();
+  });
+
+  test('community photo sent to all groups reaches a group with its own fields; deleting it needs the full name', async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(180_000);
+    const slug = `e2e-all-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const name = `E2E Open Group ${slug}`;
+
+    // Super admin creates a group that accepts community photos and picks its own data fields
+    await login(page, SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD);
+    await page.goto('/platform/groups');
+    await page.getByLabel('Name', { exact: true }).fill(name);
+    await page.getByLabel('URL name').fill(slug);
+    await expect(page.getByLabel('Accept photos from the community')).toBeChecked();
+    await page.getByRole('radio', { name: 'Choose fields and add our own' }).check();
+    await page.getByTestId('turtle-column-species').click({ timeout: 15_000 });
+    await expect(page.getByTestId('turtle-column-species')).not.toBeChecked();
+    await page.getByTestId('custom-column-add').click();
+    await page.getByTestId('custom-column-label-0').fill('Eye color');
+    await page.getByTestId('platform-create-group').click();
+    await expect(page.getByText(slug, { exact: true })).toBeVisible({ timeout: 15_000 });
+
+    // Each step waits at most 60s, so a failure still leaves time to delete the group below
+    try {
+      // A community member does not know the group and sends the photo to all of them
+      const community = await browser.newContext();
+      const cpage = await community.newPage();
+      try {
+        await loginAsCommunity(cpage);
+        const picker = cpage.getByTestId('upload-group-select');
+        await expect(picker).toBeVisible({ timeout: 15_000 });
+        await picker.click();
+        await cpage.getByRole('option', { name: /^All research groups/ }).click();
+        await expect(picker).toHaveValue(/^All research groups/);
+        await cpage.locator('input[type="file"]:not([capture])').first().setInputFiles({
+          name: `${slug}.png`,
+          mimeType: 'image/png',
+          buffer: getTestImageBuffer(),
+        });
+        await clickUploadPhotoButton(cpage);
+        await expect(cpage.getByTestId('upload-success-alert')).toBeVisible({ timeout: 60_000 });
+      } finally {
+        await community.close();
+      }
+
+      // The group got its own copy, marked as sent to all groups
+      await page.getByRole('row', { name: new RegExp(slug) }).getByRole('button', { name: 'Open' }).click();
+      await expect(page.getByRole('heading', { name: `Members of ${name}` })).toBeVisible({ timeout: 15_000 });
+      await page.goto('/admin/turtle-records');
+      await page.getByRole('tab', { name: /Review Queue/ }).click();
+      const queue = page.getByRole('tabpanel', { name: /Review Queue/ });
+      await expect(queue.getByTestId('review-shared-badge')).toHaveCount(1, { timeout: 30_000 });
+      await expect(queue.getByTestId('review-upload-source-badge')).toHaveText('Community upload');
+
+      // Its turtle form shows the group's own field, not the one it turned off
+      await queue.getByTestId('review-shared-badge').click();
+      await page.getByRole('button', { name: 'Create New Turtle' }).first().click({ timeout: 60_000 });
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.getByLabel('Eye color')).toBeVisible({ timeout: 15_000 });
+      await expect(dialog.getByLabel('Species', { exact: true })).toHaveCount(0);
+      await page.keyboard.press('Escape');
+    } finally {
+      // The group now holds data: deleting it needs the URL name and the full name
+      await page.goto('/platform/groups');
+      await page.getByTestId(`platform-delete-group-${slug}`).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.getByText('This group still holds data')).toBeVisible({ timeout: 15_000 });
+      await dialog.getByTestId('delete-group-confirm-slug').fill(slug);
+      await expect(dialog.getByTestId('delete-group-submit')).toBeDisabled();
+      await dialog.getByTestId('delete-group-confirm-name').fill(name);
+      await dialog.getByTestId('delete-group-submit').click();
+      await expect(page.getByText('Research group deleted')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(slug, { exact: true })).toHaveCount(0);
+    }
   });
 
   test('main-group admin keeps the classic user management', async ({ page }) => {
