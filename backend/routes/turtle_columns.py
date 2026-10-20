@@ -5,7 +5,7 @@ Turtle data columns of the active research group (see turtle_columns.py).
 from flask import jsonify, request
 
 import tenant
-from auth import require_admin, require_admin_only
+from auth import require_admin_only, require_auth
 from services.manager_service import get_sheets_service, get_community_sheets_service
 from sheets.helpers import escape_sheet_name
 import turtle_columns
@@ -52,9 +52,15 @@ def _rename_headers(renames):
 
 def register_turtle_column_routes(app):
     @app.route('/api/turtle-columns', methods=['GET'])
-    @require_admin
+    @require_auth
     def get_turtle_columns():
-        """Columns the turtle forms show for the active group."""
+        """Columns the turtle forms show for the active group.
+
+        Without a group this is the template of the original PicTur group, which super admins
+        pick from when creating a group; they are often not staff of the main group themselves.
+        """
+        if tenant.current() is not None and (request.user or {}).get('role') not in ('staff', 'admin'):
+            return jsonify({'error': 'Staff or admin access required'}), 403
         return jsonify(_payload(turtle_columns.get_schema()))
 
     @app.route('/api/turtle-columns', methods=['POST'])

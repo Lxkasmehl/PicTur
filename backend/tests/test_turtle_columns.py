@@ -115,3 +115,17 @@ def test_other_groups_do_not_see_custom_columns(env):
     _configure(env, custom=[{'label': 'Eye color'}])
     r = env['client'].get('/api/turtle-columns', headers=_h('b-staff', 'beta'))
     assert r.get_json()['custom'] == []
+
+
+def test_super_admin_reads_the_template_without_main_group_role(env):
+    """Creating a group offers the main group's columns as template; super admins are often
+    plain community members of the main group."""
+    r = env['client'].get('/api/turtle-columns', headers=_h('super'))
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()['configurable'] is False
+    assert 'species' in {c['key'] for c in r.get_json()['standard']}
+
+
+def test_group_columns_stay_staff_only(env):
+    r = env['client'].get('/api/turtle-columns', headers=_h('b-staff', 'alpha'))
+    assert r.status_code == 403
