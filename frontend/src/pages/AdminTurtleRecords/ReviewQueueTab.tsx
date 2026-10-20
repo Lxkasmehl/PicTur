@@ -17,6 +17,7 @@ import {
   SimpleGrid,
   Stack,
   Text,
+  Tooltip,
 } from '@mantine/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
@@ -998,6 +999,17 @@ export function ReviewQueueTab() {
                             >
                               {uploadSourceLabel(item.request_id)}
                             </Badge>
+                            {(item.metadata.shared_with?.length ?? 0) > 1 && (
+                              <Tooltip
+                                label={`The uploader did not pick a group. Also sent to: ${item.metadata.shared_with!.join(', ')}`}
+                                multiline
+                                maw={280}
+                              >
+                                <Badge color='grape' variant='light' size='sm' data-testid='review-shared-badge'>
+                                  All groups
+                                </Badge>
+                              </Tooltip>
+                            )}
                           </Group>
                           <Group gap='xs'>
                             <Text size='xs' c='dimmed'>

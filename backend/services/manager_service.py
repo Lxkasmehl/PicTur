@@ -61,6 +61,15 @@ def _tenant_sheets_service(t, book):
         return svc
 
 
+def forget_tenant(org_id):
+    """Drop the cached manager (and with it its matching caches) and Sheets services of a
+    deleted research group."""
+    with _tenant_lock:
+        _tenant_managers.pop(int(org_id), None)
+        for key in [k for k in _tenant_sheets if k[0] == int(org_id)]:
+            _tenant_sheets.pop(key, None)
+
+
 def __getattr__(name):
     """`manager_service.manager` / `.manager_ready` for the active research group (PEP 562).
     Tests that patch these names still work: a patched module attribute takes precedence."""

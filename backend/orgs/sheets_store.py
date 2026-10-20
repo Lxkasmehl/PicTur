@@ -40,6 +40,13 @@ def _book_lock(org_id, book):
         return lock
 
 
+def forget_org(org_id):
+    """Release the locks of a deleted research group."""
+    with _book_locks_guard:
+        for key in [k for k in _book_locks if k[0] == int(org_id)]:
+            _book_locks.pop(key, None)
+
+
 def _http_error(status, message):
     resp = httplib2.Response({'status': status})
     resp.reason = message
@@ -433,5 +440,12 @@ def make_sheets_service(org_id, book):
 
         def _reinitialize_service(self):
             self._invalidate_list_sheets_cache()
+
+        def _new_tab_headers(self):
+            # The group's chosen columns (turtle_columns.json); hidden ones are added back only
+            # when data for them is written.
+            from turtle_columns import tab_headers
+
+            return tab_headers(self.org_id)
 
     return DbSheetsService()

@@ -352,6 +352,10 @@ class GoogleSheetsService:
             self._list_sheets_cache_time = time.time()
             return result
 
+    def _new_tab_headers(self):
+        """Header row for a new tab (research groups: their chosen columns)."""
+        return list(CANONICAL_COLUMN_ORDER)
+
     def create_sheet_with_headers(self, sheet_name: str) -> bool:
         """Create a new sheet (tab) with all required headers."""
         with self._api_lock:
@@ -361,7 +365,7 @@ class GoogleSheetsService:
                 sheet_name,
                 self.COLUMN_MAPPING,
                 self.list_sheets,
-                header_order=list(CANONICAL_COLUMN_ORDER),
+                header_order=self._new_tab_headers(),
                 apply_general_location_validation=self.apply_general_location_sheet_validation,
             )
             if result:

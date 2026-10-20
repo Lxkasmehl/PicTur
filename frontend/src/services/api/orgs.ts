@@ -4,6 +4,7 @@
  */
 
 import { apiRequest, type UserRole } from './auth';
+import { getToken, TURTLE_API_BASE_URL } from './config';
 
 export type OrgKind = 'sheets' | 'db';
 export type OrgMemberRole = 'staff' | 'admin';
@@ -109,6 +110,41 @@ export async function updateOrg(
 ): Promise<Organization> {
   const r = await apiRequest(`/orgs/${orgId}`, { method: 'PATCH', body: JSON.stringify(patch) });
   return (await json<{ org: Organization }>(r, 'Failed to update research group')).org;
+}
+
+/** What a research group holds; anything but zero requires typing its full name to delete it. */
+export interface OrgUsage {
+  turtle_records: number;
+  community_records: number;
+  review_queue: number;
+  photos: number;
+  has_data: boolean;
+}
+
+function flaskHeaders(slug: string): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-Org-Slug': slug };
+  const token = getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
+/** Super admin: data held by a group (Flask backend, independent of the active group). */
+export async function getOrgUsage(slug: string): Promise<OrgUsage> {
+  const r = await fetch(`${TURTLE_API_BASE_URL}/org/usage`, { headers: flaskHeaders(slug) });
+  return (await json<{ usage: OrgUsage }>(r, 'Failed to load group data')).usage;
+}
+
+/**
+ * Super admin: delete a group with all its data. `confirmName` (the full group name) is required
+ * when the group still holds data.
+ */
+export async function deleteOrg(slug: string, confirmName?: string): Promise<{ purged: boolean }> {
+  const r = await fetch(`${TURTLE_API_BASE_URL}/org`, {
+    method: 'DELETE',
+    headers: flaskHeaders(slug),
+    body: JSON.stringify({ confirm_slug: slug, confirm_name: confirmName ?? '' }),
+  });
+  return json(r, 'Failed to delete research group');
 }
 
 // ---- group admin ----

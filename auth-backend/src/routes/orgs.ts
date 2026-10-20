@@ -6,6 +6,7 @@
  * member endpoints only apply to the database-backed groups.
  */
 import express, { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import db from '../db/database.js';
 import {
   MAIN_ORG_ID,
@@ -16,6 +17,7 @@ import {
   createInvitation,
   createOrg,
   deleteInvitation,
+  deleteOrg,
   getActiveInvitation,
   getMembershipsForUser,
   getOrgById,
@@ -231,6 +233,55 @@ router.patch(
     }
     if (accepts_community !== undefined) patch.accepts_community = Boolean(accepts_community);
     res.json({ success: true, org: updateOrg(org.id, patch) });
+  }
+);
+
+// Delete a research group. Super admins only; the body must repeat the group's slug. The Flask
+// backend (DELETE /api/org) checks for turtle data and calls this before it purges the files.
+/**
+ * Groups are deleted through the turtle backend (DELETE /api/org), which checks the confirmation
+ * rules and purges the group's records and photos. It signs a short-lived grant for exactly this
+ * group and user; without it a direct call would remove the group here and orphan its data there.
+ */
+function hasOrgDeleteGrant(req: Request, orgId: number): boolean {
+  const grant = req.headers['x-org-delete-grant'];
+  const secret = process.env.JWT_SECRET;
+  if (typeof grant !== 'string' || !secret) return false;
+  try {
+    const payload = jwt.verify(grant, secret) as { purpose?: string; org?: number; uid?: number };
+    return payload.purpose === 'org_delete' && payload.org === orgId && payload.uid === (req as AuthRequest).user?.id;
+  } catch {
+    return false;
+  }
+}
+
+router.delete(
+  '/:orgId',
+  authenticateToken,
+  requireEmailVerified,
+  requireSuperAdmin,
+  (req: Request, res: Response) => {
+    const orgId = Number(req.params.orgId);
+    const org = Number.isInteger(orgId) ? getOrgById(orgId) : null;
+    if (!org) {
+      res.status(404).json({ error: 'Research group not found' });
+      return;
+    }
+    if (org.id === MAIN_ORG_ID || org.kind !== 'db') {
+      res.status(400).json({ error: 'The main research group cannot be deleted' });
+      return;
+    }
+    const confirm = typeof req.body?.confirm === 'string' ? req.body.confirm.trim().toLowerCase() : '';
+    if (confirm !== org.slug.toLowerCase()) {
+      res.status(400).json({ error: 'Type the URL name of the group to confirm' });
+      return;
+    }
+    if (!hasOrgDeleteGrant(req, org.id)) {
+      res.status(403).json({ error: 'Delete research groups from the Research Groups page' });
+      return;
+    }
+    deleteOrg(org.id);
+    res.json({ success: true, org: publicOrg(org) });
   }
 );
 

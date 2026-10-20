@@ -132,6 +132,28 @@ FIELD_TO_COLUMN: Dict[str, str] = _build_field_to_column(COLUMN_MAPPING)
 _CANONICAL_INDEX = {h: i for i, h in enumerate(CANONICAL_COLUMN_ORDER)}
 
 
+def _org_of(service: Any):
+    """Research group a Sheets service (or its API object) belongs to. Taken from the service,
+    not the request context, because reads run in worker threads without that context."""
+    return getattr(service, 'org_id', None)
+
+
+def active_column_mapping(service: Any = None) -> Dict[str, str]:
+    """COLUMN_MAPPING plus the research group's own columns (see turtle_columns)."""
+    from turtle_columns import custom_column_mapping
+
+    extra = custom_column_mapping(_org_of(service))
+    return {**COLUMN_MAPPING, **extra} if extra else COLUMN_MAPPING
+
+
+def active_field_to_column(service: Any = None) -> Dict[str, str]:
+    """FIELD_TO_COLUMN plus the research group's own columns."""
+    from turtle_columns import custom_column_mapping
+
+    extra = custom_column_mapping(_org_of(service))
+    return {**FIELD_TO_COLUMN, **{field: header for header, field in extra.items()}} if extra else FIELD_TO_COLUMN
+
+
 def compute_insert_index_for_missing_column(
     headers_ordered: Sequence[str],
     missing_header: str,

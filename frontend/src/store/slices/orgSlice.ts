@@ -4,12 +4,21 @@ import { MAIN_ORG_SLUG } from '../../services/api/orgContext';
 
 export { MAIN_ORG_SLUG };
 const ACTIVE_ORG_KEY = 'active_org';
+const UPLOAD_ALL_KEY = 'upload_all_groups';
 
 function readActiveSlug(): string {
   try {
     return localStorage.getItem(ACTIVE_ORG_KEY) || MAIN_ORG_SLUG;
   } catch {
     return MAIN_ORG_SLUG;
+  }
+}
+
+function readUploadToAll(): boolean {
+  try {
+    return localStorage.getItem(UPLOAD_ALL_KEY) === '1';
+  } catch {
+    return false;
   }
 }
 
@@ -26,6 +35,8 @@ interface OrgState {
   loaded: boolean;
   /** True once the public group list has been fetched (or failed). */
   publicLoaded: boolean;
+  /** Community uploads go to every group that accepts community photos (persisted per browser). */
+  uploadToAllGroups: boolean;
 }
 
 const initialState: OrgState = {
@@ -36,6 +47,7 @@ const initialState: OrgState = {
   activeSlug: readActiveSlug(),
   loaded: false,
   publicLoaded: false,
+  uploadToAllGroups: readUploadToAll(),
 };
 
 const orgSlice = createSlice({
@@ -64,6 +76,14 @@ const orgSlice = createSlice({
         // storage unavailable (private mode); keep in memory only
       }
     },
+    setUploadToAllGroups: (state, action: PayloadAction<boolean>) => {
+      state.uploadToAllGroups = action.payload;
+      try {
+        localStorage.setItem(UPLOAD_ALL_KEY, action.payload ? '1' : '0');
+      } catch {
+        // storage unavailable (private mode); keep in memory only
+      }
+    },
     clearMyOrgs: (state) => {
       state.memberships = [];
       state.allOrgs = [];
@@ -72,5 +92,13 @@ const orgSlice = createSlice({
   },
 });
 
-export const { setMyOrgs, setPublicOrgs, setAllOrgs, setOrgsLoaded, setActiveOrg, clearMyOrgs } = orgSlice.actions;
+export const {
+  setMyOrgs,
+  setPublicOrgs,
+  setAllOrgs,
+  setOrgsLoaded,
+  setActiveOrg,
+  setUploadToAllGroups,
+  clearMyOrgs,
+} = orgSlice.actions;
 export default orgSlice.reducer;

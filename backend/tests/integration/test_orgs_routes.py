@@ -244,3 +244,38 @@ def test_super_admins_promote_list_and_demote(auth_url, super_admin_token, staff
     assert all(s["email"] != staff_email for s in r.json()["super_admins"])
     assert requests.get(base, headers=_h(staff_token), timeout=10).status_code == 403
     assert requests.delete(f"{base}/{promoted['id']}", headers=_h(super_admin_token), timeout=10).status_code == 404
+
+
+def test_delete_org_end_to_end(backend_url, auth_url, super_admin_token, admin_token, new_org):
+    """Flask DELETE /api/org: super admin only, URL name must be repeated, the group is gone after."""
+    slug = new_org["slug"]
+    flask = f"{backend_url}/api/org"
+    r = requests.delete(flask, headers={**_h(admin_token), "X-Org-Slug": slug},
+                        json={"confirm_slug": slug}, timeout=10)
+    assert r.status_code == 403
+    r = requests.delete(flask, headers={**_h(super_admin_token), "X-Org-Slug": slug},
+                        json={"confirm_slug": "wrong"}, timeout=10)
+    assert r.status_code == 400
+    r = requests.get(f"{flask}/usage", headers={**_h(super_admin_token), "X-Org-Slug": slug}, timeout=10)
+    assert r.status_code == 200 and r.json()["usage"]["has_data"] is False
+    r = requests.delete(flask, headers={**_h(super_admin_token), "X-Org-Slug": slug},
+                        json={"confirm_slug": slug}, timeout=30)
+    assert r.status_code == 200, r.text
+    r = requests.get(f"{auth_url}/orgs", headers=_h(super_admin_token), timeout=10)
+    assert slug not in {o["slug"] for o in r.json()["orgs"]}
+
+
+def test_auth_delete_org_guards(auth_url, super_admin_token, admin_token, new_org):
+    org_id = new_org["id"]
+    r = requests.delete(f"{auth_url}/orgs/{org_id}", headers=_h(admin_token), json={"confirm": new_org["slug"]}, timeout=10)
+    assert r.status_code == 403
+    r = requests.delete(f"{auth_url}/orgs/1", headers=_h(super_admin_token), json={"confirm": "main"}, timeout=10)
+    assert r.status_code == 400
+    r = requests.delete(f"{auth_url}/orgs/{org_id}", headers=_h(super_admin_token), json={}, timeout=10)
+    assert r.status_code == 400
+    # Only the Flask purge workflow may delete: a direct call with the right URL name is refused
+    r = requests.delete(f"{auth_url}/orgs/{org_id}", headers=_h(super_admin_token),
+                        json={"confirm": new_org["slug"]}, timeout=10)
+    assert r.status_code == 403
+    r = requests.get(f"{auth_url}/orgs", headers=_h(super_admin_token), timeout=10)
+    assert new_org["slug"] in {o["slug"] for o in r.json()["orgs"]}

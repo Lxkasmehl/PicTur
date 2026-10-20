@@ -120,6 +120,15 @@ export function updateOrg(
   return getOrgById(id);
 }
 
+/**
+ * Removes a research group from the auth database; memberships and invitations go with it
+ * (ON DELETE CASCADE). The group's turtle data is purged by the Flask backend, which calls this.
+ */
+export function deleteOrg(id: number): boolean {
+  if (id === MAIN_ORG_ID) return false;
+  return db.prepare('DELETE FROM organizations WHERE id = ?').run(id).changes > 0;
+}
+
 export function isSuperAdmin(userId: number): boolean {
   const row = db.prepare('SELECT is_super_admin FROM users WHERE id = ?').get(userId) as
     | { is_super_admin: number }

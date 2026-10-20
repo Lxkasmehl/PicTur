@@ -10,6 +10,7 @@ import {
   Group,
   Loader,
   Paper,
+  Radio,
   Stack,
   Switch,
   Table,
@@ -23,11 +24,19 @@ import { useActiveOrg } from '../hooks/useActiveOrg';
 import { useUser } from '../hooks/useUser';
 import { useAppDispatch } from '../store/hooks';
 import { refreshMyOrgs } from '../store/orgActions';
-import { setActiveOrg } from '../store/slices/orgSlice';
+import { MAIN_ORG_SLUG, setActiveOrg } from '../store/slices/orgSlice';
 import { createOrg, listAllOrgs, type Organization } from '../services/api/orgs';
 import { formatLocalDate as formatDate } from '../utils/formatLocalDate';
 import { RolesExplainer } from '../components/org/RolesExplainer';
 import { SuperAdminsPanel } from '../components/org/SuperAdminsPanel';
+import { DeleteGroupModal } from '../components/org/DeleteGroupModal';
+import { TurtleColumnsEditor } from '../components/org/TurtleColumnsEditor';
+import {
+  getTurtleColumns,
+  setTurtleColumns,
+  type StandardColumn,
+  type TurtleColumnsInput,
+} from '../services/api/turtleColumns';
 
 function slugify(name: string): string {
   return name
@@ -44,7 +53,7 @@ export default function PlatformGroupsPage() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { authChecked } = useUser();
-  const { isSuperAdmin, loaded } = useActiveOrg();
+  const { active, isSuperAdmin, loaded, select } = useActiveOrg();
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -52,6 +61,11 @@ export default function PlatformGroupsPage() {
   const [adminEmail, setAdminEmail] = useState('');
   const [acceptsCommunity, setAcceptsCommunity] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState<Organization | null>(null);
+  // Data fields of the new group: every standard field (default) or a custom choice
+  const [fieldsMode, setFieldsMode] = useState<'all' | 'custom'>('all');
+  const [templateColumns, setTemplateColumns] = useState<StandardColumn[] | null>(null);
+  const [fields, setFields] = useState<TurtleColumnsInput>({ standard: [], custom: [] });
 
   const load = useCallback(() => {
     listAllOrgs().then(setOrgs).catch(() => setOrgs([]));
@@ -60,6 +74,19 @@ export default function PlatformGroupsPage() {
   useEffect(() => {
     if (isSuperAdmin) load();
   }, [isSuperAdmin, load]);
+
+  useEffect(() => {
+    if (fieldsMode !== 'custom' || templateColumns) return;
+    getTurtleColumns()
+      .then((res) => {
+        setTemplateColumns(res.standard);
+        setFields({ standard: res.standard.map((c) => c.key), custom: [] });
+      })
+      .catch((e: Error) => {
+        notifications.show({ color: 'red', title: 'Could not load the fields', message: e.message });
+        setFieldsMode('all');
+      });
+  }, [fieldsMode, templateColumns]);
 
   if (!authChecked || !loaded) {
     return (
@@ -87,6 +114,21 @@ export default function PlatformGroupsPage() {
         admin_email: adminEmail.trim() || undefined,
         accepts_community: acceptsCommunity,
       });
+      let fieldsError: string | null = null;
+      if (fieldsMode === 'custom') {
+        try {
+          await setTurtleColumns(fields, res.org.slug);
+        } catch (e) {
+          fieldsError = (e as Error).message;
+        }
+      }
+      if (fieldsError) {
+        notifications.show({
+          color: 'orange',
+          title: 'Data fields not saved',
+          message: `${fieldsError} The group uses every field for now; its admins can change this on the members page.`,
+        });
+      }
       notifications.show({
         color: 'green',
         icon: <IconCheck size={18} />,
@@ -101,6 +143,7 @@ export default function PlatformGroupsPage() {
       setSlug('');
       setSlugTouched(false);
       setAdminEmail('');
+      setFieldsMode('all');
       load();
       refreshMyOrgs(dispatch);
     } catch (e) {
@@ -108,6 +151,19 @@ export default function PlatformGroupsPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const onDeleted = (org: Organization) => {
+    setDeleting(null);
+    if (active.slug === org.slug) select(MAIN_ORG_SLUG);
+    notifications.show({
+      color: 'green',
+      icon: <IconCheck size={18} />,
+      title: 'Research group deleted',
+      message: `${org.name} and its data were removed.`,
+    });
+    load();
+    refreshMyOrgs(dispatch);
   };
 
   return (
@@ -157,6 +213,25 @@ export default function PlatformGroupsPage() {
               checked={acceptsCommunity}
               onChange={(e) => setAcceptsCommunity(e.currentTarget.checked)}
             />
+            <Radio.Group
+              label='Turtle data fields'
+              description='What the group records about each turtle. Its admins can change this later.'
+              value={fieldsMode}
+              onChange={(v) => setFieldsMode(v as 'all' | 'custom')}
+            >
+              <Stack gap={6} mt='xs'>
+                <Radio value='all' label='All fields of the original PicTur group' data-testid='fields-mode-all' />
+                <Radio value='custom' label='Choose fields and add our own' data-testid='fields-mode-custom' />
+              </Stack>
+            </Radio.Group>
+            {fieldsMode === 'custom' &&
+              (templateColumns ? (
+                <Paper withBorder p='sm' radius='md'>
+                  <TurtleColumnsEditor standard={templateColumns} value={fields} onChange={setFields} disabled={busy} />
+                </Paper>
+              ) : (
+                <Loader size='sm' />
+              ))}
             <Group justify='flex-end'>
               <Button leftSection={<IconPlus size={14} />} disabled={!name.trim() || !slug.trim()} loading={busy} onClick={create} data-testid='platform-create-group'>
                 Create group
@@ -213,6 +288,18 @@ export default function PlatformGroupsPage() {
                       >
                         Open
                       </Anchor>
+                      {o.kind === 'db' && (
+                        <Anchor
+                          component='button'
+                          size='sm'
+                          c='red'
+                          ml='md'
+                          onClick={() => setDeleting(o)}
+                          data-testid={`platform-delete-group-${o.slug}`}
+                        >
+                          Delete
+                        </Anchor>
+                      )}
                     </Table.Td>
                   </Table.Tr>
                 ))}
@@ -232,6 +319,7 @@ export default function PlatformGroupsPage() {
         <RolesExplainer />
         <SuperAdminsPanel />
       </Stack>
+      <DeleteGroupModal org={deleting} onClose={() => setDeleting(null)} onDeleted={onDeleted} />
     </Container>
   );
 }

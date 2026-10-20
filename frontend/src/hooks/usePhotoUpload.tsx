@@ -13,6 +13,7 @@ import {
   type FindMetadata,
 } from '../services/api';
 import { useUser } from './useUser';
+import { useUploadToAllGroups } from './useUploadToAllGroups';
 import type { FileWithPath } from '../types/file';
 
 type UploadState = 'idle' | 'uploading' | 'success' | 'error';
@@ -72,6 +73,7 @@ export function usePhotoUpload({
 }: UsePhotoUploadOptions = {}): UsePhotoUploadReturn {
   const navigate = useNavigate();
   const { user, isLoggedIn } = useUser();
+  const { enabled: uploadToAllGroups } = useUploadToAllGroups();
   const [files, setFiles] = useState<FileWithPath[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>('idle');
@@ -198,6 +200,7 @@ export function usePhotoUpload({
         isAdminFlow ? (matchSheet ?? '') : undefined,
         flagOptions,
         extraFiles.length > 0 ? extraFiles : undefined,
+        !isAdminFlow && uploadToAllGroups,
       );
 
       // Clear interval and set to 100%

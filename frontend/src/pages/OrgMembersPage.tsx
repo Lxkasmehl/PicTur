@@ -33,6 +33,7 @@ import {
   type Organization,
 } from '../services/api/orgs';
 import { formatLocalDate as formatDate } from '../utils/formatLocalDate';
+import { GroupDataFieldsPanel } from '../components/org/GroupDataFieldsPanel';
 
 const ROLE_OPTIONS = [
   { value: 'staff', label: 'Staff' },
@@ -203,6 +204,8 @@ export default function OrgMembersPage({ org }: { org: OrgOption }) {
             </Table.Tbody>
           </Table>
         </Paper>
+
+        <GroupDataFieldsPanel slug={org.slug} />
       </Stack>
     </Container>
   );

@@ -56,6 +56,8 @@ export interface TurtleSheetsData {
   dome_height_mm?: string;
   /** Google Sheet row (1-based header excluded); set when listing from /api/sheets/turtles */
   row_index?: number;
+  /** A research group's own columns (see services/api/turtleColumns.ts) */
+  [custom: `custom_${string}`]: string | undefined;
 }
 
 /**

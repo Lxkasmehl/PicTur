@@ -17,6 +17,9 @@ import {
   TURTLE_MATCH_PAGE_UNLOCKABLE_FIELDS,
 } from './turtleSheetsFormLayout';
 import type { TurtleFormOrderKey } from './turtleSheetsFormLayout';
+import { useTurtleColumns } from '../hooks/useTurtleColumns';
+import type { CustomColumn } from '../services/api/turtleColumns';
+import type { TurtleFormFieldType } from './TurtleFormField.types';
 
 const configByKey = Object.fromEntries(
   TURTLE_SHEETS_FORM_FIELDS.map((c) => [c.key, c]),
@@ -27,6 +30,32 @@ export type { TurtleSheetsDataFormFieldsProps } from './TurtleSheetsDataForm.typ
 function toSpan(span: FieldSpan) {
   return typeof span === 'number' ? span : span;
 }
+
+/** Field that holds a research group's own column. */
+const isCustomField = (field: keyof TurtleSheetsData): boolean => String(field).startsWith('custom_');
+
+function customFieldInput(col: CustomColumn): { type: TurtleFormFieldType; selectData?: string[]; placeholder?: string } {
+  switch (col.type) {
+    case 'select':
+      return { type: 'select', selectData: col.options ?? [] };
+    case 'yesno':
+      return { type: 'select', selectData: ['Yes', 'No'] };
+    case 'date':
+      return { type: 'date', placeholder: 'MM/DD/YYYY' };
+    case 'textarea':
+      return { type: 'textarea' };
+    case 'number':
+      return { type: 'text', placeholder: 'Number' };
+    default:
+      return { type: 'text' };
+  }
+}
+
+/** Order entries that belong to a standard field (special blocks map to their field). */
+const ORDER_KEY_FIELD: Partial<Record<TurtleFormOrderKey, string>> = {
+  __dates_refound__: 'dates_refound',
+  __notes__: 'notes',
+};
 
 export function TurtleSheetsDataFormFields({
   formData,
@@ -56,6 +85,10 @@ export function TurtleSheetsDataFormFields({
   hideGeneralLocation = false,
 }: TurtleSheetsDataFormFieldsProps) {
   const useMatchEditLocks = matchPageColumnLayout && isFieldModeRestricted;
+  // Research groups choose their columns; null = every standard field (main group)
+  const columns = useTurtleColumns();
+  const isUnlockableOnMatch = (field: keyof TurtleSheetsData) =>
+    TURTLE_MATCH_PAGE_UNLOCKABLE_FIELDS.has(field) || isCustomField(field);
   const datesRefoundMask = useCursorPreservingMask(maskUsMultiDateInput);
   const additionalDatesRefoundMask = useCursorPreservingMask(maskUsMultiDateInput);
 
@@ -67,7 +100,7 @@ export function TurtleSheetsDataFormFields({
     if (!useMatchEditLocks) return false;
     if (mode === 'create') return false;
     if (requireNewSheetForCommunityMatch && field === 'general_location') return false;
-    return !TURTLE_MATCH_PAGE_UNLOCKABLE_FIELDS.has(field);
+    return !isUnlockableOnMatch(field);
   };
 
   const matchRestrictedForUnlock = (field: keyof TurtleSheetsData): boolean => {
@@ -77,12 +110,16 @@ export function TurtleSheetsDataFormFields({
     // Sheet default pins General Location (catalog): keep disabled control without an unlock step.
     if (field === 'general_location' && generalLocationLocked) return false;
     if (mode === 'create') return true;
-    return TURTLE_MATCH_PAGE_UNLOCKABLE_FIELDS.has(field);
+    return isUnlockableOnMatch(field);
   };
 
-  const formFieldOrder: TurtleFormOrderKey[] = matchPageColumnLayout
-    ? TURTLE_MATCH_PAGE_FORM_ORDER
-    : FULL_SHEET_FORM_FIELD_ORDER;
+  const enabledColumns = columns.enabled;
+  const formFieldOrder: TurtleFormOrderKey[] = (
+    matchPageColumnLayout ? TURTLE_MATCH_PAGE_FORM_ORDER : FULL_SHEET_FORM_FIELD_ORDER
+  ).filter((key) => {
+    if (!enabledColumns || key === '__community_hint__') return true;
+    return enabledColumns.has(ORDER_KEY_FIELD[key] ?? key);
+  });
 
   return (
     <>
@@ -297,6 +334,33 @@ export function TurtleSheetsDataFormFields({
                   </Button>
                 ) : undefined
               }
+            />
+          </Grid.Col>
+        );
+      })}
+
+      {columns.custom.map((col) => {
+        if (!col.key) return null;
+        const field = col.key as keyof TurtleSheetsData;
+        const input = customFieldInput(col);
+        const rawVal = formData[field];
+        return (
+          <Grid.Col key={col.key} span={col.type === 'textarea' ? 12 : { base: 12, md: 6 }}>
+            <TurtleFormField
+              field={field}
+              label={col.label}
+              placeholder={input.placeholder ?? col.label}
+              value={rawVal === undefined || rawVal === null ? '' : String(rawVal)}
+              onChange={(v) => handleChange(field, v)}
+              type={input.type}
+              selectData={input.selectData}
+              isFieldModeRestricted={
+                useMatchEditLocks ? matchRestrictedForUnlock(field) : effectiveRestrictedForField(field)
+              }
+              isFieldUnlocked={isFieldUnlocked}
+              requestUnlock={requestUnlock}
+              readOnlyDisplay={useMatchEditLocks && matchReadOnlyDisplay(field)}
+              error={errors?.[field]}
             />
           </Grid.Col>
         );

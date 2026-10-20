@@ -13,6 +13,9 @@ export type PhotoType = 'plastron' | 'carapace' | 'unclassified';
 export interface UploadPhotoResponse {
   success: boolean;
   request_id?: string;
+  /** Community upload to all research groups: one review packet per group. */
+  request_ids?: string[];
+  groups?: string[];
   matches?: TurtleMatch[];
   uploaded_image_path?: string;
   photo_type?: PhotoType;
@@ -83,6 +86,8 @@ export interface ReviewQueueItem {
     digital_flag_lat?: number;
     digital_flag_lon?: number;
     digital_flag_source?: 'gps' | 'manual';
+    /** Community upload sent to every research group: names of all groups that got a copy. */
+    shared_with?: string[];
   };
   /** Microhabitat / condition photos uploaded with this find */
   additional_images?: AdditionalImage[];
