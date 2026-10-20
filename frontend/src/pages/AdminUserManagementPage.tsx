@@ -59,16 +59,25 @@ type UserRow = { id: number; email: string; name: string | null; role: UserRole;
  * main group, member management for database-backed groups.
  */
 export default function AdminUserManagementPage() {
-  const { isDbOrg, active, role, loaded } = useActiveOrg();
+  const { isDbOrg, active, role, ready } = useActiveOrg();
   const { authChecked } = useUser();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (isDbOrg && authChecked && loaded && role !== 'admin') navigate('/');
-  }, [isDbOrg, authChecked, loaded, role, navigate]);
+    if (isDbOrg && authChecked && ready && role !== 'admin') navigate('/');
+  }, [isDbOrg, authChecked, ready, role, navigate]);
 
+  // Until a remembered research group is resolved, `active` falls back to the main group, whose
+  // page would redirect anyone who is not a main-group admin (e.g. after a reload).
+  if (!ready) {
+    return (
+      <Center py='xl'>
+        <Loader size='lg' />
+      </Center>
+    );
+  }
   if (!isDbOrg) return <MainGroupUserManagement />;
-  if (!authChecked || !loaded) {
+  if (!authChecked) {
     return (
       <Center py='xl'>
         <Loader size='lg' />
