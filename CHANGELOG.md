@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-20 - Managing research groups
+
+### Added
+
+- **Delete research groups** (#289): super admins can delete database-backed groups on the Research Groups page. The dialog lists what the group still holds (turtle and community records, review-queue uploads, photos). An empty group is deleted after typing its URL name; a group with data also needs its full name. Deleting removes the members, invitations, database rows, photos and caches. The main group cannot be deleted.
+- **Community uploads to all research groups** (#288): community members who do not know which group a turtle belongs to can pick "All research groups" on the upload page. Every group that accepts community photos (including the main group) receives its own copy and reviews it independently; the review queue marks these uploads with an "All groups" badge.
+- **Configurable turtle data fields per group** (#287): when creating a database-backed group, super admins choose between all fields of the original PicTur group or a selection plus the group's own fields (text, number, date, yes/no, choice list, long text). Group admins change this later under "Turtle data fields" on the members page. Primary ID, ID, Sex and General Location are always kept; hiding a field keeps its values. The main group keeps its Google Sheet columns.
+
+### Fixed
+
+- Reloading a research group's members page no longer sends super admins back to the home page.
+- Super admins who are not admins of the main group can choose data fields when creating a group.
+
+### Security
+
+- The auth service only deletes a research group when the request comes through the turtle backend's delete workflow (short-lived signed grant), so its confirmation checks cannot be skipped and no data is left behind.
+- A deleted group stops accepting anonymous uploads immediately (the cached list of public groups is cleared).
+
+### Upgrade notes
+
+- No new environment variables and no data migration. The turtle backend and auth backend must share `JWT_SECRET` (already required).
+
 ## [2.1.0] - 2026-10-06 - Independent research groups
 
 ### Added
