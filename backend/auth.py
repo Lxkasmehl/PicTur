@@ -61,6 +61,23 @@ def mint_download_token(user_id, scope, sheet, ttl_seconds=120):
     return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
 
 
+def mint_org_delete_grant(org_id, user_id, ttl_seconds=60):
+    """Short-lived proof that this service ran the group-deletion workflow (DELETE /api/org).
+
+    The auth service only deletes a research group when the request carries this grant, so a
+    direct call cannot skip the confirmation rules here or leave the group's data behind.
+    """
+    now = int(time.time())
+    payload = {
+        'purpose': 'org_delete',
+        'org': int(org_id),
+        'uid': user_id,
+        'iat': now,
+        'exp': now + int(ttl_seconds),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
+
+
 def verify_download_token(token, scope, sheet):
     """Validate a backup-download token and confirm it authorizes (scope, sheet).
 

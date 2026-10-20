@@ -105,3 +105,46 @@ def test_auth_failure_keeps_everything(env):
         r = env['client'].delete('/api/org', json={'confirm_slug': 'alpha'}, headers=_h('super', 'alpha'))
     assert r.status_code == 503
     assert os.path.isdir(tenant.data_dir(10))
+
+
+def test_delete_clears_the_public_groups_cache(env):
+    """A deleted public group must not stay reachable for anonymous uploads via the cache."""
+    import tenant
+
+    with tenant._public_lock:
+        tenant._public_cache['at'] = 10 ** 12
+        tenant._public_cache['orgs'] = [{'id': 10, 'slug': 'alpha', 'name': 'Alpha', 'kind': 'db'}]
+    with patch('routes.org_admin._delete_in_auth_service', return_value=(True, 200, None)):
+        r = env['client'].delete('/api/org', json={'confirm_slug': 'alpha'}, headers=_h('super', 'alpha'))
+    assert r.status_code == 200, r.get_json()
+    assert tenant._public_cache['orgs'] == [] and tenant._public_cache['at'] == 0.0
+
+
+def test_auth_service_call_carries_a_grant_for_this_group(env):
+    """The auth service only deletes with a grant signed for exactly this group and user."""
+    import jwt
+    from config import JWT_SECRET
+    from routes import org_admin
+
+    sent = {}
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        sent['url'] = req.full_url
+        sent['grant'] = req.get_header('X-org-delete-grant')
+        return _Resp()
+
+    with patch.object(org_admin.urllib.request, 'urlopen', fake_urlopen),             patch.object(org_admin, 'AUTH_URL', 'http://auth.test/api'):
+        r = env['client'].delete('/api/org', json={'confirm_slug': 'alpha'}, headers=_h('super', 'alpha'))
+    assert r.status_code == 200, r.get_json()
+    assert sent['url'] == 'http://auth.test/api/orgs/10'
+    payload = jwt.decode(sent['grant'], JWT_SECRET, algorithms=['HS256'])
+    assert payload['purpose'] == 'org_delete' and payload['org'] == 10
+    assert payload['uid'] == hash('super') % 10000
+    assert payload['exp'] - payload['iat'] <= 60

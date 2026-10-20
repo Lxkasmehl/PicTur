@@ -273,3 +273,9 @@ def test_auth_delete_org_guards(auth_url, super_admin_token, admin_token, new_or
     assert r.status_code == 400
     r = requests.delete(f"{auth_url}/orgs/{org_id}", headers=_h(super_admin_token), json={}, timeout=10)
     assert r.status_code == 400
+    # Only the Flask purge workflow may delete: a direct call with the right URL name is refused
+    r = requests.delete(f"{auth_url}/orgs/{org_id}", headers=_h(super_admin_token),
+                        json={"confirm": new_org["slug"]}, timeout=10)
+    assert r.status_code == 403
+    r = requests.get(f"{auth_url}/orgs", headers=_h(super_admin_token), timeout=10)
+    assert new_org["slug"] in {o["slug"] for o in r.json()["orgs"]}

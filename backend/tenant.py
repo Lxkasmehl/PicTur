@@ -62,6 +62,13 @@ def _fetch_public_orgs():
     return orgs
 
 
+def forget_public_orgs():
+    """Drop the cached public groups (e.g. after one was deleted) so the next request refetches."""
+    with _public_lock:
+        _public_cache['at'] = 0.0
+        _public_cache['orgs'] = []
+
+
 @dataclass(frozen=True)
 class Tenant:
     id: int

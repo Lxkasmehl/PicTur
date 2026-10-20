@@ -16,7 +16,7 @@ import urllib.request
 from flask import jsonify, request
 
 import tenant
-from auth import require_admin_only
+from auth import mint_org_delete_grant, require_admin_only
 from config import AUTH_URL
 from services import manager_service
 
@@ -67,7 +67,8 @@ def group_usage(org_id):
 
 
 def _delete_in_auth_service(org_id, slug):
-    """DELETE {AUTH_URL}/orgs/<id> with the caller's token. Returns (ok, status, error)."""
+    """DELETE {AUTH_URL}/orgs/<id> with the caller's token and a deletion grant (the auth service
+    refuses deletions that did not come through this workflow). Returns (ok, status, error)."""
     if not AUTH_URL:
         return False, 503, 'AUTH_URL is not configured'
     req = urllib.request.Request(
@@ -76,6 +77,7 @@ def _delete_in_auth_service(org_id, slug):
         data=json.dumps({'confirm': slug}).encode(),
         headers={
             'Authorization': request.headers.get('Authorization', ''),
+            'X-Org-Delete-Grant': mint_org_delete_grant(org_id, (getattr(request, 'user', None) or {}).get('id')),
             'Content-Type': 'application/json',
         },
     )
@@ -99,6 +101,8 @@ def purge_group_data(org_id):
     from orgs import sheets_store
 
     org_id = int(org_id)
+    # A formerly public group must not resolve for anonymous uploads any more
+    tenant.forget_public_orgs()
     manager_service.forget_tenant(org_id)
     try:
         Session.query(SheetRow).filter(SheetRow.org_id == org_id).delete(synchronize_session=False)
