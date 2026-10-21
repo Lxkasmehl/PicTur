@@ -20,6 +20,7 @@ import { AdminTurtleRecordsProvider } from './AdminTurtleRecords/AdminTurtleReco
 import { ReviewQueueTab } from './AdminTurtleRecords/ReviewQueueTab';
 import { SheetsBrowserTab } from './AdminTurtleRecords/SheetsBrowserTab';
 import { CreateNewTurtleModal } from './AdminTurtleRecords/CreateNewTurtleModal';
+import { TurtleCreatedModal } from '../components/TurtleCreatedModal';
 
 export default function AdminTurtleRecordsPage() {
   const { authChecked: userAuthChecked } = useUser();
@@ -41,7 +42,7 @@ export default function AdminTurtleRecordsPage() {
     );
   }
 
-  const { activeTab, setActiveTab, queueItems } = hook;
+  const { activeTab, setActiveTab, queueItems, createdTurtle, setCreatedTurtle } = hook;
 
   return (
     <AdminTurtleRecordsProvider value={hook}>
@@ -92,6 +93,7 @@ export default function AdminTurtleRecordsPage() {
       </Container>
 
       <CreateNewTurtleModal size={isMobile ? '100%' : 'xl'} />
+      <TurtleCreatedModal turtle={createdTurtle} onClose={() => setCreatedTurtle(null)} />
     </AdminTurtleRecordsProvider>
   );
 }

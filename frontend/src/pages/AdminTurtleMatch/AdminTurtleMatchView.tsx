@@ -1,5 +1,6 @@
 import { Center, Container, Loader, Stack } from '@mantine/core';
 import { AdminTurtleMatchHeader } from './AdminTurtleMatchHeader';
+import { TurtleCreatedModal } from '../../components/TurtleCreatedModal';
 import { CreateNewTurtleModal } from './CreateNewTurtleModal';
 import { MatchDetailView } from './MatchDetailView';
 import { MatchGridView } from './MatchGridView';
@@ -7,7 +8,8 @@ import { NoMatchesView } from './NoMatchesView';
 import { useAdminTurtleMatchContext } from './AdminTurtleMatchContext';
 
 export function AdminTurtleMatchView() {
-  const { loading, matchData, showDetail } = useAdminTurtleMatchContext();
+  const { loading, matchData, showDetail, createdTurtle, handleCloseTurtleCreated } =
+    useAdminTurtleMatchContext();
 
   const hasMatches = matchData?.matches && matchData.matches.length > 0;
 
@@ -30,6 +32,7 @@ export function AdminTurtleMatchView() {
       </Stack>
 
       <CreateNewTurtleModal />
+      <TurtleCreatedModal turtle={createdTurtle} onClose={handleCloseTurtleCreated} />
     </Container>
   );
 }
