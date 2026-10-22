@@ -5,6 +5,7 @@ import {
   getTestImageBuffer,
   clickUploadPhotoButton,
   registerKansasGeneralLocationsCatalogMock,
+  pickKansasGeneralLocationInCreateTurtleDialog,
   selectSheetInCreateTurtleDialog,
   selectSexInCreateTurtleDialog,
 } from './fixtures';
@@ -161,6 +162,7 @@ test.describe('New turtle created pop-up (#251)', () => {
     await expect(dialog).toBeVisible();
 
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
+    await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
     await selectSexInCreateTurtleDialog(page, dialog, 'F');
     await expect(dialog.getByLabel('ID', { exact: true })).toHaveValue(MOCK_BIOLOGY_ID, {
       timeout: 25_000,
@@ -238,6 +240,7 @@ test.describe('New turtle created pop-up (#251)', () => {
     await expect(dialog).toBeVisible({ timeout: 15_000 });
 
     await selectSheetInCreateTurtleDialog(page, dialog, 'Kansas');
+    await pickKansasGeneralLocationInCreateTurtleDialog(page, dialog);
     await selectSexInCreateTurtleDialog(page, dialog, 'F');
     await expect(dialog.getByLabel('ID', { exact: true })).toHaveValue(MOCK_BIOLOGY_ID, {
       timeout: 25_000,
