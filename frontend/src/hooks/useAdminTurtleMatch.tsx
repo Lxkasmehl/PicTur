@@ -22,6 +22,7 @@ import { notifications } from '@mantine/notifications';
 import { IconCheck } from '@tabler/icons-react';
 import { appendTodayToDatesRefound } from '../utils/usDateFormat';
 import type { TurtleSheetsDataFormRef } from '../components/TurtleSheetsDataForm';
+import type { CreatedTurtleInfo } from '../components/TurtleCreatedModal';
 import {
   lookupIdFromTurtleId,
   dataPathHintFromMatchLocation,
@@ -54,6 +55,7 @@ export function useAdminTurtleMatch(
   const [newTurtleSheetsData, setNewTurtleSheetsData] = useState<TurtleSheetsData | null>(null);
   const [newTurtleSheetName, setNewTurtleSheetName] = useState('');
   const [newTurtleBackendPath, setNewTurtleBackendPath] = useState<string | undefined>();
+  const [createdTurtle, setCreatedTurtle] = useState<CreatedTurtleInfo | null>(null);
   const [loadingTurtleData, setLoadingTurtleData] = useState(false);
   const [availableSheets, setAvailableSheets] = useState<string[]>([]);
   const [findMetadata] = useState<FindMetadata | null>(null);
@@ -559,7 +561,13 @@ export function useAdminTurtleMatch(
       });
 
       setShowNewTurtleModal(false);
-      window.setTimeout(() => navigate('/'), 500);
+      // Leave the page only once the admin has seen the new turtle's ID (see handleCloseTurtleCreated)
+      setCreatedTurtle({
+        id: effectiveSheetsData?.id,
+        primaryId: finalPrimaryId ?? undefined,
+        name: effectiveSheetsData?.name,
+        sheetName: effectiveSheetName,
+      });
     } catch (error) {
       notifications.update({
         id: progressNotificationId,
@@ -573,6 +581,11 @@ export function useAdminTurtleMatch(
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleCloseTurtleCreated = () => {
+    setCreatedTurtle(null);
+    navigate('/');
   };
 
   const handleCrossCheckCarapace = async () => {
@@ -639,6 +652,8 @@ export function useAdminTurtleMatch(
     handleCombinedButtonClick,
     handleCreateNewTurtle,
     handleSaveNewTurtleSheetsData,
+    createdTurtle,
+    handleCloseTurtleCreated,
     refreshPacketItem,
     refreshSelectedMatchImages,
     handleCrossCheckCarapace,

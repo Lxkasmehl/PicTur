@@ -112,7 +112,8 @@ test.describe('Home – mortality without plastron (mark deceased)', () => {
       .getByRole('button')
       .first();
     if (await loginToast.isVisible().catch(() => false)) {
-      await loginToast.click();
+      // The toast may auto-dismiss mid-click (detached from DOM); that is fine, it is gone either way
+      await loginToast.click({ timeout: 3000 }).catch(() => {});
     }
 
     const applyBtn = markModal.getByRole('button', { name: 'Apply' });

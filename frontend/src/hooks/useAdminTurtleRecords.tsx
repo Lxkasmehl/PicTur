@@ -17,6 +17,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconCheck } from '@tabler/icons-react';
 import type { TurtleSheetsDataFormRef } from '../components/TurtleSheetsDataForm';
+import type { CreatedTurtleInfo } from '../components/TurtleCreatedModal';
 import { useAvailableSheets } from './useAvailableSheets';
 import { appendTodayToDatesRefound } from '../utils/usDateFormat';
 
@@ -63,6 +64,7 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
   const [newTurtleSheetsData, setNewTurtleSheetsData] =
     useState<TurtleSheetsData | null>(null);
   const [newTurtleSheetName, setNewTurtleSheetName] = useState('');
+  const [createdTurtle, setCreatedTurtle] = useState<CreatedTurtleInfo | null>(null);
 
   // Google Sheets Browser State
   const [allTurtles, setAllTurtles] = useState<TurtleSheetsData[]>([]);
@@ -530,6 +532,12 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
         icon: <IconCheck size={18} />,
       });
       setShowNewTurtleModal(false);
+      setCreatedTurtle({
+        id: effectiveSheetsData?.id,
+        primaryId: finalPrimaryId ?? undefined,
+        name: effectiveSheetsData?.name,
+        sheetName: effectiveSheetName,
+      });
       setQueueItems((prev) =>
         prev.filter((i) => i.request_id !== selectedItem.request_id),
       );
@@ -715,6 +723,8 @@ export function useAdminTurtleRecords(role: string | undefined, authChecked: boo
     handleSaveAndApprove,
     handleCombinedButtonClick,
     handleCreateNewTurtle,
+    createdTurtle,
+    setCreatedTurtle,
     handleConfirmNewTurtle,
     handleSaveNewTurtleSheetsData,
     handleOpenDeleteModal,
