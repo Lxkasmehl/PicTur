@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-22 - New turtle ID at a glance
+
+### Added
+
+- **"Turtle created" pop-up** (#251): after an admin creates a new turtle, a pop-up shows the new turtle's ID together with its Primary ID, name and sheet, each with a copy button, so the ID no longer has to be looked up in Turtle Records. It appears both on the Turtle Match page and in the Review Queue. On the Turtle Match page the redirect to the home page now waits until the pop-up is closed.
+
+### Upgrade notes
+
+- Frontend only. No new environment variables and no data migration.
+
 ## [2.2.0] - 2026-10-20 - Managing research groups
 
 ### Added
@@ -690,7 +700,9 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/Lxkasmehl/PicTur/compare/v2.2.0...v2.3.0
+[2.2.0]: https://github.com/Lxkasmehl/PicTur/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.23...v2.1.0
 [2.0.23]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.22...v2.0.23
 [2.0.22]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.21...v2.0.22
