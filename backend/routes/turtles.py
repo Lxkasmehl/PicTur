@@ -257,6 +257,12 @@ def register_turtle_routes(app):
         if not isinstance(turtles, list):
             return jsonify({'error': 'turtles must be an array'}), 400
         manager = manager_service.manager
+        # Research groups identify by carapace (tenant.upload_photo_type), so their preview is the
+        # carapace reference; the main group keeps "primary" = plastron for its Null badges.
+        if tenant.current() is None:
+            preview_ref_folders = ('plastron', 'ref_data')
+        else:
+            preview_ref_folders = ('carapace', 'plastron', 'ref_data')
         results = []
         for item in turtles[:200]:  # limit to avoid overload
             tid = (item.get('turtle_id') or '').strip()
@@ -275,7 +281,7 @@ def register_turtle_routes(app):
                 turtle_dir = manager._get_turtle_folder(tid, sheet)
             primary_path = None
             if turtle_dir and os.path.isdir(turtle_dir):
-                for ref_folder in ('plastron', 'ref_data'):
+                for ref_folder in preview_ref_folders:
                     ref_dir = os.path.join(turtle_dir, ref_folder)
                     if os.path.isdir(ref_dir):
                         for f in sorted(os.listdir(ref_dir)):
