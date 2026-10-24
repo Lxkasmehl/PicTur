@@ -23,6 +23,7 @@ function initialSlug(): string {
 let activeSlug = initialSlug();
 /** Signed token from the auth service that lets <img> URLs load the user's groups' photos. */
 let mediaToken: string | null = null;
+let mediaTokenSetAt = 0;
 
 /** Called by the org state whenever the (resolved) active group changes. */
 export function setApiOrgSlug(slug: string): void {
@@ -36,6 +37,12 @@ export function getApiOrgSlug(): string {
 /** Set from GET /orgs/mine (null when logged out or not in any research group). */
 export function setApiMediaToken(token: string | null): void {
   mediaToken = token || null;
+  mediaTokenSetAt = Date.now();
+}
+
+/** Milliseconds since the media token was last set (or cleared). */
+export function mediaTokenAgeMs(): number {
+  return Date.now() - mediaTokenSetAt;
 }
 
 /**

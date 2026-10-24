@@ -95,7 +95,7 @@ router.get('/public', (_req: Request, res: Response) => {
   res.json({ success: true, orgs: listPublicOrgs().map(publicOrg) });
 });
 
-const MEDIA_TOKEN_TTL_SECONDS = 12 * 60 * 60;
+const MEDIA_TOKEN_TTL_SECONDS = 60 * 60;
 
 /**
  * Photos of a research group are loaded through <img src>, which cannot send the Authorization
