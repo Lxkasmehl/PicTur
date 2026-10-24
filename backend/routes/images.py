@@ -8,11 +8,12 @@ from io import BytesIO
 import image_utils  # noqa: F401 — registers HEIF opener for Pillow
 from flask import request, jsonify, send_file
 from PIL import Image, ImageOps
+from auth import require_admin_or_media_token
 from services import manager_service
 from config import UPLOAD_FOLDER
 
 # Only photos are served: the data directory also holds manifests, feature tensors (.pt) and
-# catalogs, which must not be readable through this (largely unauthenticated) route.
+# catalogs, which must not be readable through this route.
 SERVABLE_IMAGE_EXTENSIONS = (
     '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tif', '.tiff', '.heic', '.heif',
 )
@@ -55,6 +56,7 @@ def register_image_routes(app):
     """Register image serving routes"""
     
     @app.route('/api/images', methods=['GET'])
+    @require_admin_or_media_token
     def serve_image():
         """
         Serve images from the file system

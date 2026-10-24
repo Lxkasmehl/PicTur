@@ -98,15 +98,16 @@ router.get('/public', (_req: Request, res: Response) => {
 const MEDIA_TOKEN_TTL_SECONDS = 60 * 60;
 
 /**
- * Photos of a research group are loaded through <img src>, which cannot send the Authorization
- * header. This token (put in the image URL as ?mt=) lets the Flask image route serve the photos
- * of the user's database-backed groups, including groups closed to the community. It names the
- * groups it covers and is good for nothing else; the frontend refreshes it well before it expires.
+ * Photos are loaded through <img src>, which cannot send the Authorization header, and the Flask
+ * image route only serves them to staff and admins. This token (put in the image URL as ?mt=)
+ * names the groups whose photos the user may load: every group where they are staff or admin,
+ * the main group included. It is good for nothing else; the frontend renews it well before it
+ * expires.
  */
 function mintMediaToken(memberships: Membership[]): string | null {
   const secret = process.env.JWT_SECRET;
   const orgs = memberships
-    .filter((m) => m.org_id !== MAIN_ORG_ID && m.kind === 'db')
+    .filter((m) => m.role === 'staff' || m.role === 'admin')
     .map((m) => ({ id: m.org_id, slug: m.slug, name: m.name }));
   if (!secret || orgs.length === 0) return null;
   return jwt.sign({ purpose: 'media', orgs }, secret, { expiresIn: MEDIA_TOKEN_TTL_SECONDS });
