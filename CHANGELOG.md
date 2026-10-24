@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-10-24 - Research group fixes
+
+### Fixed
+
+- **Super admins belong to every research group** (#291): super admins were only listed as members of the groups they had added themselves to. They now show up as admin in every research group, including in the group switcher.
+- **Photo previews in research groups** (#292): the turtle records browser of a database-backed research group showed no preview images. Research groups use carapace photos as references, and the preview now shows that carapace photo.
+- **Flaky E2E setup in CI**: a slow apt mirror could leave a background apt-get holding the package lock, so the retry of the Playwright dependency install failed right away. The retry now waits for it first.
+
+### Upgrade notes
+
+- Auth backend and Flask backend changes only. No new environment variables and no data migration.
+
 ## [2.3.0] - 2026-10-22 - New turtle ID at a glance
 
 ### Added
@@ -700,7 +712,8 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/Lxkasmehl/PicTur/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/Lxkasmehl/PicTur/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/Lxkasmehl/PicTur/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/Lxkasmehl/PicTur/compare/v2.0.23...v2.1.0
