@@ -101,6 +101,15 @@ def test_new_org_is_db_backed_and_listed(auth_url, super_admin_token, new_org):
     assert listed["member_count"] == 0
 
 
+def test_super_admin_is_member_of_every_group(auth_url, super_admin_token, new_org):
+    """#291: super admins belong to every group, not only the ones they added themselves to."""
+    memberships = {m["slug"]: m for m in _me(auth_url, super_admin_token)["memberships"]}
+    assert memberships[new_org["slug"]]["role"] == "admin"
+    r = requests.get(f"{auth_url}/orgs/mine", headers=_h(super_admin_token), timeout=10)
+    assert r.status_code == 200
+    assert new_org["slug"] in {m["slug"] for m in r.json()["memberships"]}
+
+
 def test_member_management_flow(
     auth_url, super_admin_token, staff_token, admin_token, new_org
 ):

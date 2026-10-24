@@ -165,16 +165,27 @@ export function setSuperAdmin(userId: number, value: boolean): void {
   );
 }
 
-/** All groups the user belongs to; the main group always comes first (role from users.role). */
+/**
+ * All groups the user belongs to; the main group always comes first (role from users.role).
+ * Super admins act as admin everywhere (see getOrgRole), so they are listed in every group.
+ */
 export function getMembershipsForUser(userId: number): Membership[] {
-  const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as
-    | { role: UserRole }
+  const user = db.prepare('SELECT role, is_super_admin FROM users WHERE id = ?').get(userId) as
+    | { role: UserRole; is_super_admin: number }
     | undefined;
   if (!user) return [];
   const main = getOrgById(MAIN_ORG_ID);
   const out: Membership[] = [];
   if (main) {
     out.push({ org_id: main.id, slug: main.slug, name: main.name, kind: main.kind, role: user.role });
+  }
+  if (user.is_super_admin) {
+    const others = db
+      .prepare(`SELECT id, slug, name, kind FROM organizations WHERE id != ? ORDER BY name`)
+      .all(MAIN_ORG_ID) as { id: number; slug: string; name: string; kind: OrgKind }[];
+    return out.concat(
+      others.map((o) => ({ org_id: o.id, slug: o.slug, name: o.name, kind: o.kind, role: 'admin' }))
+    );
   }
   const rows = db
     .prepare(
