@@ -2,7 +2,14 @@ import { useEffect } from 'react';
 import { useActiveOrg } from '../hooks/useActiveOrg';
 import { MAIN_ORG_SLUG, setActiveOrg } from '../store/slices/orgSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { clearMyOrgs, setAllOrgs, setMyOrgs, setOrgsLoaded, setPublicOrgs } from '../store/slices/orgSlice';
+import {
+  clearMyOrgs,
+  setAllOrgs,
+  setMyOrgs,
+  setOrgsLoaded,
+  setOrgsLoadedForUser,
+  setPublicOrgs,
+} from '../store/slices/orgSlice';
 import { getMyOrgs, getPublicOrgs, listAllOrgs } from '../services/api/orgs';
 import { mediaTokenAgeMs, setApiMediaToken } from '../services/api/orgContext';
 
@@ -26,6 +33,7 @@ export default function OrgProvider({ children }: { children: React.ReactNode })
     if (!isLoggedIn) {
       setApiMediaToken(null);
       dispatch(clearMyOrgs());
+      dispatch(setOrgsLoadedForUser(null));
       dispatch(setOrgsLoaded(true));
       return;
     }
@@ -42,7 +50,10 @@ export default function OrgProvider({ children }: { children: React.ReactNode })
         if (!cancelled) dispatch(clearMyOrgs());
       })
       .finally(() => {
-        if (!cancelled) dispatch(setOrgsLoaded(true));
+        if (!cancelled) {
+          dispatch(setOrgsLoaded(true));
+          dispatch(setOrgsLoadedForUser(user?.id ?? null));
+        }
       });
     return () => {
       cancelled = true;

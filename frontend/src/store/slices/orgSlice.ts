@@ -33,6 +33,8 @@ interface OrgState {
   /** Currently selected research group (persisted per browser). */
   activeSlug: string;
   loaded: boolean;
+  /** Id of the user whose memberships (and media token) were last loaded, also on failure. */
+  loadedForUserId: number | null;
   /** True once the public group list has been fetched (or failed). */
   publicLoaded: boolean;
   /** Community uploads go to every group that accepts community photos (persisted per browser). */
@@ -46,6 +48,7 @@ const initialState: OrgState = {
   isSuperAdmin: false,
   activeSlug: readActiveSlug(),
   loaded: false,
+  loadedForUserId: null,
   publicLoaded: false,
   uploadToAllGroups: readUploadToAll(),
 };
@@ -67,6 +70,9 @@ const orgSlice = createSlice({
     },
     setOrgsLoaded: (state, action: PayloadAction<boolean>) => {
       state.loaded = action.payload;
+    },
+    setOrgsLoadedForUser: (state, action: PayloadAction<number | null>) => {
+      state.loadedForUserId = action.payload;
     },
     setActiveOrg: (state, action: PayloadAction<string>) => {
       state.activeSlug = action.payload;
@@ -97,6 +103,7 @@ export const {
   setPublicOrgs,
   setAllOrgs,
   setOrgsLoaded,
+  setOrgsLoadedForUser,
   setActiveOrg,
   setUploadToAllGroups,
   clearMyOrgs,

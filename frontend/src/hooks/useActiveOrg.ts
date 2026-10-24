@@ -23,9 +23,9 @@ export interface OrgOption {
  */
 export function useActiveOrg() {
   const dispatch = useAppDispatch();
-  const { memberships, publicOrgs, allOrgs, isSuperAdmin, activeSlug, loaded, publicLoaded } =
+  const { memberships, publicOrgs, allOrgs, isSuperAdmin, activeSlug, loaded, loadedForUserId, publicLoaded } =
     useAppSelector((s) => s.org);
-  const { role: mainRole } = useAppSelector((s) => s.user);
+  const { role: mainRole, isLoggedIn, user } = useAppSelector((s) => s.user);
 
   /** Every group the user can switch to: own memberships plus groups open to the community. */
   const options = useMemo<OrgOption[]>(() => {
@@ -63,10 +63,15 @@ export function useActiveOrg() {
 
   const active = options.find((o) => o.slug === activeSlug) ?? options[0];
   /** False while a remembered research group is still being resolved (its role is not known yet).
-   * Pages must not redirect on role before this is true. Always true for the main group. */
+   * Pages must not redirect on role before this is true. */
   // Memberships must be loaded first: a group open to the community is already in the public
   // list (as 'community') before the user's real role in it arrives.
-  const ready = activeSlug === MAIN_ORG_SLUG || (loaded && (active.slug === activeSlug || publicLoaded));
+  // Logged in, the main group also waits for them: they carry the media token without which no
+  // photo loads (an <img> rendered before it would stay broken).
+  const ready =
+    activeSlug === MAIN_ORG_SLUG
+      ? !isLoggedIn || (loaded && loadedForUserId === (user?.id ?? null))
+      : loaded && (active.slug === activeSlug || publicLoaded);
   const isDbOrg = active.kind === 'db';
 
   const select = useCallback((slug: string) => dispatch(setActiveOrg(slug)), [dispatch]);
