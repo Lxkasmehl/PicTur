@@ -393,3 +393,22 @@ def test_search_labels_with_type_filter_and_combo(client, turtle_with_images):
     assert combo_hit is not None
     assert combo_hit.get("type") == "right-side"
     assert any("burn" in str(x).lower() for x in (combo_hit.get("labels") or []))
+
+
+def test_image_route_requires_staff_or_media_token(client, backend_url, auth_url, admin_token):
+    """/api/images serves no photo anonymously; staff get it via header or the media token."""
+    import requests
+
+    r = client.get("/api/turtles/images?turtle_id=T42&sheet_name=Kansas/Topeka")
+    assert r.status_code == 200
+    path = r.json().get("primary")
+    if not path:
+        pytest.skip("fixture turtle T42 has no primary image")
+    url = f"{backend_url}/api/images"
+    assert requests.get(url, params={"path": path}, timeout=10).status_code == 401
+    assert client.get(f"/api/images?path={requests.utils.quote(path)}").status_code == 200
+    mine = requests.get(
+        f"{auth_url}/orgs/mine", headers={"Authorization": f"Bearer {admin_token}"}, timeout=10
+    ).json()
+    r = requests.get(url, params={"path": path, "mt": mine["media_token"]}, timeout=10)
+    assert r.status_code == 200

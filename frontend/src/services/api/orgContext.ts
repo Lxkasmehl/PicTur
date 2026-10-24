@@ -21,6 +21,9 @@ function initialSlug(): string {
 }
 
 let activeSlug = initialSlug();
+/** Signed token from the auth service that lets <img> URLs load the photos of the user's groups. */
+let mediaToken: string | null = null;
+let mediaTokenSetAt = 0;
 
 /** Called by the org state whenever the (resolved) active group changes. */
 export function setApiOrgSlug(slug: string): void {
@@ -31,11 +34,27 @@ export function getApiOrgSlug(): string {
   return activeSlug;
 }
 
-/** Append `org=<slug>` for URLs used where no header can be sent (images, downloads). */
+/** Set from GET /orgs/mine (null when logged out or not in any research group). */
+export function setApiMediaToken(token: string | null): void {
+  mediaToken = token || null;
+  mediaTokenSetAt = Date.now();
+}
+
+/** Milliseconds since the media token was last set (or cleared). */
+export function mediaTokenAgeMs(): number {
+  return Date.now() - mediaTokenSetAt;
+}
+
+/**
+ * For URLs used where no header can be sent (images, downloads): append `org=<slug>` outside the
+ * main group, plus the media token, without which the Flask image route serves no photos.
+ */
 export function withOrgParam(url: string): string {
-  if (activeSlug === MAIN_ORG_SLUG) return url;
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}org=${encodeURIComponent(activeSlug)}`;
+  const params: string[] = [];
+  if (activeSlug !== MAIN_ORG_SLUG) params.push(`org=${encodeURIComponent(activeSlug)}`);
+  if (mediaToken) params.push(`mt=${encodeURIComponent(mediaToken)}`);
+  if (params.length === 0) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}${params.join('&')}`;
 }
 
 let installed = false;

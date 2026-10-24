@@ -116,6 +116,21 @@ def download_token_org(token):
     return payload.get('org')
 
 
+def media_token_org(token, slug):
+    """The research group named ``slug`` in a valid media token (dict), or None.
+
+    Media tokens are minted by the auth service (GET /orgs/mine) for the user's research groups
+    so <img> URLs, which cannot carry the Authorization header, can load the group's photos.
+    """
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+    except jwt.InvalidTokenError:
+        return None
+    if payload.get('purpose') != 'media':
+        return None
+    return next((o for o in payload.get('orgs') or [] if o.get('slug') == slug), None)
+
+
 def get_user_from_request():
     """
     Extract and verify user information from Authorization header.
@@ -272,6 +287,20 @@ def require_admin(f):
 
         request.user = user_data
         return f(*args, **kwargs)
+    return decorated_function
+
+
+def require_admin_or_media_token(f):
+    """Staff/admin of the active group, via the Authorization header (``require_admin``) or, for
+    <img>/download URLs that cannot send it, a media token (``?mt=``) naming the active group."""
+    guarded = require_admin(f)
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        mt = request.args.get('mt')
+        if mt and media_token_org(mt, tenant.request_org_slug() or tenant.MAIN_SLUG):
+            return f(*args, **kwargs)
+        return guarded(*args, **kwargs)
     return decorated_function
 
 

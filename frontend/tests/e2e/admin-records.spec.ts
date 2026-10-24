@@ -215,7 +215,14 @@ test.describe('Admin Turtle Records (Sheets Browser)', () => {
     await expect(photosSection.getByText(/Review before upload/i)).toBeVisible({ timeout: 10_000 });
     await photosSection.getByRole('button', { name: /Upload 1 photo/i }).click();
     await expect(page.getByText('Uploaded', { exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(photosSection.getByRole('img').first()).toBeVisible({ timeout: 5000 });
+    const uploadedImg = photosSection.getByRole('img').first();
+    await expect(uploadedImg).toBeVisible({ timeout: 5000 });
+    // The photo must really load: /api/images only serves staff (media token in the URL).
+    await expect
+      .poll(() => uploadedImg.evaluate((el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0), {
+        timeout: 10_000,
+      })
+      .toBe(true);
 
     const removeBtn = photosSection.getByRole('button', { name: 'Remove' }).first();
     await removeBtn.click();

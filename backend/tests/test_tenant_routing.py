@@ -304,3 +304,102 @@ def test_records_preview_uses_the_carapace_reference_in_research_groups(env):
     assert img['primary'] == ref
     assert img['has_carapace'] is True
     assert img['folder_status'] == 'has_images'
+
+
+def _media_token(*slugs, purpose='media'):
+    orgs = [{'id': ORGS[s]['id'], 'slug': s, 'name': ORGS[s]['name']} for s in slugs]
+    return jwt.encode({'purpose': purpose, 'orgs': orgs}, config.JWT_SECRET, algorithm='HS256')
+
+
+def test_photos_of_a_closed_group_load_with_a_media_token(env):
+    """Regression (#292): <img> requests carry no Authorization header, so photos of a group that
+    does not accept community uploads 404'd. The media token from /orgs/mine unlocks them, and
+    only them: other groups and other routes ignore it."""
+    import os
+    import tenant
+
+    c = env['client']
+    assert c.get('/api/locations', headers=_h('super', 'beta')).status_code == 200
+    car_dir = os.path.join(tenant.data_dir(11), 'Ohio', 'T1', 'carapace')
+    os.makedirs(car_dir)
+    ref = os.path.join(car_dir, 'T1_carapace.jpg')
+    with open(ref, 'wb') as f:
+        f.write(b'jpg')
+
+    def img(token):
+        qs = {'path': ref, 'org': 'beta'}
+        if token:
+            qs['mt'] = token
+        return c.get('/api/images', query_string=qs)
+
+    assert img(None).status_code == 404
+    r = img(_media_token('beta'))
+    assert r.status_code == 200 and r.get_data() == b'jpg'
+    assert img(_media_token('alpha')).status_code == 404  # token for another group
+    assert img(_media_token('beta', purpose='backup_dl')).status_code == 404
+    # no other route accepts it
+    r = c.get('/api/sheets/sheets', query_string={'org': 'beta', 'mt': _media_token('beta')})
+    assert r.status_code == 404
+
+
+def test_image_route_serves_photos_only(env):
+    """Manifests, feature tensors and catalogs live next to the photos; never serve them."""
+    import os
+    import tenant
+
+    c = env['client']
+    assert c.get('/api/locations', headers=_h('a-admin', 'alpha')).status_code == 200
+    turtle_dir = os.path.join(tenant.data_dir(10), 'Ohio', 'T1')
+    os.makedirs(turtle_dir)
+    for name in ('manifest.json', 'ref.pt', 'photo.JPG'):
+        with open(os.path.join(turtle_dir, name), 'wb') as f:
+            f.write(b'x')
+
+    def get(name):
+        return c.get('/api/images', query_string={'path': os.path.join(turtle_dir, name), 'org': 'alpha',
+                                                   'mt': _media_token('alpha')})
+
+    assert get('photo.JPG').status_code == 200
+    assert get('manifest.json').status_code == 404
+    assert get('ref.pt').status_code == 404
+
+
+def test_photos_need_staff_or_a_media_token(env):
+    """Photos are served to staff/admins of the group only: via the Authorization header or a
+    media token naming the group. Anonymous and community requests get nothing, open groups and
+    the main group included."""
+    import os
+    import tenant
+
+    c = env['client']
+    assert c.get('/api/locations', headers=_h('a-admin', 'alpha')).status_code == 200
+    car_dir = os.path.join(tenant.data_dir(10), 'Ohio', 'T1', 'carapace')
+    os.makedirs(car_dir)
+    ref = os.path.join(car_dir, 'T1_carapace.jpg')
+    with open(ref, 'wb') as f:
+        f.write(b'jpg')
+
+    def img(org='alpha', **extra):
+        qs = {'path': ref}
+        if org:
+            qs['org'] = org
+        headers = extra.pop('headers', None)
+        qs.update(extra)
+        return c.get('/api/images', query_string=qs, headers=headers)
+
+    # alpha accepts community uploads, yet anonymous visitors and community members see no photos
+    assert img().status_code == 401
+    assert img(headers=_h('b-staff')).status_code == 403
+    # group staff via header, or anyone holding a media token for alpha
+    assert img(headers=_h('a-staff')).status_code == 200
+    assert img(mt=_media_token('alpha')).status_code == 200
+    assert img(mt=_media_token('beta')).status_code == 401
+
+    # main group: no photos without staff role or a token naming the main group
+    assert img(org=None).status_code == 401
+    assert img(org=None, mt=_media_token('alpha')).status_code == 401
+    assert img(org=None, headers=_h('a-staff')).status_code == 403  # community in main
+    main_token = jwt.encode({'purpose': 'media', 'orgs': [{'id': 1, 'slug': 'main', 'name': 'Main'}]},
+                            config.JWT_SECRET, algorithm='HS256')
+    # authorized; the path is outside the main data dir, so the route itself answers
+    assert img(org=None, mt=main_token).status_code not in (401, 403)

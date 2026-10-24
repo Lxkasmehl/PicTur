@@ -8,8 +8,15 @@ from io import BytesIO
 import image_utils  # noqa: F401 — registers HEIF opener for Pillow
 from flask import request, jsonify, send_file
 from PIL import Image, ImageOps
+from auth import require_admin_or_media_token
 from services import manager_service
 from config import UPLOAD_FOLDER
+
+# Only photos are served: the data directory also holds manifests, feature tensors (.pt) and
+# catalogs, which must not be readable through this route.
+SERVABLE_IMAGE_EXTENSIONS = (
+    '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tif', '.tiff', '.heic', '.heif',
+)
 
 
 def _thumbnail_jpeg_bytes(full_path: str, max_dim: int):
@@ -49,6 +56,7 @@ def register_image_routes(app):
     """Register image serving routes"""
     
     @app.route('/api/images', methods=['GET'])
+    @require_admin_or_media_token
     def serve_image():
         """
         Serve images from the file system
@@ -70,6 +78,8 @@ def register_image_routes(app):
         
         # Security: Only serve images from allowed directories
         safe_path = os.path.normpath(decoded_path)
+        if not safe_path.lower().endswith(SERVABLE_IMAGE_EXTENSIONS):
+            return jsonify({'error': 'Image not found'}), 404
         
         # Check if path is within data directory or temp directory
         # Wait for manager to be ready (use module ref so we see current value after background init)
