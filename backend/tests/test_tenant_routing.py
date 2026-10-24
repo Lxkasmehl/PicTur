@@ -340,3 +340,24 @@ def test_photos_of_a_closed_group_load_with_a_media_token(env):
     # no other route accepts it
     r = c.get('/api/sheets/sheets', query_string={'org': 'beta', 'mt': _media_token('beta')})
     assert r.status_code == 404
+
+
+def test_image_route_serves_photos_only(env):
+    """Manifests, feature tensors and catalogs live next to the photos; never serve them."""
+    import os
+    import tenant
+
+    c = env['client']
+    assert c.get('/api/locations', headers=_h('a-admin', 'alpha')).status_code == 200
+    turtle_dir = os.path.join(tenant.data_dir(10), 'Ohio', 'T1')
+    os.makedirs(turtle_dir)
+    for name in ('manifest.json', 'ref.pt', 'photo.JPG'):
+        with open(os.path.join(turtle_dir, name), 'wb') as f:
+            f.write(b'x')
+
+    def get(name):
+        return c.get('/api/images', query_string={'path': os.path.join(turtle_dir, name), 'org': 'alpha'})
+
+    assert get('photo.JPG').status_code == 200
+    assert get('manifest.json').status_code == 404
+    assert get('ref.pt').status_code == 404
