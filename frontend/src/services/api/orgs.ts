@@ -5,6 +5,7 @@
 
 import { apiRequest, type UserRole } from './auth';
 import { getToken, TURTLE_API_BASE_URL } from './config';
+import { setApiMediaToken } from './orgContext';
 
 export type OrgKind = 'sheets' | 'db';
 export type OrgMemberRole = 'staff' | 'admin';
@@ -59,9 +60,19 @@ export async function getPublicOrgs(): Promise<PublicOrg[]> {
   return (await json<{ orgs: PublicOrg[] }>(r, 'Failed to load research groups')).orgs;
 }
 
-export async function getMyOrgs(): Promise<{ is_super_admin: boolean; memberships: Membership[] }> {
+export interface MyOrgs {
+  is_super_admin: boolean;
+  memberships: Membership[];
+  /** Lets <img> URLs load the photos of the user's research groups (see withOrgParam). */
+  media_token?: string | null;
+}
+
+/** Also stores the returned media token for image URLs. */
+export async function getMyOrgs(): Promise<MyOrgs> {
   const r = await apiRequest('/orgs/mine');
-  return json(r, 'Failed to load your research groups');
+  const res = await json<MyOrgs>(r, 'Failed to load your research groups');
+  setApiMediaToken(res.media_token ?? null);
+  return res;
 }
 
 // ---- super admin ----

@@ -84,12 +84,25 @@ runs:
         path: ~/.cache/ms-playwright
         key: ${{ runner.os }}-playwright-${{ steps.pw.outputs.version }}
 
-    # System libraries are apt packages (not covered by the browser cache), so always install
-    # them. Guarded with a timeout + retries so a stalled apt mirror fails fast.
+    # System libraries are apt packages (not covered by the browser cache). The runner's Ubuntu
+    # mirror is at times extremely slow (minutes per MB, webkit/firefox pull in ~100 MB of media
+    # libraries), which retries cannot fix. So the downloaded .deb files are cached as well: a warm
+    # cache leaves apt nothing to download. Each run that downloaded something saves a new entry,
+    # also when the install failed, so the next run resumes instead of starting over.
+    - name: Restore Playwright system packages
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.cache/playwright-apt
+        key: ${{ runner.os }}-${{ env.ImageOS }}-playwright-apt-${{ steps.pw.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          ${{ runner.os }}-${{ env.ImageOS }}-playwright-apt-${{ steps.pw.outputs.version }}-
+
+    # Guarded with a timeout + retries so a stalled apt mirror fails fast.
     # `timeout` only kills npx: the apt-get it started through sudo keeps running and holds the
     # dpkg lock, so before a retry wait for that orphan to finish (or kill it) instead of
     # failing instantly with "Could not get lock /var/lib/dpkg/lock-frontend".
     - name: Install Playwright system dependencies
+      id: apt-deps
       shell: bash
       working-directory: frontend
       env:
@@ -97,6 +110,18 @@ runs:
         NEEDRESTART_MODE: a
       run: |
         set +e
+        cache_dir="$HOME/.cache/playwright-apt"
+        mkdir -p "$cache_dir"
+        cached=$(find "$cache_dir" -name '*.deb' | wc -l)
+        echo "Restored $cached cached .deb files"
+        [ "$cached" -gt 0 ] && sudo cp "$cache_dir"/*.deb /var/cache/apt/archives/
+        # apt-get keeps downloaded packages by default; make sure no config drops them.
+        echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99-keep-debs > /dev/null
+        stash_debs() {
+          cp -u /var/cache/apt/archives/*.deb "$cache_dir"/ 2> /dev/null
+          now=$(find "$cache_dir" -name '*.deb' | wc -l)
+          if [ "$now" -gt "$cached" ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+        }
         wait_for_apt() {
           for _ in $(seq 1 60); do
             pgrep -x apt-get > /dev/null || pgrep -x dpkg > /dev/null || return 0
@@ -110,13 +135,21 @@ runs:
         for i in 1 2 3; do
           timeout -k 30 420 npx playwright install-deps
           status=$?
-          if [ "$status" -eq 0 ]; then exit 0; fi
+          if [ "$status" -eq 0 ]; then stash_debs; exit 0; fi
           echo "playwright install-deps attempt $i failed (status $status); retrying..."
           wait_for_apt
           sleep 5
         done
+        stash_debs
         echo "playwright install-deps failed after retries"
         exit 1
+
+    - name: Save Playwright system packages
+      if: always() && steps.apt-deps.outputs.changed == 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.cache/playwright-apt
+        key: ${{ runner.os }}-${{ env.ImageOS }}-playwright-apt-${{ steps.pw.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
 
     # Browser binaries: download only on a cache miss, and guard the download with a timeout +
     # retries so a CDN stall fails fast instead of hanging until the job timeout.

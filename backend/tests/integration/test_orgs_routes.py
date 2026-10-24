@@ -108,6 +108,8 @@ def test_super_admin_is_member_of_every_group(auth_url, super_admin_token, new_o
     r = requests.get(f"{auth_url}/orgs/mine", headers=_h(super_admin_token), timeout=10)
     assert r.status_code == 200
     assert new_org["slug"] in {m["slug"] for m in r.json()["memberships"]}
+    # <img> URLs of the user's research groups need this token (#292)
+    assert r.json()["media_token"]
 
 
 def test_member_management_flow(

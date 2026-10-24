@@ -32,6 +32,7 @@ import {
   upsertMembership,
   type OrgMemberRole,
   type Organization,
+  type Membership,
 } from '../db/orgsRepo.js';
 import { authenticateToken, AuthRequest, requireEmailVerified } from '../middleware/auth.js';
 import { requireOrgRole, requireSuperAdmin } from '../middleware/admin.js';
@@ -94,13 +95,32 @@ router.get('/public', (_req: Request, res: Response) => {
   res.json({ success: true, orgs: listPublicOrgs().map(publicOrg) });
 });
 
+const MEDIA_TOKEN_TTL_SECONDS = 60 * 60;
+
+/**
+ * Photos of a research group are loaded through <img src>, which cannot send the Authorization
+ * header. This token (put in the image URL as ?mt=) lets the Flask image route serve the photos
+ * of the user's database-backed groups, including groups closed to the community. It names the
+ * groups it covers and is good for nothing else; the frontend refreshes it well before it expires.
+ */
+function mintMediaToken(memberships: Membership[]): string | null {
+  const secret = process.env.JWT_SECRET;
+  const orgs = memberships
+    .filter((m) => m.org_id !== MAIN_ORG_ID && m.kind === 'db')
+    .map((m) => ({ id: m.org_id, slug: m.slug, name: m.name }));
+  if (!secret || orgs.length === 0) return null;
+  return jwt.sign({ purpose: 'media', orgs }, secret, { expiresIn: MEDIA_TOKEN_TTL_SECONDS });
+}
+
 // Groups of the current user (group switcher).
 router.get('/mine', authenticateToken, (req: Request, res: Response) => {
   const authUser = (req as AuthRequest).user!;
+  const memberships = getMembershipsForUser(authUser.id);
   res.json({
     success: true,
     is_super_admin: isSuperAdmin(authUser.id),
-    memberships: getMembershipsForUser(authUser.id),
+    memberships,
+    media_token: mintMediaToken(memberships),
   });
 });
 
