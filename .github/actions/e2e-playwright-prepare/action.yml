@@ -85,7 +85,10 @@ runs:
         key: ${{ runner.os }}-playwright-${{ steps.pw.outputs.version }}
 
     # System libraries are apt packages (not covered by the browser cache), so always install
-    # them. Guarded with a timeout + one retry so a stalled apt mirror fails fast.
+    # them. Guarded with a timeout + retries so a stalled apt mirror fails fast.
+    # `timeout` only kills npx: the apt-get it started through sudo keeps running and holds the
+    # dpkg lock, so before a retry wait for that orphan to finish (or kill it) instead of
+    # failing instantly with "Could not get lock /var/lib/dpkg/lock-frontend".
     - name: Install Playwright system dependencies
       shell: bash
       working-directory: frontend
@@ -94,12 +97,23 @@ runs:
         NEEDRESTART_MODE: a
       run: |
         set +e
-        for i in 1 2; do
-          timeout -k 30 300 npx playwright install-deps
+        wait_for_apt() {
+          for _ in $(seq 1 60); do
+            pgrep -x apt-get > /dev/null || pgrep -x dpkg > /dev/null || return 0
+            sleep 5
+          done
+          echo "apt-get still running after 5 minutes; killing it"
+          sudo pkill -9 -x apt-get
+          sudo pkill -9 -x dpkg
+          sudo dpkg --configure -a
+        }
+        for i in 1 2 3; do
+          timeout -k 30 420 npx playwright install-deps
           status=$?
           if [ "$status" -eq 0 ]; then exit 0; fi
-          echo "playwright install-deps attempt $i failed (status $status); retrying in 15s..."
-          sleep 15
+          echo "playwright install-deps attempt $i failed (status $status); retrying..."
+          wait_for_apt
+          sleep 5
         done
         echo "playwright install-deps failed after retries"
         exit 1

@@ -281,3 +281,26 @@ def test_main_group_requests_have_no_group_context(env):
         with app.test_request_context('/api/locations', headers=headers):
             assert tenant.resolve_request_tenant() is None
             assert tenant.current() is None
+
+
+def test_records_preview_uses_the_carapace_reference_in_research_groups(env):
+    """Regression (#292): research groups store carapace references, so the Sheets browser's
+    preview batch must return the carapace photo instead of an empty plastron slot."""
+    import os
+    import tenant
+
+    c = env['client']
+    assert c.get('/api/locations', headers=_h('a-admin', 'alpha')).status_code == 200
+    car_dir = os.path.join(tenant.data_dir(10), 'Ohio', 'T1', 'carapace')
+    os.makedirs(car_dir)
+    ref = os.path.join(car_dir, 'T1_carapace.jpg')
+    with open(ref, 'wb') as f:
+        f.write(b'jpg')
+    r = c.post('/api/turtles/images/primaries',
+               json={'turtles': [{'turtle_id': 'T1', 'sheet_name': 'Ohio'}]},
+               headers=_h('a-admin', 'alpha'))
+    assert r.status_code == 200, r.get_json()
+    img = r.get_json()['images'][0]
+    assert img['primary'] == ref
+    assert img['has_carapace'] is True
+    assert img['folder_status'] == 'has_images'
