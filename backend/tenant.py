@@ -158,6 +158,21 @@ def resolve_request_tenant():
                                           token_validated=False))
         return None
     auth_header = request.headers.get('Authorization')
+    # Photos (<img src>, download links) carry no Authorization header either; a media token
+    # from the auth service names the groups whose photos the user may load. Only the image
+    # route honours it, and no role is granted from it.
+    mt = request.args.get('mt')
+    if mt and not auth_header and request.path == '/api/images':
+        mt_org = auth_module.media_token_org(mt, slug)
+        if mt_org:
+            if not org_db.ensure_engine():
+                return jsonify({'error': 'Research-group database is not available'}), 503
+            from flask import g
+
+            g._tenant_token = activate(Tenant(id=int(mt_org['id']), slug=mt_org['slug'],
+                                              name=mt_org.get('name') or slug, role='community',
+                                              token_validated=False))
+            return None
     if auth_header:
         ok, _error, body = auth_module.validate_with_auth_service(auth_header, org_slug=slug)
         if ok and body:

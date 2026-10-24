@@ -4,6 +4,10 @@ import { MAIN_ORG_SLUG, setActiveOrg } from '../store/slices/orgSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { clearMyOrgs, setAllOrgs, setMyOrgs, setOrgsLoaded, setPublicOrgs } from '../store/slices/orgSlice';
 import { getMyOrgs, getPublicOrgs, listAllOrgs } from '../services/api/orgs';
+import { setApiMediaToken } from '../services/api/orgContext';
+
+/** The media token lives 12 hours; renew it well before that in long-lived tabs. */
+const MEDIA_TOKEN_REFRESH_MS = 4 * 60 * 60 * 1000;
 
 /** Loads the public research groups and, when logged in, the user's memberships. */
 export default function OrgProvider({ children }: { children: React.ReactNode }) {
@@ -20,6 +24,7 @@ export default function OrgProvider({ children }: { children: React.ReactNode })
     if (!authChecked) return;
     let cancelled = false;
     if (!isLoggedIn) {
+      setApiMediaToken(null);
       dispatch(clearMyOrgs());
       dispatch(setOrgsLoaded(true));
       return;
@@ -43,6 +48,14 @@ export default function OrgProvider({ children }: { children: React.ReactNode })
       cancelled = true;
     };
   }, [dispatch, authChecked, isLoggedIn, user?.id]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const timer = window.setInterval(() => {
+      getMyOrgs().catch(() => undefined); // stores the renewed media token
+    }, MEDIA_TOKEN_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [isLoggedIn, user?.id]);
 
   // A remembered group that is no longer available (left the group, logged out, closed for the
   // community) falls back to the main group.

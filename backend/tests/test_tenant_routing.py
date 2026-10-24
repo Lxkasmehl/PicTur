@@ -304,3 +304,39 @@ def test_records_preview_uses_the_carapace_reference_in_research_groups(env):
     assert img['primary'] == ref
     assert img['has_carapace'] is True
     assert img['folder_status'] == 'has_images'
+
+
+def _media_token(*slugs, purpose='media'):
+    orgs = [{'id': ORGS[s]['id'], 'slug': s, 'name': ORGS[s]['name']} for s in slugs]
+    return jwt.encode({'purpose': purpose, 'orgs': orgs}, config.JWT_SECRET, algorithm='HS256')
+
+
+def test_photos_of_a_closed_group_load_with_a_media_token(env):
+    """Regression (#292): <img> requests carry no Authorization header, so photos of a group that
+    does not accept community uploads 404'd. The media token from /orgs/mine unlocks them, and
+    only them: other groups and other routes ignore it."""
+    import os
+    import tenant
+
+    c = env['client']
+    assert c.get('/api/locations', headers=_h('super', 'beta')).status_code == 200
+    car_dir = os.path.join(tenant.data_dir(11), 'Ohio', 'T1', 'carapace')
+    os.makedirs(car_dir)
+    ref = os.path.join(car_dir, 'T1_carapace.jpg')
+    with open(ref, 'wb') as f:
+        f.write(b'jpg')
+
+    def img(token):
+        qs = {'path': ref, 'org': 'beta'}
+        if token:
+            qs['mt'] = token
+        return c.get('/api/images', query_string=qs)
+
+    assert img(None).status_code == 404
+    r = img(_media_token('beta'))
+    assert r.status_code == 200 and r.get_data() == b'jpg'
+    assert img(_media_token('alpha')).status_code == 404  # token for another group
+    assert img(_media_token('beta', purpose='backup_dl')).status_code == 404
+    # no other route accepts it
+    r = c.get('/api/sheets/sheets', query_string={'org': 'beta', 'mt': _media_token('beta')})
+    assert r.status_code == 404
