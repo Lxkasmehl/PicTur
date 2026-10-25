@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-10-24 - Protected turtle photos
+
+### Fixed
+
+- **Photos in research groups closed to the community** (#292): photos of a research group that does not accept community uploads did not load anywhere (records browser previews, old and additional turtle photos, downloads). They now load for the group's staff and admins.
+
+### Security
+
+- **Turtle photos only for staff and admins**: until now anyone who knew a photo's path could load it without logging in, in the main group and in research groups open to the community. Photos are now served only to staff and admins of the group. Image links carry a signed key that is valid for one hour and is renewed automatically.
+- **Photos only**: the image endpoint no longer serves other files from the data folder, such as manifests, feature files or catalogs.
+
+### Changed
+
+- CI caches the system packages Playwright needs, so a slow Ubuntu mirror no longer breaks the E2E setup.
+
+### Upgrade notes
+
+- Frontend, auth backend and Flask backend change together; deploy all three. No new environment variables and no data migration.
+- A super admin whose account role in the main group is "community" no longer sees main-group photos, in line with the other main-group admin functions.
+
 ## [2.3.1] - 2026-10-24 - Research group fixes
 
 ### Fixed
@@ -712,7 +732,8 @@ Major bump merging the SuperPoint implementation: **VLAD/FAISS → SuperPoint + 
 - **Documentation**: README with quick start (Docker and local), functionality overview, and versioning guide in `docs/VERSION_AND_RELEASES.md`.
 - Version control and release process: `CHANGELOG.md`, version in `frontend/package.json`, and guide in `docs/VERSION_AND_RELEASES.md`.
 
-[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/Lxkasmehl/PicTur/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/Lxkasmehl/PicTur/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/Lxkasmehl/PicTur/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/Lxkasmehl/PicTur/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/Lxkasmehl/PicTur/compare/v2.1.0...v2.2.0
