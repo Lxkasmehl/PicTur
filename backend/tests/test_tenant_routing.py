@@ -356,8 +356,50 @@ def test_image_route_serves_photos_only(env):
             f.write(b'x')
 
     def get(name):
-        return c.get('/api/images', query_string={'path': os.path.join(turtle_dir, name), 'org': 'alpha'})
+        return c.get('/api/images', query_string={'path': os.path.join(turtle_dir, name), 'org': 'alpha',
+                                                   'mt': _media_token('alpha')})
 
     assert get('photo.JPG').status_code == 200
     assert get('manifest.json').status_code == 404
     assert get('ref.pt').status_code == 404
+
+
+def test_photos_need_staff_or_a_media_token(env):
+    """Photos are served to staff/admins of the group only: via the Authorization header or a
+    media token naming the group. Anonymous and community requests get nothing, open groups and
+    the main group included."""
+    import os
+    import tenant
+
+    c = env['client']
+    assert c.get('/api/locations', headers=_h('a-admin', 'alpha')).status_code == 200
+    car_dir = os.path.join(tenant.data_dir(10), 'Ohio', 'T1', 'carapace')
+    os.makedirs(car_dir)
+    ref = os.path.join(car_dir, 'T1_carapace.jpg')
+    with open(ref, 'wb') as f:
+        f.write(b'jpg')
+
+    def img(org='alpha', **extra):
+        qs = {'path': ref}
+        if org:
+            qs['org'] = org
+        headers = extra.pop('headers', None)
+        qs.update(extra)
+        return c.get('/api/images', query_string=qs, headers=headers)
+
+    # alpha accepts community uploads, yet anonymous visitors and community members see no photos
+    assert img().status_code == 401
+    assert img(headers=_h('b-staff')).status_code == 403
+    # group staff via header, or anyone holding a media token for alpha
+    assert img(headers=_h('a-staff')).status_code == 200
+    assert img(mt=_media_token('alpha')).status_code == 200
+    assert img(mt=_media_token('beta')).status_code == 401
+
+    # main group: no photos without staff role or a token naming the main group
+    assert img(org=None).status_code == 401
+    assert img(org=None, mt=_media_token('alpha')).status_code == 401
+    assert img(org=None, headers=_h('a-staff')).status_code == 403  # community in main
+    main_token = jwt.encode({'purpose': 'media', 'orgs': [{'id': 1, 'slug': 'main', 'name': 'Main'}]},
+                            config.JWT_SECRET, algorithm='HS256')
+    # authorized; the path is outside the main data dir, so the route itself answers
+    assert img(org=None, mt=main_token).status_code not in (401, 403)

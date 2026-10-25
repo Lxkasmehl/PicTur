@@ -290,6 +290,20 @@ def require_admin(f):
     return decorated_function
 
 
+def require_admin_or_media_token(f):
+    """Staff/admin of the active group, via the Authorization header (``require_admin``) or, for
+    <img>/download URLs that cannot send it, a media token (``?mt=``) naming the active group."""
+    guarded = require_admin(f)
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        mt = request.args.get('mt')
+        if mt and media_token_org(mt, tenant.request_org_slug() or tenant.MAIN_SLUG):
+            return f(*args, **kwargs)
+        return guarded(*args, **kwargs)
+    return decorated_function
+
+
 def require_admin_only(f):
     """Decorator: role must be admin (not staff) — e.g. full data backup download."""
     @wraps(f)

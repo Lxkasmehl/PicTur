@@ -21,7 +21,7 @@ function initialSlug(): string {
 }
 
 let activeSlug = initialSlug();
-/** Signed token from the auth service that lets <img> URLs load the user's groups' photos. */
+/** Signed token from the auth service that lets <img> URLs load the photos of the user's groups. */
 let mediaToken: string | null = null;
 let mediaTokenSetAt = 0;
 
@@ -46,14 +46,15 @@ export function mediaTokenAgeMs(): number {
 }
 
 /**
- * Append `org=<slug>` for URLs used where no header can be sent (images, downloads), plus the
- * media token so photos of groups closed to the community load too.
+ * For URLs used where no header can be sent (images, downloads): append `org=<slug>` outside the
+ * main group, plus the media token, without which the Flask image route serves no photos.
  */
 export function withOrgParam(url: string): string {
-  if (activeSlug === MAIN_ORG_SLUG) return url;
-  const sep = url.includes('?') ? '&' : '?';
-  const mt = mediaToken ? `&mt=${encodeURIComponent(mediaToken)}` : '';
-  return `${url}${sep}org=${encodeURIComponent(activeSlug)}${mt}`;
+  const params: string[] = [];
+  if (activeSlug !== MAIN_ORG_SLUG) params.push(`org=${encodeURIComponent(activeSlug)}`);
+  if (mediaToken) params.push(`mt=${encodeURIComponent(mediaToken)}`);
+  if (params.length === 0) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}${params.join('&')}`;
 }
 
 let installed = false;
